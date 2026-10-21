@@ -19,8 +19,11 @@ async function init(){try{const r=await api("/api/session");const x=await r.json
 document.querySelector("#setup-form").addEventListener("submit",async e=>{e.preventDefault();document.querySelector("#setup-error").textContent="";try{const token=newTokenEl.value;const r=await api("/api/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:token})});const x=await r.json();if(!r.ok)throw Error(x.error||"设置失败");tokenEl.value=token;setupCard.classList.add("hidden");loginCard.classList.remove("hidden");document.querySelector("#login-help").textContent="密码已设置，请登录。";newTokenEl.value="";tokenEl.focus();}catch(e){document.querySelector("#setup-error").textContent=e.message||"设置失败";}});
 document.querySelector("#login-form").addEventListener("submit",async e=>{e.preventDefault();errorEl.textContent="";try{const r=await api("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:tokenEl.value,remember:document.querySelector("#remember").checked})});const x=await r.json();if(!r.ok)throw Error(x.error||"登录失败");tokenEl.value="";loginCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#files-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();}catch(e){errorEl.textContent=e.message||"登录失败";}});
 async function refreshAgentStatus(){
- try{const r=await api("/api/agent/status");const x=await r.json();if(!r.ok)throw Error(x.error||"状态读取失败");document.querySelector("#agent-status").textContent="规则优先；模型："+(x.model.enabled?"已启用（"+x.model.model+"）":"未配置")+"；可用只读工具："+x.availableTools+"；任意命令执行：关闭";}
- catch(e){document.querySelector("#agent-status").textContent="Agent 状态暂不可用";}
+ try{
+  const r=await api("/api/agent/status");const x=await r.json();if(!r.ok)throw Error(x.error||"状态读取失败");
+  const cli=x.trimCli?.available?"官方 fnOS CLI 已连接（配置："+x.trimCli.profile+"）":x.trimCli?.configured?"官方 fnOS CLI 已配置但不可执行":"官方 fnOS CLI 未配置";
+  document.querySelector("#agent-status").textContent="规则优先；模型："+(x.model.enabled?"已启用（"+x.model.model+"）":"未配置")+"；可用只读工具："+x.availableTools+"；"+cli+"；任意命令执行：关闭。";
+ }catch(e){document.querySelector("#agent-status").textContent="Agent 状态暂不可用";}
 }
 function renderAgentTurn(label, body){
  const host=document.querySelector("#agent-history");const card=document.createElement("div");card.className="card";
@@ -115,13 +118,34 @@ async function refreshTools(){
    const row=document.createElement("div");row.className="card";
    const title=document.createElement("strong");title.textContent=item.title+" · "+item.id;row.append(title);
    const description=document.createElement("p");description.className="muted";description.textContent=item.description;row.append(description);
-   const btn=document.createElement("button");btn.type="button";btn.textContent="运行只读查询";
-   btn.addEventListener("click",async()=>{
-    const out=document.querySelector("#tool-result");out.textContent="正在读取…";
-    try{const result=await api("/api/tools/"+encodeURIComponent(item.id)+"/run",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});const payload=await result.json();if(!result.ok)throw Error(payload.error||"工具调用失败");out.textContent=JSON.stringify(payload.result,null,2);}
+   const schema=item.inputSchema||{},properties=schema.properties||{};
+   const form=document.createElement("form");form.className="tool-args";
+   for(const [name,rule] of Object.entries(properties)){
+    const label=document.createElement("label");label.textContent=name+(rule.type==="integer"?"（整数）":"");label.htmlFor="tool-"+item.id.replace(/[^a-zA-Z0-9_-]/g,"-")+"-"+name;
+    const input=document.createElement("input");input.id=label.htmlFor;input.name=name;input.type=rule.type==="integer"?"number":"text";input.autocomplete="off";
+    if(rule.minLength!==undefined)input.minLength=rule.minLength;
+    if(rule.maxLength!==undefined)input.maxLength=rule.maxLength;
+    if(rule.minimum!==undefined)input.min=String(rule.minimum);
+    if(rule.maximum!==undefined)input.max=String(rule.maximum);
+    if(rule.type==="integer")input.step="1";
+    input.required=(schema.required||[]).includes(name);
+    input.placeholder=input.required?"必填":"可选";
+    label.append(input);form.append(label);
+   }
+   const btn=document.createElement("button");btn.type="submit";btn.textContent="运行只读查询";form.append(btn);
+   form.addEventListener("submit",async event=>{
+    event.preventDefault();if(!form.reportValidity())return;
+    const args={};
+    for(const [name,rule] of Object.entries(properties)){
+     const field=form.elements.namedItem(name);if(field.value==="")continue;
+     args[name]=rule.type==="integer"?Number(field.value):field.value;
+    }
+    const out=document.querySelector("#tool-result");out.textContent="正在读取 "+item.id+"…";btn.disabled=true;
+    try{const result=await api("/api/tools/"+encodeURIComponent(item.id)+"/run",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(args)});const payload=await result.json();if(!result.ok)throw Error(payload.error||"工具调用失败");out.textContent=JSON.stringify(payload.result,null,2);}
     catch(error){out.textContent=error.message||"工具调用失败";}
+    finally{btn.disabled=false;}
    });
-   row.append(btn);host.append(row);
+   row.append(form);host.append(row);
   }
   if(!data.tools.length){const p=document.createElement("p");p.className="muted";p.textContent="没有可用的只读工具";host.append(p);}
  }catch(error){const p=document.createElement("p");p.className="error";p.textContent=error.message||"工具清单读取失败";host.append(p);}
