@@ -21,7 +21,7 @@ Core development is active. The repository currently includes:
 - GitHub Skill source labels retain the repository and branch/tag ref when importing a specific archive.
 - Privacy-conscious audit records that omit prompts, task inputs, credentials, and raw exceptions.
 
-**Runtime and validation:** Node.js 26.x is the supported development and CI runtime. CI success does not mean the app has been installed or validated on a real fnOS NAS. FPK build, checksum, artifact upload, and provenance jobs remain paused while core capabilities stabilize. No real NAS is contacted by the automated tests.
+**Runtime and validation:** Node.js 26.x is the supported development and CI runtime. GitHub Actions builds an unsigned x86 CI test FPK, inspects the outer archive structure, verifies SHA-256 and release-manifest consistency, and uploads the artifact for 14 days. Build-provenance attestation remains disabled. CI success does not mean the package has been installed or validated on a real fnOS NAS; lifecycle acceptance remains a separate manual staging gate.
 
 ## Safety boundaries
 
@@ -63,7 +63,7 @@ See [Phase 40 — Reviewed CLI installation](docs/phase-40-reviewed-cli-install.
 - Node.js 26.x core tests and syntax checks run in GitHub Actions.
 - Provider integrations use fake endpoints in automated tests; CI does not call real model services.
 - Skill ZIP tests validate structure and static review only; imported content is not executed.
-- FPK packaging and real fnOS lifecycle validation are separate release tasks and remain paused.
+- FPK build and artifact-integrity checks run in CI; real fnOS install/upgrade/rollback/uninstall validation remains a separate manual staging gate.
 
 Contributions should include focused tests, bounded inputs/outputs, sanitized errors, and documentation for new capabilities. Do not add secrets or run development tests against a production NAS.
 
@@ -129,6 +129,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 108 — File SHA-256 Checksum](docs/phase-108-file-sha256-checksum.md)
 - [Phase 110 — Approval Queue Revocation Consistency](docs/phase-110-approval-queue-consistency.md)
 - [Phase 111 — Task Snapshot Persistence Retry](docs/phase-111-task-persistence-retry.md)
+- [Phase 112 — FPK CI Build and Artifact Verification](docs/phase-112-fpk-ci-build-and-artifact-verification.md)
 
 ### Foundations
 - [Architecture](docs/architecture.md)
