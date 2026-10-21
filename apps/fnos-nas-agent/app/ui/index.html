@@ -27,7 +27,7 @@
 <button id="model-provider-refresh" type="button">刷新模型列表</button>
 <div id="model-provider-list"><p class="muted">登录后加载。</p></div>
 </section>
-<section class="card hidden" id="files-card"><h2>文件浏览</h2><p class="muted">支持浏览、文本预览、下载、上传、建文件夹、重命名、移动和删除。上传上限 25 MiB；删除需要确认。</p><div id="file-roots"></div><form id="file-form"><label for="file-path">当前目录</label><input id="file-path" maxlength="2048" placeholder="选择一个存储卷" autocomplete="off"><button type="submit">打开目录</button><button id="file-parent" type="button" disabled>上一级</button></form><div class="file-actions"><button id="file-mkdir" type="button">新建文件夹</button><label for="file-upload">上传文件（最大 25 MiB）</label><input id="file-upload" type="file"><button id="file-upload-button" type="button">上传所选文件</button> <button id="file-upload-cancel" type="button" disabled>取消上传</button><progress id="file-upload-progress" max="100" value="0" class="hidden"></progress><p id="file-upload-status" class="muted" role="status"></p></div><pre id="file-preview" class="hidden"></pre><p id="file-error" class="error" role="status"></p><div id="file-list"><p class="muted">登录后加载目录。</p></div></section>
+<section class="card hidden" id="files-card"><h2>文件浏览</h2><p class="muted">支持浏览、文本预览、下载、上传、建文件夹、重命名、移动和删除。上传上限 25 MiB；删除需要确认。</p><div id="file-roots"></div><form id="file-form"><label for="file-path">当前目录</label><input id="file-path" maxlength="2048" placeholder="选择一个存储卷" autocomplete="off"><button type="submit">打开目录</button><button id="file-parent" type="button" disabled>上一级</button></form><div class="file-list-controls"><label for="file-search">搜索当前目录</label><input id="file-search" type="search" maxlength="160" placeholder="按文件名筛选…" autocomplete="off"><label for="file-type-filter">类型</label><select id="file-type-filter"><option value="all">全部</option><option value="directory">文件夹</option><option value="file">文件</option></select><label for="file-sort">排序</label><select id="file-sort"><option value="name-asc">名称 A–Z</option><option value="name-desc">名称 Z–A</option><option value="size-desc">大小从大到小</option><option value="modified-desc">最近修改</option></select></div><div class="file-actions"><button id="file-mkdir" type="button">新建文件夹</button><label for="file-upload">上传文件（最大 25 MiB）</label><input id="file-upload" type="file"><button id="file-upload-button" type="button">上传所选文件</button> <button id="file-upload-cancel" type="button" disabled>取消上传</button><progress id="file-upload-progress" max="100" value="0" class="hidden"></progress><p id="file-upload-status" class="muted" role="status"></p></div><pre id="file-preview" class="hidden"></pre><p id="file-error" class="error" role="status"></p><div id="file-list"><p class="muted">登录后加载目录。</p></div></section>
 <section class="card hidden" id="tools-card"><h2>NAS 工具</h2><p class="muted">只读查询可直接执行；创建文件夹、重命名和移动属于常规文件操作。删除、系统配置变更和任意命令执行仍未开放。</p><div id="tool-list"><p class="muted">登录后加载工具清单…</p></div><pre id="tool-result">选择工具后显示结果。</pre></section>
 <section class="card hidden" id="agent-card"><h2>NAS 智能助手</h2><p class="muted" id="agent-status">规则优先；模型仅可请求已登记且参数校验通过的工具。</p><button id="trim-cli-test" type="button">检测官方 CLI 连接</button><p id="trim-cli-test-result" class="muted" role="status">尚未执行连接检测。CLI 可执行不代表 OAuth 已授权。</p>
 <p id="trim-cli-connection-detail" class="muted" role="status">完成授权后，这里会显示最近一次检测状态与恢复建议。</p>
@@ -483,8 +483,17 @@ async function refreshFiles(pathValue=currentFilePath){
   currentFilePath=data.path||"";field.value=currentFilePath;parent.disabled=!data.parentPath;
   parent.onclick=()=>{if(data.parentPath)refreshFiles(data.parentPath);};
   for(const root of data.roots||[]){const btn=document.createElement("button");btn.type="button";btn.textContent=root.name;btn.addEventListener("click",()=>refreshFiles(root.path));roots.append(btn);}
-  if(!data.entries.length){const p=document.createElement("p");p.className="muted";p.textContent=data.roots?.length?"此目录为空。":"未发现存储卷。请检查 fnOS 卷路径，或通过 AGENT_FILE_ROOTS 配置允许的绝对路径。";host.append(p);}
-  for(const item of data.entries){
+  const searchTerm=document.querySelector("#file-search").value.trim().toLocaleLowerCase();
+  const typeFilter=document.querySelector("#file-type-filter").value;
+  const sortMode=document.querySelector("#file-sort").value;
+  const visibleEntries=data.entries.filter(item=>(typeFilter==="all"||item.type===typeFilter)&&(!searchTerm||item.name.toLocaleLowerCase().includes(searchTerm)));
+  visibleEntries.sort((a,b)=>{
+   if(sortMode==="size-desc")return (b.sizeBytes??-1)-(a.sizeBytes??-1)||a.name.localeCompare(b.name);
+   if(sortMode==="modified-desc")return String(b.modifiedAt||"").localeCompare(String(a.modifiedAt||""))||a.name.localeCompare(b.name);
+   return sortMode==="name-desc"?b.name.localeCompare(a.name):a.name.localeCompare(b.name);
+  });
+  if(!visibleEntries.length){const p=document.createElement("p");p.className="muted";p.textContent=data.entries.length?"没有符合筛选条件的项目。":(data.roots?.length?"此目录为空。":"未发现存储卷。请检查 fnOS 卷路径，或通过 AGENT_FILE_ROOTS 配置允许的绝对路径。");host.append(p);}
+  for(const item of visibleEntries){
    const row=document.createElement("div");row.className="card";
    if(item.type==="directory"){const btn=document.createElement("button");btn.type="button";btn.textContent="📁 "+item.name;btn.addEventListener("click",()=>refreshFiles(item.path));row.append(btn);}
    else{const name=document.createElement("strong");name.textContent="📄 "+item.name;row.append(name);}
@@ -504,6 +513,9 @@ async function refreshFiles(pathValue=currentFilePath){
  }catch(e){err.textContent=e.message||"目录读取失败";host.textContent="无法读取此目录。";}
 }
 document.querySelector("#file-form").addEventListener("submit",e=>{e.preventDefault();refreshFiles(document.querySelector("#file-path").value.trim());});
+let fileSearchTimer=null;
+document.querySelector("#file-search").addEventListener("input",()=>{clearTimeout(fileSearchTimer);fileSearchTimer=setTimeout(()=>refreshFiles(currentFilePath),180);});
+for(const id of ["#file-type-filter","#file-sort"])document.querySelector(id).addEventListener("change",()=>refreshFiles(currentFilePath));
 async function runFileOperation(payload){const err=document.querySelector("#file-error");err.textContent="";try{const r=await api("/api/files/operation",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const data=await r.json();if(!r.ok)throw Error(data.error||"文件操作失败");document.querySelector("#file-preview").classList.add("hidden");await refreshFiles(currentFilePath);return data;}catch(e){err.textContent=e.message||"文件操作失败";throw e;}}
 document.querySelector("#file-mkdir").addEventListener("click",async()=>{const name=prompt("新文件夹名称");if(name)try{await runFileOperation({action:"mkdir",path:currentFilePath,name});}catch{}});
 let activeUploadXhr=null;

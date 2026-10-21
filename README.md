@@ -64,6 +64,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 
 ### Current capabilities
 - [Practical file management](docs/practical-file-management.md)
+- [Mobile file search and sorting](docs/phase-79-mobile-file-search-sort.md)
 - [Skill lifecycle](docs/skill-lifecycle.md)
 - [Skill and task management UX](docs/skill-and-task-management-ux.md)
 - [fnOS tool mapping](docs/fnos-tool-mapping.md)
