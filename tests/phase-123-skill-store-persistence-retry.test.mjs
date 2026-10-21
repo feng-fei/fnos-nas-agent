@@ -55,6 +55,33 @@ test("Skill inventory persistence recovers after a write fails and removes the o
   assert.equal(list.skills[0].name, "Second skill");
 });
 
+
+test("a failed concurrent registration is not resurrected by the next queued inventory write", async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), "fnos-skill-store-concurrent-retry-"));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  let failOnce = true;
+  const fs = {
+    ...nativeStoreFs,
+    async writeFile(path, data, options) {
+      await writeFile(path, data, options);
+      if (failOnce) {
+        failOnce = false;
+        throw Object.assign(new Error("simulated transient write error"), { code: "EIO" });
+      }
+    }
+  };
+  const store = createSkillStore(dataDir, { fs });
+  const results = await Promise.allSettled([
+    store.register(registration("Rejected first", "e")),
+    store.register(registration("Persisted second", "f"))
+  ]);
+  assert.equal(results[0].status, "rejected");
+  assert.equal(results[1].status, "fulfilled");
+  const inventory = JSON.parse(await readFile(join(dataDir, "skills.json"), "utf8"));
+  assert.deepEqual(inventory.map(item => item.name), ["Persisted second"]);
+  assert.equal((await readdir(dataDir)).some(name => name.endsWith(".tmp")), false);
+});
+
 test("Skill inventory persistence uses exclusive unique temp files for concurrent registrations", async t => {
   const dataDir = await mkdtemp(join(tmpdir(), "fnos-skill-store-concurrent-"));
   t.after(() => rm(dataDir, { recursive: true, force: true }));
