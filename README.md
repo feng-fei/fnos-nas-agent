@@ -106,6 +106,8 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Mobile upload progress](docs/phase-77-mobile-upload-progress.md)
 - [Mobile upload cancellation](docs/phase-78-cancel-file-upload.md)
 
+- [Phase 94 — Model Catalog HTTP Integration](docs/phase-94-model-catalog-http.md)
+
 ### Foundations
 - [Architecture](docs/architecture.md)
 - [Security model](docs/security.md)
