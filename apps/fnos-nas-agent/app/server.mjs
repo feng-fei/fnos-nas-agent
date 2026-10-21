@@ -1,13 +1,13 @@
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
-const accessToken = process.env.AGENT_ACCESS_TOKEN || "";
-const host = accessToken.length >= 32 ? (process.env.HOST || "0.0.0.0") : "127.0.0.1";
+const dataDir = process.env.AGENT_DATA_DIR || "";
+let accessToken = process.env.AGENT_ACCESS_TOKEN || "";
 const sessions = new Map();
 const attempts = new Map();
 const SESSION_TTL = 8 * 60 * 60 * 1000;
@@ -69,14 +69,36 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", "http://localhost");
     if (req.method === "GET" && url.pathname === "/api/health")
-      return reply(res, 200, { ok: true, app: "fnos-nas-agent", version: "0.2.0", executionEnabled: false, authenticationConfigured: accessToken.length >= 32 });
+      return reply(res, 200, { ok: true, app: "fnos-nas-agent", version: "0.2.1", executionEnabled: false, authenticationConfigured: accessToken.length >= 32 });
     if (req.method === "GET" && url.pathname === "/")
       return reply(res, 200, await readFile(join(root, "ui", "index.html"), "utf8"), "text/html; charset=utf-8");
     if (req.method === "GET" && url.pathname === "/api/session")
       return reply(res, 200, { authenticated: Boolean(sessionFor(req)), setupRequired: accessToken.length < 32 });
+    if (req.method === "POST" && url.pathname === "/api/setup") {
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (accessToken.length >= 32) return reply(res, 409, { error: "Setup already completed" });
+      if (limited(req)) return reply(res, 429, { error: "Too many setup attempts" }, "application/json; charset=utf-8", { "retry-after": "60" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      if (!dataDir) return reply(res, 503, { error: "App data directory is not configured" });
+      const body = await jsonBody(req);
+      if (typeof body.token !== "string" || body.token.length < 32 || body.token.length > 256)
+        return reply(res, 400, { error: "Token must contain 32 to 256 characters" });
+      const tokenPath = join(dataDir, "access-token");
+      try {
+        await mkdir(dataDir, { recursive: true, mode: 0o700 });
+        await writeFile(tokenPath, body.token + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
+      } catch (error) {
+        if (error.code === "EEXIST") return reply(res, 409, { error: "Token file already exists; restart the app to load it" });
+        return reply(res, 500, { error: "Unable to save access token securely" });
+      }
+      accessToken = body.token;
+      attempts.delete(req.socket.remoteAddress || "unknown");
+      return reply(res, 201, { configured: true });
+    }
     if (req.method === "POST" && url.pathname === "/api/session") {
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
-      if (accessToken.length < 32) return reply(res, 503, { error: "Authentication is not configured; service is loopback-only" });
+      if (accessToken.length < 32) return reply(res, 503, { error: "First-run setup is required" });
       if (limited(req)) return reply(res, 429, { error: "Too many login attempts" }, "application/json; charset=utf-8", { "retry-after": "60" });
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
@@ -106,7 +128,8 @@ const server = createServer(async (req, res) => {
     return reply(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Internal server error" });
   }
 });
-server.listen(port, host, () => console.log(`fnos-nas-agent listening on ${host}:${port}; execution disabled`));
+// First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
+server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; execution disabled`));
 function shutdown() { sessions.clear(); server.close(() => process.exit(0)); }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);

@@ -5,6 +5,7 @@ on:
     branches:
       - phase-2/fpk-packaging
       - "phase-2/**"
+      - "phase-3/**"
       - "fix/**"
       - "test/**"
     paths:

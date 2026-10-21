@@ -31,7 +31,7 @@ npm test
 npm start
 ```
 
-Open `http://127.0.0.1:8787`. The FPK now remains loopback-only unless a private `access-token` file is configured. See [Phase 3 web authentication](docs/phase-3-web-auth.md) for setup and important plain-HTTP limitations. Do not expose it to untrusted networks or the public internet.
+Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, configure an access token in the setup screen; the token is stored in the private app data directory. The current FPK has no NAS command execution, Skill execution, or model-call capability. See [Phase 3 web authentication](docs/phase-3-web-auth.md) for setup and plain-HTTP limitations. Do not expose it to untrusted networks or the public internet.
 
 ## Planned first capability
 

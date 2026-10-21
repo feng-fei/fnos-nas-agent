@@ -35,11 +35,9 @@ case "${1:-}" in
       [ "${#token}" -ge 32 ] || fail "access-token 文件格式错误；请使用至少 32 个字符的随机令牌。"
       export AGENT_ACCESS_TOKEN="$token"
       unset token
-      HOST=0.0.0.0 PORT="$APP_PORT" "$NODE_BIN" "$ENTRY" >> "$APP_VAR/agent.log" 2>&1 &
-    else
-      # Fail closed: without a configured secret the service is loopback-only.
-      HOST=127.0.0.1 PORT="$APP_PORT" "$NODE_BIN" "$ENTRY" >> "$APP_VAR/agent.log" 2>&1 &
     fi
+    # First run exposes only the setup/status UI. All NAS execution remains disabled.
+    AGENT_DATA_DIR="$APP_VAR" HOST=0.0.0.0 PORT="$APP_PORT" "$NODE_BIN" "$ENTRY" >> "$APP_VAR/agent.log" 2>&1 &
     pid=$!
     printf '%s\n' "$pid" > "$PID_FILE"
     sleep 1
