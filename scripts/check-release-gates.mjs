@@ -144,7 +144,7 @@ assert.match(server, /modelProviderStore\.load\(\)/);
 assert.match(server, /modelActionMatch/);
 assert.match(auditLog, /"models\.test"/);
 assert.match(modelProviderStoreTests, /API keys are encrypted at rest/);
-assert.match(modelProviderStoreTests, /never echoing provider response bodies/);
+assert.match(modelProviderStoreTests, /without echoing provider response bodies/);
 assert.match(modelProviderApiTests, /never returns the API key/);
 assert.match(modelProviderUiTests, /never renders a key value/);
 assert.match(modelAdapterTests, /switches to the newly selected provider/);
