@@ -8,6 +8,19 @@ const DIRECT_INTENTS = [
   { pattern: /^(?:查看|查询|统计)?\s*(?:系统)?进程(?:数量|数目|概况)?\s*[。！!？?]?$/i, tool: "system.process-summary", message: "正在读取进程数量（不读取进程详情）。" }
 ];
 
+function argsMatchSchema(args, schema) {
+  if (!args || typeof args !== "object" || Array.isArray(args)) return false;
+  const properties = schema?.properties || {};
+  if (schema?.additionalProperties === false && Object.keys(args).some(key => !Object.hasOwn(properties, key))) return false;
+  for (const key of schema?.required || []) if (!Object.hasOwn(args, key)) return false;
+  for (const [key, value] of Object.entries(args)) {
+    const rule = properties[key]; if (!rule) return false;
+    if (rule.type === "string" && (typeof value !== "string" || (rule.minLength && value.length < rule.minLength) || (rule.maxLength && value.length > rule.maxLength))) return false;
+    if (rule.type === "integer" && (!Number.isInteger(value) || (rule.minimum !== undefined && value < rule.minimum) || (rule.maximum !== undefined && value > rule.maximum))) return false;
+  }
+  return true;
+}
+
 function safeMessage(value, fallback) {
   const text = typeof value === "string" ? value.trim() : "";
   return text ? text.slice(0, 2000) : fallback;
@@ -22,7 +35,7 @@ export function createAgentCore({ tools, model, now = () => new Date().toISOStri
     // Validate the complete plan before the first tool invocation.
     for (const call of plan.toolCalls) {
       if (!catalogue.has(call.id)) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
-      if (!call.args || typeof call.args !== "object" || Array.isArray(call.args) || Object.keys(call.args).length !== 0)
+      if (!argsMatchSchema(call.args, catalogue.get(call.id).inputSchema))
         throw Object.assign(new Error("Invalid tool arguments"), { statusCode: 400 });
     }
     const results = [];
