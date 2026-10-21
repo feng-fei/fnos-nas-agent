@@ -7,15 +7,15 @@ test("read-only operations are allowed by default", () => {
   assert.deepEqual(policy.evaluate({ risk: "read-only" }), { allowed: true, requiresApproval: false, reason: "read-only-allowed" });
 });
 
-test("write and destructive operations are denied by default and require approval", () => {
+test("write and destructive operations require confirmation but need no separate opt-in", () => {
   const policy = createPermissionPolicy();
   assert.equal(policy.evaluate({ risk: "write" }).allowed, false);
   assert.equal(policy.evaluate({ risk: "write" }).requiresApproval, true);
-  assert.equal(policy.evaluate({ risk: "destructive", approved: true }).allowed, false);
+  assert.equal(policy.evaluate({ risk: "destructive", approved: true }).allowed, true);
 });
 
-test("explicit approval only works when that risk tier is enabled", () => {
-  const policy = createPermissionPolicy({ allowWrite: true, allowDestructive: true });
+test("explicit approval is sufficient for supported write and destructive actions by default", () => {
+  const policy = createPermissionPolicy();
   assert.equal(policy.evaluate({ risk: "write" }).allowed, false);
   assert.equal(policy.evaluate({ risk: "write", approved: true }).allowed, true);
   assert.equal(policy.evaluate({ risk: "destructive", approved: true }).allowed, true);
