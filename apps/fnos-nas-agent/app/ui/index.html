@@ -555,7 +555,7 @@ document.querySelector("#file-upload-button").addEventListener("click",async()=>
   field.value="";status.textContent="上传完成，正在刷新目录…";await refreshFiles(currentFilePath);status.textContent="已成功上传 "+completed+" 个文件。";
  }catch(error){
   err.textContent=(error.message||"上传失败")+(completed?"；此前已成功上传 "+completed+" 个文件。":"");
-  if(error.message==="上传已中止。"){status.textContent="上传已中止；正在刷新目录确认文件状态…";await refreshFiles(currentFilePath);status.textContent="上传请求已中止；已完成 "+completed+" / "+files.length+" 个，请检查目录确认当前状态。";}
+  if(error.message==="上传已中止。"){status.textContent="已发送取消请求，正在刷新目录确认文件状态…";await refreshFiles(currentFilePath);status.textContent="上传请求已中止；已完成 "+completed+" / "+files.length+" 个，请检查目录确认当前状态。";}
   else status.textContent="上传停止：已完成 "+completed+" / "+files.length+" 个；请确认目录状态后再重试。";
   if(completed)await refreshFiles(currentFilePath);
  }finally{activeUploadXhr=null;button.disabled=false;cancel.disabled=true;}
