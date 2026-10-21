@@ -14,13 +14,14 @@ async function unusedPort() {
   return port;
 }
 
-test("CLI OAuth command route uses the private profile context and never executes the command", async t => {
+test("CLI OAuth command route uses the private profile context, never runs the command, and closes the read-only loop", async t => {
   const dataDir = await mkdtemp(join(tmpdir(), "fnos-agent-cli-setup-"));
   const port = await unusedPort();
   const origin = "http://127.0.0.1:" + port;
   const cliPath = join(dataDir, "stub trim-cli");
   const sentinel = join(dataDir, "cli-was-executed");
-  await writeFile(cliPath, "#!/bin/sh\n: > " + JSON.stringify(sentinel) + "\nexit 0\n", { mode: 0o700 });
+  const script = "#!/bin/sh\nprintf '%s\\n' '{\"system\":\"fnOS-test\"}'\n: > " + JSON.stringify(sentinel) + "\nexit 0\n";
+  await writeFile(cliPath, script, { mode: 0o700 });
   await chmod(cliPath, 0o700);
   const serverPath = join(process.cwd(), "apps/fnos-nas-agent/app/server.mjs");
   const child = spawn(process.execPath, [serverPath], {
@@ -80,4 +81,18 @@ test("CLI OAuth command route uses the private profile context and never execute
   assert.match(payload.note, /不会执行该命令/);
   await assert.rejects(access(sentinel), { code: "ENOENT" }, "generating a command must not execute trim-cli");
   await assert.rejects(readFile(sentinel), { code: "ENOENT" });
+
+  const probe = await request("/api/agent/trim-cli/test", { method: "POST", headers: { cookie }, body: "{}" });
+  assert.equal(probe.status, 200, "read-only connection probe should call the CLI");
+  const probePayload = await probe.json();
+  assert.equal(probePayload.connectionStatus, "connected");
+  assert.equal(probePayload.authenticated, true);
+  assert.deepEqual(probePayload.data, { system: "fnOS-test" });
+  await access(sentinel);
+
+  const status = await request("/api/agent/status", { headers: { cookie } });
+  const statusPayload = await status.json();
+  assert.equal(statusPayload.trimCli.connectionStatus, "connected", "status endpoint must preserve the latest successful probe");
+  assert.equal(statusPayload.trimCli.authenticated, true);
+  assert.equal(statusPayload.trimCli.command, "system.info");
 });
