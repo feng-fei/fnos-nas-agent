@@ -2,7 +2,7 @@
 
 A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mobile-friendly web interface, controlled NAS operations, and a reviewable Skill manager.
 
-> **Status: Practical NAS functionality in progress.** Phases 2–33 are integrated on `main`; Phase 34 adds a one-time confirmation flow for destructive file actions on this feature branch. Task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, registered read-only and routine-write tools, one-time destructive-action confirmation, rules-first Agent routing, an optional server-configured model adapter, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Development CI currently uses Node.js 26 core tests and syntax checks only; FPK build, checksum, artifact upload, and provenance jobs are temporarily paused while core capabilities stabilize.
+> **Status: Practical NAS functionality in progress.** Phases 2–42 are integrated on `main`; Phase 43 adds a guided official CLI OAuth setup flow on this feature branch. The Agent generates a terminal command but never runs the OAuth login or receives the one-time code. Task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, registered read-only and routine-write tools, one-time destructive-action confirmation, rules-first Agent routing, an optional server-configured model adapter, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Development CI currently uses Node.js 26 core tests and syntax checks only; FPK build, checksum, artifact upload, and provenance jobs are temporarily paused while core capabilities stabilize.
 
 ## Goals
 
@@ -35,7 +35,7 @@ Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, set a management 
 
 ## Planned first capability
 
-The supplied official fnOS Skill package is the first integration candidate. It documents using `trim-cli` and an OAuth 2.0 Authorization Code + PKCE flow. Exact command syntax, platform support, token handling, and permission requirements must be verified before implementation. A Skill's instructions are not permission to run arbitrary commands.
+The official fnOS Skill is the first capability pack. Its reviewed archive can provide a platform-matched trim-cli binary, which the Agent exposes only through an allowlisted read-only adapter. OAuth uses the official interactive Authorization Code + PKCE flow: the user signs in and pastes the one-time code directly into the CLI terminal. The Agent never collects credentials or executes arbitrary Skill instructions. See [Phase 40 reviewed CLI installation](docs/phase-40-reviewed-cli-install.md), [Phase 42 connection health](docs/phase-42-cli-connection-health.md), and [Phase 43 guided OAuth setup](docs/phase-43-guided-oauth-setup.md).
 
 ## Design documents
 
@@ -110,3 +110,4 @@ Phase 11 reads only a bounded `SKILL.md` manifest from a validated archive for s
 
 - [Phase 41 — Dynamic CLI Provider Integration Fix](docs/phase-41-trim-cli-provider-fix.md)
 - [Phase 42 — CLI Connection Health](docs/phase-42-cli-connection-health.md)
+- [Phase 43 — Guided Official CLI OAuth Setup](docs/phase-43-guided-oauth-setup.md)
