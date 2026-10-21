@@ -61,6 +61,7 @@ test("model provider CRUD and presets work over authenticated HTTP without expos
 
   const presetsResponse = await request("/api/models/presets");
   assert.equal(presetsResponse.status, 200);
+  assert.equal(presetsResponse.headers.get("cache-control"), "no-store");
   const presets = (await presetsResponse.json()).presets;
   assert.ok(presets.some(item => item.id === "gemini"));
   assert.ok(presets.some(item => item.id === "groq"));
