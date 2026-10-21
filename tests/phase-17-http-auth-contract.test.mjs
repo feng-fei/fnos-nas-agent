@@ -101,6 +101,29 @@ test("HTTP auth contract: setup, session, origin checks and logout", async t => 
   });
   assert.equal(cliTestMissingBinary.status, 503, "connection test must distinguish a missing CLI");
 
+  const cliLoginUnauthenticated = await fetch(origin + "/api/agent/trim-cli/login-command", {
+    method: "POST", headers, body: JSON.stringify({ host: "192.168.1.20", port: 5667, scheme: "https" })
+  });
+  assert.equal(cliLoginUnauthenticated.status, 401, "login command generation must require an Agent session");
+
+  const cliLoginWrongOrigin = await request("/api/agent/trim-cli/login-command", {
+    method: "POST", headers: { cookie, origin: "http://attacker.invalid" },
+    body: JSON.stringify({ host: "192.168.1.20", port: 5667, scheme: "https" })
+  });
+  assert.equal(cliLoginWrongOrigin.status, 403, "login command generation must enforce same-origin");
+
+  const cliLoginInvalidInput = await request("/api/agent/trim-cli/login-command", {
+    method: "POST", headers: { cookie },
+    body: JSON.stringify({ host: "https://nas.example.com", port: 5667, scheme: "https" })
+  });
+  assert.equal(cliLoginInvalidInput.status, 400, "login command generation must reject URL/path injection before checking installation");
+
+  const cliLoginMissingBinary = await request("/api/agent/trim-cli/login-command", {
+    method: "POST", headers: { cookie },
+    body: JSON.stringify({ host: "192.168.1.20", port: 5667, scheme: "https" })
+  });
+  assert.equal(cliLoginMissingBinary.status, 503, "login command generation must require an installed executable");
+
   const missingSkillInstall = await request("/api/skills/aaaaaaaaaaaaaaaaaaaaaaaa/install-cli", {
     method: "POST", headers: { cookie }
   });

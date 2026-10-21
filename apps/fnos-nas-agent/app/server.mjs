@@ -17,6 +17,7 @@ import { createAuditLogger } from "./audit-log.mjs";
 import { createFileBrowser } from "./file-browser.mjs";
 import { createFileManager } from "./file-manager.mjs";
 import { createTrimCliAdapter } from "./trim-cli-adapter.mjs";
+import { createTrimCliLoginCommand, validateTrimCliLoginInput } from "./trim-cli-setup.mjs";
 import { createSkillInstaller } from "./skill-installer.mjs";
 import { createActionApprovalService } from "./action-approval-service.mjs";
 
@@ -203,6 +204,7 @@ function auditRoute(pathname, method) {
   if (/^\/api\/skills\/([a-f0-9]{24})\/install-cli$/.test(pathname)) return "skills.install-cli";
   if (pathname === "/api/agent/status") return "agent.status";
   if (pathname === "/api/agent/trim-cli/test") return "agent.trim-cli-test";
+  if (pathname === "/api/agent/trim-cli/login-command") return "agent.trim-cli-login-command";
   if (pathname === "/api/agent/message") return "agent.message";
   if (pathname === "/api/tasks/status") return "tasks.status";
   if (pathname === "/api/tasks") return "tasks.list";
@@ -464,6 +466,47 @@ const server = createServer(async (req, res) => {
             status === 503 ? "CLI 尚不可用，请先安装官方 CLI。" :
             "连接探测失败。请检查官方 CLI 的 OAuth profile、授权是否过期及 NAS API 连通性；敏感 CLI 输出已隐藏。",
           code: error?.code || "TRIM_CLI_PROBE_FAILED"
+        });
+      }
+    }
+    if (url.pathname === "/api/agent/trim-cli/login-command") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      let input;
+      try { input = validateTrimCliLoginInput(await jsonBody(req)); }
+      catch (error) { return reply(res, Number.isInteger(error?.statusCode) ? error.statusCode : 400, { error: error.message || "Invalid login command options" }); }
+      let setup;
+      try { setup = await trimCli.setupInfo(); }
+      catch { return reply(res, 503, { error: "无法读取官方 CLI 配置状态，请检查 Agent 配置。" }); }
+      if (!setup.available || !setup.binaryPath)
+        return reply(res, 503, { error: "官方 CLI 尚未安装或不可执行。请先导入并审核官方 fnOS Skill、安装对应平台 CLI，并启用 Skill。" });
+      if (!setup.dataDirConfigured || !setup.dataDir || !setup.configDir)
+        return reply(res, 503, { error: "Agent 私有数据目录未配置，无法安全设置 OAuth profile。" });
+      let serviceUser;
+      try { serviceUser = os.userInfo().username; }
+      catch { return reply(res, 503, { error: "无法识别 Agent 运行账户；请检查系统账户配置。" }); }
+      if (typeof process.getuid === "function" && process.getuid() !== os.userInfo().uid)
+        return reply(res, 503, { error: "Agent 运行账户信息不一致，拒绝生成登录命令。" });
+      try {
+        const command = createTrimCliLoginCommand({
+          ...input,
+          binaryPath: setup.binaryPath,
+          dataDir: setup.dataDir,
+          profile: setup.profile,
+          serviceUser
+        });
+        return reply(res, 200, {
+          command,
+          profile: setup.profile,
+          flow: input.flow,
+          note: "命令只会在 NAS 终端启动官方 CLI 的交互式授权；Agent 不会执行该命令、接收验证码或记录令牌。"
+        });
+      } catch (error) {
+        return reply(res, Number.isInteger(error?.statusCode) ? error.statusCode : 503, {
+          error: error?.statusCode === 400 ? error.message : "无法生成安全的 CLI 登录命令；请检查 Agent 数据目录和运行账户。"
         });
       }
     }

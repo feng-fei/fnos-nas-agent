@@ -77,6 +77,20 @@ export function createTrimCliAdapter({
     return statusFor(await resolveBinaryPath());
   }
 
+  async function setupInfo() {
+    const executable = await resolveBinaryPath();
+    const state = await statusFor(executable);
+    const privateDataDir = typeof env.AGENT_DATA_DIR === "string" ? env.AGENT_DATA_DIR : "";
+    return {
+      ...state,
+      binaryPath: executable || "",
+      dataDirConfigured: Boolean(privateDataDir),
+      dataDir: privateDataDir,
+      configDir: privateDataDir ? join(privateDataDir, ".config") : "",
+      profile
+    };
+  }
+
   async function runReadOnly(id, input = {}) {
     const command = COMMANDS[id];
     if (!command) throw Object.assign(new Error("trim-cli command is not allowlisted"), { statusCode: 404 });
@@ -115,5 +129,5 @@ export function createTrimCliAdapter({
     }
   }
 
-  return Object.freeze({ status, runReadOnly, commands: Object.freeze(Object.keys(COMMANDS)) });
+  return Object.freeze({ status, setupInfo, runReadOnly, commands: Object.freeze(Object.keys(COMMANDS)) });
 }
