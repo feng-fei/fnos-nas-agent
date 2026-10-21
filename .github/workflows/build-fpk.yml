@@ -56,13 +56,20 @@ jobs:
           python3 -m json.tool "$app/config/privilege" >/dev/null
           python3 -m json.tool "$app/config/resource" >/dev/null
 
-          chmod 755 "$app/cmd/main" "$app/cmd/install_callback" "$app/cmd/uninstall_callback"
+          for script in "$app"/cmd/*; do
+            test -f "$script"
+            chmod 755 "$script"
+            bash -n "$script"
+          done
           test -x "$app/cmd/main"
+          test -x "$app/cmd/install_init"
           test -x "$app/cmd/install_callback"
+          test -x "$app/cmd/uninstall_init"
           test -x "$app/cmd/uninstall_callback"
-          bash -n "$app/cmd/main"
-          bash -n "$app/cmd/install_callback"
-          bash -n "$app/cmd/uninstall_callback"
+          test -x "$app/cmd/upgrade_init"
+          test -x "$app/cmd/upgrade_callback"
+          test -x "$app/cmd/config_init"
+          test -x "$app/cmd/config_callback"
           "$app/app/bin/node" --version
           "$app/app/bin/node" --check "$app/app/server.mjs"
 
