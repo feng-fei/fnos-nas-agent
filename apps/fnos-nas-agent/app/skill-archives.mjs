@@ -172,6 +172,13 @@ export async function saveQuarantinedArchive(dataDir, buffer, {
   const sameIdentity = (a, b) => BigInt(a.dev) === BigInt(b.dev) && BigInt(a.ino) === BigInt(b.ino);
   const descriptorPath = handle => "/proc/self/fd/" + handle.fd;
   const changed = message => Object.assign(new Error(message), { statusCode: 409 });
+  const openDirectory = async (path, message) => {
+    try { return await storageFs.open(path, directoryFlags); }
+    catch (error) {
+      if (["ELOOP", "ENOENT", "ENOTDIR"].includes(error?.code)) throw changed(message);
+      throw error;
+    }
+  };
 
   let dataHandle = null, quarantineHandle = null, tempHandle = null, destinationHandle = null;
   let tempPath = null, destinationPath = null, published = false;
@@ -180,7 +187,7 @@ export async function saveQuarantinedArchive(dataDir, buffer, {
     const dataInfo = await storageFs.lstat(dataDir);
     if (!dataInfo.isDirectory() || dataInfo.isSymbolicLink())
       throw Object.assign(new Error("Skill data directory is not a safe directory"), { statusCode: 500 });
-    dataHandle = await storageFs.open(dataDir, directoryFlags);
+    dataHandle = await openDirectory(dataDir, "Skill data directory changed while opening; retry the operation");
     const openedDataInfo = await dataHandle.stat({ bigint: true });
     if (!openedDataInfo.isDirectory() || !sameIdentity(openedDataInfo, dataInfo))
       throw changed("Skill data directory changed while opening; retry the operation");
@@ -192,7 +199,7 @@ export async function saveQuarantinedArchive(dataDir, buffer, {
     const quarantineInfo = await storageFs.lstat(quarantinePath);
     if (!quarantineInfo.isDirectory() || quarantineInfo.isSymbolicLink())
       throw changed("Quarantine directory changed while opening; retry the operation");
-    quarantineHandle = await storageFs.open(quarantinePath, directoryFlags);
+    quarantineHandle = await openDirectory(quarantinePath, "Quarantine directory changed while opening; retry the operation");
     const openedQuarantineInfo = await quarantineHandle.stat({ bigint: true });
     if (!openedQuarantineInfo.isDirectory() || !sameIdentity(openedQuarantineInfo, quarantineInfo))
       throw changed("Quarantine directory changed while opening; retry the operation");
