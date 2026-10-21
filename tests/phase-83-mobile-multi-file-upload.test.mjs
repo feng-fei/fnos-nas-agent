@@ -6,6 +6,7 @@ test("mobile file browser supports sequential multi-file upload with aggregate p
   const html = await readFile(new URL("../apps/fnos-nas-agent/app/ui/index.html", import.meta.url), "utf8");
   assert.match(html, /id="file-upload"[^>]*multiple/);
   assert.match(html, /Array\.from\(field\.files\|\|\[\]\)/);
+  assert.match(html, /files\.length>20/);
   assert.match(html, /files\.find\(file=>file\.size>25\*1024\*1024\)/);
   assert.match(html, /for\(let index=0;index<files\.length;index\+\+\)/);
   assert.match(html, /Math\.round\(\(\(index\+percent\/100\)\/files\.length\)\*100\)/);
