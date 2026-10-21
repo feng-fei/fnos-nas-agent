@@ -108,7 +108,7 @@ export function createModelAdapter({ config = modelConfiguration(), fetchImpl = 
           if (!call || typeof call !== "object" || Array.isArray(call) ||
               typeof call.id !== "string" || call.id.length > 64 ||
               !call.args || typeof call.args !== "object" || Array.isArray(call.args) ||
-              Object.keys(call.args).length !== 0) {
+              !tools.some(tool => tool.id === call.id) || !matchesSchema(call.args, tools.find(tool => tool.id === call.id)?.inputSchema)) {
             throw Object.assign(new Error("Invalid model tool request"), { code: "MODEL_INVALID_PLAN" });
           }
           return { id: call.id, args: call.args };
