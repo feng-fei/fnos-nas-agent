@@ -10,6 +10,7 @@ on:
       - "phase-6/**"
       - "phase-7/**"
       - "phase-8/**"
+      - "phase-8/**"
       - "fix/**"
       - "test/**"
     paths:
@@ -27,6 +28,7 @@ on:
       - "phase-5/**"
       - "phase-6/**"
       - "phase-7/**"
+      - "phase-8/**"
       - "fix/**"
       - "test/**"
     paths:
