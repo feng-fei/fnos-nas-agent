@@ -1,7 +1,7 @@
 import { inflateRawSync } from "node:zlib";
 import { inspectZipArchive } from "./skill-archives.mjs";
 
-const MAX_MANIFEST_BYTES = 64 * 1024;
+const MANIFEST_LIMIT = 64 * 1024;
 const MAX_DESCRIPTION = 1000;
 
 function crc32(buffer) {
@@ -76,7 +76,7 @@ export function inspectSkillManifest(buffer) {
       findings: ["missing-skill-manifest"], archiveEntryCount: archive.entryCount
     });
   }
-  if (entry.uncompressedSize > MAX_MANIFEST_BYTES) {
+  if (entry.uncompressedSize > MANIFEST_LIMIT) {
     return Object.freeze({
       status: "needs_review", manifestFound: true, entryPath: entry.name, name: null, description: null,
       findings: ["manifest-exceeds-64-kib"], archiveEntryCount: archive.entryCount
@@ -89,14 +89,14 @@ export function inspectSkillManifest(buffer) {
   const compressed = buffer.subarray(start, start + entry.compressedSize);
   let data;
   try {
-    data = entry.method === 0 ? Buffer.from(compressed) : inflateRawSync(compressed, { maxOutputLength: MAX_MANIFEST_BYTES });
+    data = entry.method === 0 ? Buffer.from(compressed) : inflateRawSync(compressed, { maxOutputLength: MANIFEST_LIMIT });
   } catch {
     return Object.freeze({
       status: "needs_review", manifestFound: true, entryPath: entry.name, name: null, description: null,
       findings: ["manifest-decompression-failed"], archiveEntryCount: archive.entryCount
     });
   }
-  if (data.length !== entry.uncompressedSize || data.length > MAX_MANIFEST_BYTES || crc32(data) !== entry.crc) {
+  if (data.length !== entry.uncompressedSize || data.length > MANIFEST_LIMIT || crc32(data) !== entry.crc) {
     return Object.freeze({
       status: "needs_review", manifestFound: true, entryPath: entry.name, name: null, description: null,
       findings: ["manifest-integrity-check-failed"], archiveEntryCount: archive.entryCount
@@ -125,4 +125,4 @@ export function inspectSkillManifest(buffer) {
   });
 }
 
-export const MAX_MANIFEST_BYTES = MAX_MANIFEST_BYTES;
+export const MAX_MANIFEST_BYTES = MANIFEST_LIMIT;
