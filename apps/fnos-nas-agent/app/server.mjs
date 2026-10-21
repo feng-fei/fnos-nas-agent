@@ -8,7 +8,8 @@ const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
 const dataDir = process.env.AGENT_DATA_DIR || "";
 const sessionFile = dataDir ? join(dataDir, "sessions.json") : "";
-let accessToken = process.env.AGENT_ACCESS_TOKEN || "";
+const passwordFile = dataDir ? join(dataDir, "password.json") : "";
+let passwordRecord = null;
 const sessions = new Map();
 const attempts = new Map();
 const SESSION_TTL = 8 * 60 * 60 * 1000;
@@ -84,10 +85,25 @@ async function jsonBody(req) {
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); }
   catch { throw Object.assign(new Error("Invalid JSON"), { statusCode: 400 }); }
 }
-function tokenValid(candidate) {
-  if (!accessToken || typeof candidate !== "string") return false;
-  const a = Buffer.from(candidate), b = Buffer.from(accessToken);
-  return a.length === b.length && timingSafeEqual(a, b);
+function passwordValid(candidate) {
+  if (!passwordRecord || typeof candidate !== "string") return false;
+  const actual = scryptSync(candidate, Buffer.from(passwordRecord.salt, "hex"), 64);
+  const expected = Buffer.from(passwordRecord.hash, "hex");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+function makePasswordRecord(password) {
+  const salt = randomBytes(16);
+  return { algorithm: "scrypt", salt: salt.toString("hex"), hash: scryptSync(password, salt, 64).toString("hex") };
+}
+async function loadPassword() {
+  if (!passwordFile) return;
+  try {
+    const record = JSON.parse(await readFile(passwordFile, "utf8"));
+    if (record?.algorithm === "scrypt" && /^[a-f0-9]{32}$/.test(record.salt) && /^[a-f0-9]{128}$/.test(record.hash)) passwordRecord = record;
+    else console.error("Password record is invalid; setup is required.");
+  } catch (error) {
+    if (error.code !== "ENOENT") console.error("Password record could not be loaded; setup is required.");
+  }
 }
 function limited(req) {
   const key = req.socket.remoteAddress || "unknown", now = Date.now();
@@ -113,17 +129,18 @@ const server = createServer(async (req, res) => {
         return reply(res, 415, { error: "Expected application/json" });
       if (!dataDir) return reply(res, 503, { error: "App data directory is not configured" });
       const body = await jsonBody(req);
-      if (typeof body.token !== "string" || body.token.length < 32 || body.token.length > 256)
-        return reply(res, 400, { error: "Token must contain 32 to 256 characters" });
-      const tokenPath = join(dataDir, "access-token");
+      if (typeof body.password !== "string" || body.password.length < 10 || body.password.length > 128)
+        return reply(res, 400, { error: "Password must contain 10 to 128 characters" });
+      const record = makePasswordRecord(body.password);
       try {
         await mkdir(dataDir, { recursive: true, mode: 0o700 });
-        await writeFile(tokenPath, body.token + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
+        await writeFile(passwordFile, JSON.stringify(record) + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
+        await chmod(passwordFile, 0o600);
       } catch (error) {
-        if (error.code === "EEXIST") return reply(res, 409, { error: "Token file already exists; restart the app to load it" });
-        return reply(res, 500, { error: "Unable to save access token securely" });
+        if (error.code === "EEXIST") return reply(res, 409, { error: "Password already configured; restart the app if setup state is stale" });
+        return reply(res, 500, { error: "Unable to save password securely" });
       }
-      accessToken = body.token;
+      passwordRecord = record;
       attempts.delete(req.socket.remoteAddress || "unknown");
       return reply(res, 201, { configured: true });
     }
@@ -167,7 +184,8 @@ const server = createServer(async (req, res) => {
     return reply(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Internal server error" });
   }
 });
-await loadPassword();\nawait loadSessions();
+await loadPassword();\nawait loadPassword();
+await loadSessions();
 // First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
 server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; execution disabled`));
 function shutdown() { server.close(() => process.exit(0)); }
