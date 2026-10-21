@@ -39,7 +39,7 @@ assert.match(releaseManifestScript, /GITHUB_SHA/);
 assert.match(releaseManifestScript, /signature: "not-provided"/);
 assert.match(releaseManifestTests, /records artifact checksum/);
 assert.match(releaseManifestTests, /refuses to overwrite/);
-assert.match(releaseManifestDocs, /not a cryptographic signature/);
+assert.match(releaseManifestDocs, /not a signed attestation/);
 assert.doesNotMatch(readme, /\\\\n- \[Phase 21/);
 assert.match(readme, /\[Phase 21 task persistence and crash recovery\]\(docs\/phase-21-task-persistence-recovery\.md\)/);
 assert.match(readme, /\[Phase 22 release-candidate acceptance\]\(docs\/phase-22-release-candidate-acceptance\.md\)/);
