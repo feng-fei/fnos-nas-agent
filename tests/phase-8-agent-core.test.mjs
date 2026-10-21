@@ -7,11 +7,11 @@ function fixture({ enabled = false, plan = null } = {}) {
   const calls = [];
   const tools = {
     list: () => [
-      { id: "system.status", title: "系统状态", description: "只读", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
-      { id: "storage.summary", title: "存储概况", description: "只读", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
-      { id: "files.list", title: "浏览文件目录", description: "只读", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, limit: { type: "integer", minimum: 1, maximum: 200 } }, additionalProperties: false } },
-      { id: "fnos.photos.folders", title: "相册文件夹", description: "只读", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
-      { id: "fnos.photos.search", title: "相册搜索", description: "只读", inputSchema: { type: "object", properties: { keyword: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["keyword"], additionalProperties: false } }
+      { id: "system.status", title: "系统状态", description: "只读", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+      { id: "storage.summary", title: "存储概况", description: "只读", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+      { id: "files.list", title: "浏览文件目录", description: "只读", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, limit: { type: "integer", minimum: 1, maximum: 200 } }, additionalProperties: false } },
+      { id: "fnos.photos.folders", title: "相册文件夹", description: "只读", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+      { id: "fnos.photos.search", title: "相册搜索", description: "只读", risk: "read-only", inputSchema: { type: "object", properties: { keyword: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["keyword"], additionalProperties: false } }
     ],
     async invoke(id, args) {
       calls.push({ id, args });
