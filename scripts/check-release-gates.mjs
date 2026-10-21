@@ -60,7 +60,7 @@ assert.match(workflow, /\n  attest:\s*\n/);
 assert.match(workflow, /if: github\.ref == 'refs\/heads\/main' && github\.event_name != 'pull_request'/);
 assert.match(workflow, /\n    branches:\n      - main\n/);
 assert.match(attestJobSource, /needs: build/);
-assert.match(attestJobSource, /uses: actions\/download-artifact@v4/);
+assert.match(attestJobSource, /uses: actions\/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4\.3\.0/);
 assert.match(attestJobSource, /Verify artifact bundle before attestation/);
 assert.match(attestJobSource, /verify-release-artifact\.mjs/);
 assert.match(attestJobSource, /uses: actions\/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4\.2\.2/);
