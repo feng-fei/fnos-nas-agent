@@ -6,17 +6,17 @@
 <section class="card" id="login-card"><h2>登录验证</h2><p class="muted" id="login-help">输入管理密码登录。密码不会保存在浏览器本地存储中。</p><form id="login-form"><label for="token">管理密码</label><input id="token" name="token" type="password" autocomplete="current-password" minlength="10" required><label><input id="remember" type="checkbox" style="width:auto;margin-right:8px">在此设备保持登录 30 天</label><p class="muted">仅在个人可信设备上勾选；共享设备请勿勾选。</p><button type="submit">登录</button></form><p id="login-error" class="error" role="status"></p></section>
 <section class="card hidden" id="status-card"><h2>服务状态</h2><p id="status">正在检查…</p><p id="detail" class="muted">当前版本不执行 NAS 管理操作。</p><h3>只读系统诊断</h3><pre id="diagnostics">登录后加载诊断信息…</pre><button id="refresh" type="button">刷新状态</button> <button id="logout" type="button">退出登录</button></section>
 <section class="card hidden" id="tools-card"><h2>只读工具</h2><p class="muted">这些工具仅读取系统信息；不会运行命令、修改文件或执行 Skill。</p><div id="tool-list"><p class="muted">登录后加载工具清单…</p></div><pre id="tool-result">选择工具后显示结果。</pre></section>
-<section class="card hidden" id="agent-card"><h2>NAS 智能助手</h2><p class="muted" id="agent-status">规则优先；模型仅可请求白名单只读工具。</p><form id="agent-form"><label for="agent-input">你想了解什么？</label><input id="agent-input" maxlength="2000" autocomplete="off" placeholder="例如：查看系统状态 / 帮我分析 NAS 当前情况" required><button id="agent-send" type="submit">发送</button></form><p id="agent-error" class="error" role="status"></p><div id="agent-history" aria-live="polite"><p class="muted">登录后可开始查询。</p></div></section>
+<section class="card hidden" id="agent-card"><h2>NAS 智能助手</h2><p class="muted" id="agent-status">规则优先；模型仅可请求白名单只读工具。</p><form id="agent-form"><label for="agent-input">你想了解什么？</label><input id="agent-input" maxlength="2000" autocomplete="off" placeholder="例如：查看系统状态 / 帮我分析 NAS 当前情况" required><button id="agent-send" type="submit">发送</button></form><p id="agent-error" class="error" role="status"></p><div id="agent-history" aria-live="polite"><p class="muted">登录后可开始查询。</p></div><h3>最近任务</h3><button id="agent-refresh-tasks" type="button">刷新任务历史</button><div id="agent-recent-tasks"><p class="muted">暂无任务记录。</p></div></section>
 <section class="card hidden" id="skills-card"><h2>Skill 管理</h2><p class="warning">ZIP 上传后只会检查结构并存入隔离目录，不会解压或执行。每个文件最大 5 MiB；导入后必须人工审核。</p><form id="skill-import-form"><label for="import-skill-name">Skill 名称</label><input id="import-skill-name" maxlength="100" required><label for="import-skill-version">版本（可选）</label><input id="import-skill-version" maxlength="40"><label for="import-skill-source">来源备注（可选）</label><input id="import-skill-source" maxlength="100"><label for="skill-archive">Skill ZIP 文件</label><input id="skill-archive" type="file" accept=".zip,application/zip" required><button type="submit">上传并隔离待审核</button></form><details><summary>手动登记已有归档摘要（仅元数据）</summary><form id="skill-form"><label for="skill-name">Skill 名称</label><input id="skill-name" maxlength="100" required><label for="skill-version">版本（可选）</label><input id="skill-version" maxlength="40"><label for="skill-hash">归档 SHA-256</label><input id="skill-hash" minlength="64" maxlength="64" pattern="[a-fA-F0-9]{64}" required><label for="skill-source">来源备注（可选）</label><input id="skill-source" maxlength="100"><button type="submit">登记元数据</button></form></details><p id="skill-error" class="error" role="status"></p><div id="skill-list"><p class="muted">尚未加载</p></div></section>
 <section class="card"><h2>安全说明</h2><p class="muted">NAS 执行能力默认关闭。首次设置用于创建管理密码；在启用后，API 需要有效会话。HTTP 不加密传输内容，因此仅限可信局域网，不要暴露到公网。</p></section>
 <script>
 const setupCard=document.querySelector("#setup-card"),loginCard=document.querySelector("#login-card"),statusCard=document.querySelector("#status-card"),errorEl=document.querySelector("#login-error"),tokenEl=document.querySelector("#token"),newTokenEl=document.querySelector("#new-token");
 async function api(path,options={}){return fetch(path,{cache:"no-store",credentials:"same-origin",...options});}
 async function refresh(){const s=document.querySelector("#status"),d=document.querySelector("#detail"),out=document.querySelector("#diagnostics");try{const r=await api("/api/health");if(!r.ok)throw Error();const h=await r.json();s.textContent=h.ok?"运行正常":"状态异常";d.textContent="版本 "+h.version+"；NAS 执行能力："+(h.executionEnabled?"已启用":"关闭");const dr=await api("/api/diagnostics");if(!dr.ok)throw Error("诊断读取失败（HTTP "+dr.status+"）");const x=await dr.json();const gib=n=>(n/1024**3).toFixed(2)+" GiB";out.textContent=["系统："+x.system.platform+" "+x.system.release+" / "+x.system.arch,"Node.js："+x.system.nodeVersion+"；运行时间："+Math.floor(x.system.uptimeSeconds/3600)+" 小时","CPU："+x.cpu.model+"（逻辑核心 "+x.cpu.logicalCores+"）；负载 "+x.cpu.loadAverage.map(n=>n.toFixed(2)).join(" / "),"内存：已用 "+gib(x.memory.usedBytes)+" / "+gib(x.memory.totalBytes)+"（可用 "+gib(x.memory.freeBytes)+"）","网络："+(x.network.flatMap(n=>n.addresses.map(a=>n.name+" "+a.address)).join("；")||"未发现非回环地址"),"存储："+x.storage.map(v=>v.available?v.label+" 已用 "+gib(v.usedBytes)+" / "+gib(v.totalBytes)+"（可用 "+gib(v.freeBytes)+"）":v.label+" 无法读取").join("；")].join("\n");}catch(e){out.textContent=e.message||"诊断信息暂不可用";if(!s.textContent)s.textContent="无法连接服务";}}
-async function init(){try{const r=await api("/api/session");const x=await r.json();if(x.authenticated){loginCard.classList.add("hidden");setupCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshTools();await refreshAgentStatus();}else if(x.setupRequired){loginCard.classList.add("hidden");setupCard.classList.remove("hidden");}}catch{}}
+async function init(){try{const r=await api("/api/session");const x=await r.json();if(x.authenticated){loginCard.classList.add("hidden");setupCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshTools();await refreshAgentStatus();await refreshRecentTasks();}else if(x.setupRequired){loginCard.classList.add("hidden");setupCard.classList.remove("hidden");}}catch{}}
 
 document.querySelector("#setup-form").addEventListener("submit",async e=>{e.preventDefault();document.querySelector("#setup-error").textContent="";try{const token=newTokenEl.value;const r=await api("/api/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:token})});const x=await r.json();if(!r.ok)throw Error(x.error||"设置失败");tokenEl.value=token;setupCard.classList.add("hidden");loginCard.classList.remove("hidden");document.querySelector("#login-help").textContent="密码已设置，请登录。";newTokenEl.value="";tokenEl.focus();}catch(e){document.querySelector("#setup-error").textContent=e.message||"设置失败";}});
-document.querySelector("#login-form").addEventListener("submit",async e=>{e.preventDefault();errorEl.textContent="";try{const r=await api("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:tokenEl.value,remember:document.querySelector("#remember").checked})});const x=await r.json();if(!r.ok)throw Error(x.error||"登录失败");tokenEl.value="";loginCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshTools();await refreshAgentStatus();}catch(e){errorEl.textContent=e.message||"登录失败";}});
+document.querySelector("#login-form").addEventListener("submit",async e=>{e.preventDefault();errorEl.textContent="";try{const r=await api("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:tokenEl.value,remember:document.querySelector("#remember").checked})});const x=await r.json();if(!r.ok)throw Error(x.error||"登录失败");tokenEl.value="";loginCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshTools();await refreshAgentStatus();await refreshRecentTasks();}catch(e){errorEl.textContent=e.message||"登录失败";}});
 async function refreshAgentStatus(){
  try{const r=await api("/api/agent/status");const x=await r.json();if(!r.ok)throw Error(x.error||"状态读取失败");document.querySelector("#agent-status").textContent="规则优先；模型："+(x.model.enabled?"已启用（"+x.model.model+"）":"未配置")+"；可用只读工具："+x.availableTools+"；任意命令执行：关闭";}
  catch(e){document.querySelector("#agent-status").textContent="Agent 状态暂不可用";}
@@ -26,15 +26,44 @@ function renderAgentTurn(label, body){
  const title=document.createElement("strong");title.textContent=label;card.append(title);
  const content=document.createElement("pre");content.textContent=body;card.append(content);host.append(card);
 }
+async function refreshRecentTasks(){
+ const host=document.querySelector("#agent-recent-tasks");
+ try{
+  const r=await api("/api/tasks?limit=10"),data=await r.json();if(!r.ok)throw Error(data.error||"读取失败");
+  host.replaceChildren();
+  if(!data.tasks.length){const p=document.createElement("p");p.className="muted";p.textContent="暂无任务记录。";host.append(p);return;}
+  for(const task of data.tasks){
+   const card=document.createElement("div");card.className="card";
+   const title=document.createElement("strong");title.textContent=task.taskId+" · "+task.status;card.append(title);
+   const info=document.createElement("p");info.className="muted";info.textContent="创建："+task.createdAt+(task.completedAt?"；完成："+task.completedAt:"");card.append(info);
+   if(task.result?.message){const message=document.createElement("p");message.textContent=task.result.message;card.append(message);}
+   if(task.error){const error=document.createElement("p");error.textContent=task.error;card.append(error);}
+   host.append(card);
+  }
+ }catch{host.textContent="任务历史暂不可用。";}
+}
+document.querySelector("#agent-refresh-tasks").addEventListener("click",refreshRecentTasks);
 document.querySelector("#agent-form").addEventListener("submit",async e=>{
  e.preventDefault();const field=document.querySelector("#agent-input"),send=document.querySelector("#agent-send"),err=document.querySelector("#agent-error");
- const text=field.value.trim();if(!text)return;err.textContent="";renderAgentTurn("你",text);field.value="";send.disabled=true;send.textContent="处理中…";
+ const text=field.value.trim();if(!text)return;err.textContent="";renderAgentTurn("你",text);field.value="";send.disabled=true;send.textContent="已提交…";
  try{
   const r=await api("/api/agent/message",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text})});
-  const result=await r.json();if(!r.ok)throw Error(result.error||"请求失败");
-  const details=[result.message,"任务："+result.taskId+"；模式："+result.mode+"；状态："+result.status];
-  for(const item of result.results||[])details.push("工具 "+item.tool+"：\n"+JSON.stringify(item.result,null,2));
-  renderAgentTurn("NAS Agent",details.join("\n\n"));
+  const accepted=await r.json();if(!r.ok)throw Error(accepted.error||"请求失败");
+  const taskId=accepted.task.taskId;
+  let task=accepted.task;
+  for(let i=0;i<90;i++){
+   if(task.status==="completed"||task.status==="failed")break;
+   await new Promise(resolve=>setTimeout(resolve,500));
+   const poll=await api("/api/tasks/"+encodeURIComponent(taskId));const body=await poll.json();
+   if(!poll.ok)throw Error(body.error||"任务状态读取失败");task=body.task;
+  }
+  if(task.status==="completed"&&task.result){
+   const result=task.result,details=[result.message,"任务："+taskId+"；模式："+result.mode+"；状态："+result.status];
+   for(const item of result.results||[])details.push("工具 "+item.tool+"：\n"+JSON.stringify(item.result,null,2));
+   renderAgentTurn("NAS Agent",details.join("\n\n"));
+  }else if(task.status==="failed")renderAgentTurn("NAS Agent","任务失败："+(task.error||"未知错误")+"\n任务 ID："+taskId);
+  else renderAgentTurn("NAS Agent","任务仍在执行。任务 ID："+taskId+"。可在“最近任务”中刷新查看。");
+  await refreshRecentTasks();
  }catch(error){err.textContent=error.message||"请求失败";}
  finally{send.disabled=false;send.textContent="发送";field.focus();}
 });
