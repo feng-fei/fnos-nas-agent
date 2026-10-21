@@ -87,7 +87,7 @@ test("HTTP auth contract: setup, session, origin checks and logout", async t => 
   const cliStatus = await request("/api/agent/status", { headers: { cookie } });
   assert.equal(cliStatus.status, 200);
   const cliStatusPayload = await cliStatus.json();
-  assert.equal(cliStatusPayload.trimCli.connectionStatus, "not_tested");
+  assert.equal(cliStatusPayload.trimCli.connectionStatus, "not_ready");
   assert.equal(cliStatusPayload.trimCli.authenticated, null);
   assert.equal(cliStatusPayload.trimCli.installationStatus, "not_installed");
 
@@ -134,6 +134,8 @@ test("HTTP auth contract: setup, session, origin checks and logout", async t => 
   const toolsPayload = await toolsAfterLogin.json();
   assert.equal(toolsPayload.executionEnabled, false);
   assert.equal(toolsPayload.readOnlyExecutionEnabled, true);
+  assert.equal(toolsPayload.trimCliProviderAvailable, false);
+  assert.ok(toolsPayload.tools.filter(tool => tool.id.startsWith("fnos.")).every(tool => tool.providerAvailable === false));
 
   const wrongOrigin = await request("/api/agent/message", {
     method: "POST",
