@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFile, writeFile, mkdir, rename, chmod } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes, timingSafeEqual, createHash } from "node:crypto";
+import { randomBytes, timingSafeEqual, createHash, scryptSync } from "node:crypto";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -100,14 +100,14 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", "http://localhost");
     if (req.method === "GET" && url.pathname === "/api/health")
-      return reply(res, 200, { ok: true, app: "fnos-nas-agent", version: "0.2.1", executionEnabled: false, authenticationConfigured: accessToken.length >= 32 });
+      return reply(res, 200, { ok: true, app: "fnos-nas-agent", version: "0.2.1", executionEnabled: false, authenticationConfigured: Boolean(passwordRecord) });
     if (req.method === "GET" && url.pathname === "/")
       return reply(res, 200, await readFile(join(root, "ui", "index.html"), "utf8"), "text/html; charset=utf-8");
     if (req.method === "GET" && url.pathname === "/api/session")
-      return reply(res, 200, { authenticated: Boolean(sessionFor(req)), setupRequired: accessToken.length < 32 });
+      return reply(res, 200, { authenticated: Boolean(sessionFor(req)), setupRequired: !passwordRecord });
     if (req.method === "POST" && url.pathname === "/api/setup") {
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
-      if (accessToken.length >= 32) return reply(res, 409, { error: "Setup already completed" });
+      if (passwordRecord) return reply(res, 409, { error: "Setup already completed" });
       if (limited(req)) return reply(res, 429, { error: "Too many setup attempts" }, "application/json; charset=utf-8", { "retry-after": "60" });
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
@@ -129,12 +129,12 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/session") {
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
-      if (accessToken.length < 32) return reply(res, 503, { error: "First-run setup is required" });
+      if (!passwordRecord) return reply(res, 503, { error: "First-run setup is required" });
       if (limited(req)) return reply(res, 429, { error: "Too many login attempts" }, "application/json; charset=utf-8", { "retry-after": "60" });
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
       const body = await jsonBody(req);
-      if (!tokenValid(body.token)) return reply(res, 401, { error: "Invalid access token" });
+      if (!passwordValid(body.password)) return reply(res, 401, { error: "Invalid password" });
       const remember = body.remember === true;
       const ttl = remember ? REMEMBER_TTL : SESSION_TTL;
       const id = randomBytes(32).toString("base64url");
@@ -167,7 +167,7 @@ const server = createServer(async (req, res) => {
     return reply(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Internal server error" });
   }
 });
-await loadSessions();
+await loadPassword();\nawait loadSessions();
 // First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
 server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; execution disabled`));
 function shutdown() { server.close(() => process.exit(0)); }
