@@ -127,7 +127,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 105 — Skill Embedded Credential Scanning](docs/phase-105-skill-secret-scanning.md)
 - [Phase 107 — Quarantined Skill Source Preview](docs/phase-107-skill-quarantine-source-preview.md)
 - [Phase 108 — File SHA-256 Checksum](docs/phase-108-file-sha256-checksum.md)
-- [Phase 116 — File Read Descriptor Confinement](docs/phase-116-file-read-descriptor-confinement.md)
+- [Phase 118 — File Read Descriptor Confinement](docs/phase-118-file-read-descriptor-confinement.md)
 - [Phase 110 — Approval Queue Revocation Consistency](docs/phase-110-approval-queue-consistency.md)
 - [Phase 111 — Task Snapshot Persistence Retry](docs/phase-111-task-persistence-retry.md)
 - [Phase 112 — FPK CI Build and Artifact Verification](docs/phase-112-fpk-ci-build-and-artifact-verification.md)
