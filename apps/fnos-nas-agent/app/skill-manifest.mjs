@@ -118,8 +118,8 @@ export function inspectSkillManifest(buffer) {
   if (/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]/.test(content)) findings.push("control-characters-in-manifest");
   if (!fields.name) findings.push("missing-name-field");
   if (!fields.description) findings.push("missing-description-field");
-  if (/(?:\bsudo\b|\brm\s+-rf\b|\bcurl\b.{0,80}\|\s*(?:ba)?sh\b|\bwget\b.{0,80}\|\s*(?:ba)?sh\b|\bchmod\s+777\b)/i.test(content)) {
-  if (/(?:\\bsudo\\b|\\brm\\s+-rf\\b|\\bcurl\\b.{0,80}\\|\\s*(?:ba)?sh\\b|\\bwget\\b.{0,80}\\|\\s*(?:ba)?sh\\b|\\bchmod\\s+777\\b|\\bbase64\\s+-d\\b|\\bnc\\s+-e\\b|\\b(?:python|node)\\s+-c\\b|\\/dev\\/tcp\\/)/i.test(content) {
+  if (/(?:\bsudo\b|\brm\s+-rf\b|\bcurl\b.{0,80}\|\s*(?:ba)?sh\b|\bwget\b.{0,80}\|\s*(?:ba)?sh\b|\bchmod\s+777\b|\bbase64\s+-d\b|\bnc\s+-e\b|\b(?:python|node)\s+-c\b|\/dev\/tcp\/)/i.test(content)) {
+    findings.push("potentially-dangerous-command-text");
   }
   if (/(?:\bexec\b|\bspawn\b|\bchild_process\b|\beval\s*\()/i.test(content)) findings.push("execution-related-text");
   return Object.freeze({
