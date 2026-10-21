@@ -689,8 +689,8 @@ document.querySelector("#skill-import-form").addEventListener("submit",async e=>
    const result=await uploadSkillArchive("/api/skills/import",file,headers,percent=>{progress.value=Math.round(((index+percent/100)/files.length)*100);status.textContent="正在上传第 "+(index+1)+" / "+files.length+" 个 Skill ZIP： "+file.name+"（"+percent+"%）";},xhr=>{activeSkillUploadXhr=xhr;});
    results.push(result.skill);completed++;progress.value=Math.round(completed/files.length*100);
   }
-  e.target.reset();await refreshSkills();status.textContent="已隔离 "+completed+" 个归档；未解压或执行。";
-  alert("已隔离 "+completed+" 个 Skill ZIP，均未解压或执行。");
+  e.target.reset();await refreshSkills();status.textContent="已隔离 "+completed+" 个归档；尚未解压或执行。";
+  alert("已隔离 "+completed+" 个 Skill ZIP；尚未解压或执行。");
  }catch(error){
   err.textContent=(error.message||"导入失败")+(completed?"；此前已成功隔离 "+completed+" 个归档，请刷新列表核对。":"");
   status.textContent="处理停止：已完成 "+completed+" / "+files.length+" 个。";
