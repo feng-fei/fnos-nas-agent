@@ -388,6 +388,15 @@ let taskRefreshTimer=null,taskHistoryOffset=0;
     const stage=document.createElement("p");stage.className="muted";stage.textContent=(task.stage||"已完成")+" · 100%";card.append(stage);
    }
    if(task.result?.message){const message=document.createElement("p");message.textContent=task.result.message;card.append(message);}
+   if(Array.isArray(task.result?.results)&&task.result.results.length){
+    const details=document.createElement("details");const summary=document.createElement("summary");summary.textContent="查看执行结果（"+task.result.results.length+" 项）";details.append(summary);
+    const pre=document.createElement("pre");let serialized="";
+    try{serialized=JSON.stringify(task.result.results.slice(0,10),null,2);}catch{serialized="结果无法显示";}
+    pre.textContent=serialized.length>12000?serialized.slice(0,12000)+"\n…（结果已截断）":serialized;
+    pre.style.maxHeight="320px";pre.style.overflow="auto";details.append(pre);
+    if(task.result.results.length>10){const note=document.createElement("p");note.className="muted";note.textContent="仅显示前 10 项。";details.append(note);}
+    card.append(details);
+   }
    if(task.status==="queued"){const cancel=document.createElement("button");cancel.type="button";cancel.textContent="取消排队任务";cancel.addEventListener("click",async()=>{cancel.disabled=true;try{const cr=await api("/api/tasks/"+encodeURIComponent(task.taskId)+"/cancel",{method:"POST"});const cb=await cr.json();if(!cr.ok)throw Error(cb.error||"取消失败");await refreshRecentTasks();}catch(error){cancel.disabled=false;alert(error.message||"取消失败");}});card.append(cancel);}
    if(task.error){const error=document.createElement("p");error.className="error";error.textContent=task.error;card.append(error);}
    host.append(card);
