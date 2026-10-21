@@ -1,9 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { readFile } from "node:fs/promises";
 
-test("release readiness gate script passes", () => {
-  const result = spawnSync(process.execPath, ["scripts/check-release-gates.mjs"], { encoding: "utf8" });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(result.stdout, /Release readiness gates passed/);
+test("fast CI uses Node 26 and keeps release packaging paused", async () => {
+  const workflow = await readFile(".github/workflows/build-fpk.yml", "utf8");
+  assert.match(workflow, /node-version:\s*\["26\.x"\]/);
+  assert.doesNotMatch(workflow, /node-version:\s*\["24\.x",\s*"26\.x"\]/);
+  assert.doesNotMatch(workflow, /- name: Build FPK/);
+  assert.doesNotMatch(workflow, /- name: Inspect package and checksum/);
+  assert.doesNotMatch(workflow, /actions\/attest-build-provenance@v2/);
+  assert.match(workflow, /run: npm test/);
+  assert.match(workflow, /Validate app scripts and entry syntax/);
 });

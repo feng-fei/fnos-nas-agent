@@ -129,7 +129,7 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
       }
       if (truncated) break;
     }
-    if (queue.length && scanned >= MAX_SEARCH_VISITS) truncated = true;
+    if (queue.length && (scanned >= MAX_SEARCH_VISITS || entries.length >= limit)) truncated = true;
     return { roots: roots.map(path => ({ name: basename(path), path })), path: start, query: queryValue.trim(), entries, scanned, truncated };
   }
 

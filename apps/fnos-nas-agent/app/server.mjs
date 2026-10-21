@@ -171,7 +171,8 @@ async function readOnlyDiagnostics() {
 }
 const fileBrowser = createFileBrowser();
 const fileManager = createFileManager();
-const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics, fileBrowser, fileManager });
+const trimCli = createTrimCliAdapter();
+const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics, fileBrowser, fileManager, trimCli });
 const modelAdapter = createModelAdapter();
 const actionApprovals = createActionApprovalService({ tools: readOnlyTools });
 const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter, requestApproval: action => actionApprovals.request(action) });
@@ -500,7 +501,7 @@ await loadSessions();
 if (skillStore) await skillStore.load();
 await taskManager.ready;
 // First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
-server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; execution disabled`));
+server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; registered tools enabled, arbitrary shell and imported Skill execution disabled`));
 function shutdown() { server.close(() => { void Promise.all([auditLogger?.flush(), taskManager.flush()]).finally(() => process.exit(0)); }); }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);

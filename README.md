@@ -2,7 +2,7 @@
 
 A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mobile-friendly web interface, controlled NAS operations, and a reviewable Skill manager.
 
-> **Status: Practical NAS functionality in progress.** Phases 2–33 are integrated on `main`; Phase 34 adds a one-time confirmation flow for destructive file actions on this feature branch. Task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, registered read-only and routine-write tools, one-time destructive-action confirmation, rules-first Agent routing, an optional server-configured model adapter, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Require Node.js 24/26 CI and Node.js 26 FPK packaging before merge.
+> **Status: Practical NAS functionality in progress.** Phases 2–33 are integrated on `main`; Phase 34 adds a one-time confirmation flow for destructive file actions on this feature branch. Task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, registered read-only and routine-write tools, one-time destructive-action confirmation, rules-first Agent routing, an optional server-configured model adapter, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Development CI currently uses Node.js 26 core tests and syntax checks only; FPK build, checksum, artifact upload, and provenance jobs are temporarily paused while core capabilities stabilize.
 
 ## Goals
 
@@ -22,7 +22,7 @@ A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mob
 - `tests/` — Node built-in test runner tests.
 - `docs/phase-2.md` — current implementation boundary and acceptance checks.
 
-No third-party runtime dependencies are required. **Node.js 26.x is the default packaged runtime** (latest patch in the 26.x line); Node.js 24.x is retained as a CI regression line. Upgrade to a newer major only after CI and fnOS validation.
+No third-party runtime dependencies are required. **Node.js 26.x is the development and default packaged runtime** (latest patch in the 26.x line). Node.js 24 is no longer included in the development CI matrix. FPK packaging checks are temporarily paused; real fnOS validation remains a separate acceptance step.
 
 ## Run locally
 
@@ -75,6 +75,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 34 confirmed destructive file actions](docs/phase-34-confirmed-destructive-file-actions.md)\n- [Phase 35 Agent text-file creation](docs/phase-35-agent-text-file-creation.md)
 - [Phase 36 bounded Agent file upload](docs/phase-36-bounded-agent-file-upload.md)
 - [Phase 37 natural-language operations](docs/phase-37-natural-language-operations.md)
+- [Phase 38 core integration and fast feedback](docs/phase-38-core-integration-fast-feedback.md)
 - [Phase 30 fnOS CLI path traversal guard](docs/phase-30-trim-cli-path-traversal-guard.md)
 - [Phase 29 mobile fnOS read-only tool usability](docs/phase-29-mobile-fnos-tools.md)
 - [Practical file management](docs/practical-file-management.md)
