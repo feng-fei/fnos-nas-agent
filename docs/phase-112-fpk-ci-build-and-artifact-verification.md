@@ -24,7 +24,7 @@ The latest PR commit must pass:
 - fnpack staging prerequisite checks, package build and archive structure verification
 - SHA-256 and release-manifest consistency validation
 
-The manifest explicitly marks the artifact as unsigned. Build-provenance attestation is still disabled; it will be a separate phase with its own least-privilege review and tests.
+The checksum sidecar and JSON release manifest are not signatures. Phase 114 adds a separate attestation job for successful main-branch builds only; pull-request builds keep the least-privilege validation path without OIDC/attestation permissions. The job re-verifies the downloaded artifact bundle before using `actions/attest@v4`.
 
 ## Not covered by CI
 
