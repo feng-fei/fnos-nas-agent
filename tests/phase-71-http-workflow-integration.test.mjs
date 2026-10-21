@@ -69,6 +69,7 @@ test("authenticated task, Skill batch review, cleanup and audit filters work thr
   const taskPage = await request("/api/tasks?status=queued&limit=10&offset=0");
   assert.equal(taskPage.status, 200);
   const taskPayload = await taskPage.json();
+  assert.ok(Number.isInteger(taskPayload.total));
   assert.equal(taskPayload.status, "queued");
   assert.equal(taskPayload.limit, 10);
   assert.equal(taskPayload.offset, 0);
