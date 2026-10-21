@@ -464,6 +464,20 @@ const server = createServer(async (req, res) => {
       try { return reply(res, 201, { provider: await modelProviderStore.add(await jsonBody(req)) }); }
       catch (error) { const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500; return reply(res, status, { error: error.statusCode ? error.message : "Unable to save model provider securely." }); }
     }
+    const modelCatalogMatch = url.pathname.match(/^\/api\/models\/([a-f0-9]{24})\/catalog$/);
+    if (modelCatalogMatch) {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!modelProviderStore) return reply(res, 503, { error: "模型管理需要配置 Agent 私有数据目录。" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      try {
+        const result = await modelProviderStore.discoverModels(modelCatalogMatch[1]);
+        return reply(res, result.ok ? 200 : (result.statusCode === 401 || result.statusCode === 403 ? 502 : 200), result);
+      } catch (error) {
+        const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: error.statusCode ? error.message : "Unable to discover provider models." });
+      }
+    }
     const modelItemMatch = url.pathname.match(/^\/api\/models\/([a-f0-9]{24})$/);
     if (modelItemMatch) {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
