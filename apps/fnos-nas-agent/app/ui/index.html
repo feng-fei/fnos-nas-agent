@@ -484,9 +484,9 @@ async function refreshFiles(pathValue=currentFilePath){
   parent.onclick=()=>{if(data.parentPath)refreshFiles(data.parentPath);};
   for(const root of data.roots||[]){const btn=document.createElement("button");btn.type="button";btn.textContent=root.name;btn.addEventListener("click",()=>refreshFiles(root.path));roots.append(btn);}
   const breadcrumbs=document.querySelector("#file-breadcrumbs");breadcrumbs.replaceChildren();
-  const matchingRoot=(data.roots||[]).filter(root=>currentFilePath===root.path||currentFilePath.startsWith(root.path.replace(/\\/+$/,"")+"/")).sort((a,b)=>b.path.length-a.path.length)[0];
+  const matchingRoot=(data.roots||[]).filter(root=>currentFilePath===root.path||currentFilePath.startsWith(root.path.replace(/\/+$/,"")+"/")).sort((a,b)=>b.path.length-a.path.length)[0];
   if(matchingRoot){
-   const parts=[{name:matchingRoot.name,path:matchingRoot.path}];let accumulated=matchingRoot.path.replace(/\\/+$/,"");
+   const parts=[{name:matchingRoot.name,path:matchingRoot.path}];let accumulated=matchingRoot.path.replace(/\/+$/,"");
    const relative=currentFilePath.slice(matchingRoot.path.length).split("/").filter(Boolean);
    for(const part of relative){accumulated+="/"+part;parts.push({name:part,path:accumulated});}
    for(let index=0;index<parts.length;index++){if(index){const sep=document.createElement("span");sep.textContent=" / ";sep.setAttribute("aria-hidden","true");breadcrumbs.append(sep);}const crumb=parts[index];if(index===parts.length-1){const current=document.createElement("strong");current.textContent=crumb.name;current.setAttribute("aria-current","location");breadcrumbs.append(current);}else{const button=document.createElement("button");button.type="button";button.textContent=crumb.name;button.addEventListener("click",()=>refreshFiles(crumb.path));breadcrumbs.append(button);}}
