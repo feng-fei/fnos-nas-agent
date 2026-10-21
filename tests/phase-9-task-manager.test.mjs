@@ -32,8 +32,9 @@ test("task manager sanitizes failures and bounds retained history", async () => 
   const one=manager.submit({fail:true}), two=manager.submit({}), three=manager.submit({});
   for(let i=0;i<30 && !manager.get(three.taskId)?.completedAt;i++) await tick();
   assert.equal(manager.get(one.taskId),null);
-  assert.equal(manager.get(two.taskId),null);
+  assert.equal(manager.get(two.taskId).status,"completed");
   assert.equal(manager.get(three.taskId).status,"completed");
+  assert.equal(manager.list().length,2);
   assert.ok(!JSON.stringify(manager.list()).includes("password"));
 });
 
