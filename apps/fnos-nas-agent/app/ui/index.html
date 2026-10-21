@@ -27,7 +27,7 @@
 <button id="model-provider-refresh" type="button">刷新模型列表</button>
 <div id="model-provider-list"><p class="muted">登录后加载。</p></div>
 </section>
-<section class="card hidden" id="files-card"><h2>文件浏览</h2><p class="muted">支持浏览、文本预览、下载、上传、建文件夹、重命名、移动和删除。上传上限 25 MiB；删除需要确认。</p><div id="file-roots"></div><nav id="file-breadcrumbs" aria-label="目录路径"></nav><form id="file-form"><label for="file-path">当前目录</label><input id="file-path" maxlength="2048" placeholder="选择一个存储卷" autocomplete="off"><button type="submit">打开目录</button><button id="file-parent" type="button" disabled>上一级</button></form><div class="file-list-controls"><label for="file-search">搜索当前目录</label><input id="file-search" type="search" maxlength="160" placeholder="按文件名筛选…" autocomplete="off"><label for="file-type-filter">类型</label><select id="file-type-filter"><option value="all">全部</option><option value="directory">文件夹</option><option value="file">文件</option></select><label for="file-sort">排序</label><select id="file-sort"><option value="name-asc">名称 A–Z</option><option value="name-desc">名称 Z–A</option><option value="size-desc">大小从大到小</option><option value="modified-desc">最近修改</option></select></div><div class="file-actions"><button id="file-mkdir" type="button">新建文件夹</button><label for="file-upload">上传文件（最大 25 MiB）</label><input id="file-upload" type="file"><button id="file-upload-button" type="button">上传所选文件</button> <button id="file-upload-cancel" type="button" disabled>取消上传</button><progress id="file-upload-progress" max="100" value="0" class="hidden"></progress><p id="file-upload-status" class="muted" role="status"></p></div><pre id="file-preview" class="hidden"></pre><p id="file-error" class="error" role="status"></p><div id="file-list"><p class="muted">登录后加载目录。</p></div></section>
+<section class="card hidden" id="files-card"><h2>文件浏览</h2><p class="muted">支持浏览、文本预览、下载、上传、建文件夹、重命名、移动和删除。上传上限 25 MiB；删除需要确认。</p><div id="file-roots"></div><nav id="file-breadcrumbs" aria-label="目录路径"></nav><form id="file-form"><label for="file-path">当前目录</label><input id="file-path" maxlength="2048" placeholder="选择一个存储卷" autocomplete="off"><button type="submit">打开目录</button><button id="file-parent" type="button" disabled>上一级</button></form><div class="file-list-controls"><label for="file-search">搜索当前目录</label><input id="file-search" type="search" maxlength="160" placeholder="按文件名筛选…" autocomplete="off"><label for="file-type-filter">类型</label><select id="file-type-filter"><option value="all">全部</option><option value="directory">文件夹</option><option value="file">文件</option></select><label for="file-sort">排序</label><select id="file-sort"><option value="name-asc">名称 A–Z</option><option value="name-desc">名称 Z–A</option><option value="size-desc">大小从大到小</option><option value="modified-desc">最近修改</option></select></div><div class="file-actions"><button id="file-mkdir" type="button">新建文件夹</button><label for="file-upload">上传文件（最大 25 MiB）</label><input id="file-upload" type="file" multiple><button id="file-upload-button" type="button">上传所选文件</button> <button id="file-upload-cancel" type="button" disabled>取消上传</button><progress id="file-upload-progress" max="100" value="0" class="hidden"></progress><p id="file-upload-status" class="muted" role="status"></p></div><pre id="file-preview" class="hidden"></pre><p id="file-error" class="error" role="status"></p><div id="file-list"><p class="muted">登录后加载目录。</p></div></section>
 <section class="card hidden" id="tools-card"><h2>NAS 工具</h2><p class="muted">只读查询可直接执行；创建文件夹、重命名和移动属于常规文件操作。删除、系统配置变更和任意命令执行仍未开放。</p><div id="tool-list"><p class="muted">登录后加载工具清单…</p></div><pre id="tool-result">选择工具后显示结果。</pre></section>
 <section class="card hidden" id="agent-card"><h2>NAS 智能助手</h2><p class="muted" id="agent-status">规则优先；模型仅可请求已登记且参数校验通过的工具。</p><button id="trim-cli-test" type="button">检测官方 CLI 连接</button><p id="trim-cli-test-result" class="muted" role="status">尚未执行连接检测。CLI 可执行不代表 OAuth 已授权。</p>
 <p id="trim-cli-connection-detail" class="muted" role="status">完成授权后，这里会显示最近一次检测状态与恢复建议。</p>
@@ -539,19 +539,26 @@ function uploadFileWithProgress(url,file,onProgress,onXhr){
 }
 document.querySelector("#file-upload-cancel").addEventListener("click",()=>{if(activeUploadXhr)activeUploadXhr.abort();});
 document.querySelector("#file-upload-button").addEventListener("click",async()=>{
- const field=document.querySelector("#file-upload"),file=field.files[0],err=document.querySelector("#file-error");
+ const field=document.querySelector("#file-upload"),files=Array.from(field.files||[]),err=document.querySelector("#file-error");
  const button=document.querySelector("#file-upload-button"),cancel=document.querySelector("#file-upload-cancel"),progress=document.querySelector("#file-upload-progress"),status=document.querySelector("#file-upload-status");
  err.textContent="";status.textContent="";
- if(!file){err.textContent="请先选择文件";return;}
- if(file.size>25*1024*1024){err.textContent="文件不能超过 25 MiB";return;}
- const url="/api/files/upload?path="+encodeURIComponent(currentFilePath)+"&name="+encodeURIComponent(file.name);
- button.disabled=true;cancel.disabled=false;progress.classList.remove("hidden");progress.value=0;status.textContent="正在上传… 0%";
+ if(!files.length){err.textContent="请先选择文件";return;}
+ const oversized=files.find(file=>file.size>25*1024*1024);if(oversized){err.textContent="文件“"+oversized.name+"”超过 25 MiB，未开始上传";return;}
+ button.disabled=true;cancel.disabled=false;progress.classList.remove("hidden");progress.value=0;let completed=0;
  try{
-  const data=await uploadFileWithProgress(url,file,percent=>{progress.value=percent;status.textContent="正在上传… "+percent+"%";},xhr=>{activeUploadXhr=xhr;});
-  progress.value=100;status.textContent="上传完成，正在刷新目录…";
-  field.value="";await refreshFiles(currentFilePath);status.textContent="上传完成："+data.name;
- }catch(error){err.textContent=error.message||"上传失败";if(error.message==="上传已中止。"){status.textContent="已发送取消请求，正在刷新目录确认文件状态…";await refreshFiles(currentFilePath);status.textContent="上传请求已中止；请检查目录确认文件是否存在。";}else status.textContent="上传未完成；请确认文件状态后再重试。";}
- finally{activeUploadXhr=null;button.disabled=false;cancel.disabled=true;}
+  for(let index=0;index<files.length;index++){
+   const file=files[index],url="/api/files/upload?path="+encodeURIComponent(currentFilePath)+"&name="+encodeURIComponent(file.name);
+   status.textContent="正在上传第 "+(index+1)+" / "+files.length+" 个文件："+file.name+"（0%）";
+   await uploadFileWithProgress(url,file,percent=>{progress.value=Math.round(((index+percent/100)/files.length)*100);status.textContent="正在上传第 "+(index+1)+" / "+files.length+" 个文件："+file.name+"（"+percent+"%）";},xhr=>{activeUploadXhr=xhr;});
+   completed++;progress.value=Math.round(completed/files.length*100);
+  }
+  field.value="";status.textContent="上传完成，正在刷新目录…";await refreshFiles(currentFilePath);status.textContent="已成功上传 "+completed+" 个文件。";
+ }catch(error){
+  err.textContent=(error.message||"上传失败")+(completed?"；此前已成功上传 "+completed+" 个文件。":"");
+  if(error.message==="上传已中止。"){status.textContent="上传已中止；正在刷新目录确认文件状态…";await refreshFiles(currentFilePath);status.textContent="上传请求已中止；已完成 "+completed+" / "+files.length+" 个，请检查目录确认当前状态。";}
+  else status.textContent="上传停止：已完成 "+completed+" / "+files.length+" 个；请确认目录状态后再重试。";
+  if(completed)await refreshFiles(currentFilePath);
+ }finally{activeUploadXhr=null;button.disabled=false;cancel.disabled=true;}
 });
 
 async function refreshTools(){
