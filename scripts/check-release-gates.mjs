@@ -236,3 +236,10 @@ assert.match(ui, /agent-clear-context/);
 assert.match(ui, /history:conversationContext/);
 assert.match(ui, /不会写入 NAS 任务历史/);
 assert.match(readme, /\[Phase 47 — Bounded Conversation Context\]\(docs\/phase-47-conversation-context\.md\)/);
+
+const phase48TaskManager = await read("apps/fnos-nas-agent/app/task-manager.mjs");
+const phase48Tests = await read("tests/phase-48-task-progress.test.mjs");
+assert.match(phase48TaskManager, /reportProgress\(value, stage = ""\)/);
+assert.match(phase48TaskManager, /progress: task\.progress/);
+assert.match(phase48Tests, /progress is bounded, monotonic/);
+assert.match(readme, /\[Phase 48 — Bounded Task Progress\]\(docs\/phase-48-task-progress\.md\)/);
