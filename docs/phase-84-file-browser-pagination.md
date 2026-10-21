@@ -2,7 +2,7 @@
 
 The file browser API now accepts a bounded `offset` in addition to the existing bounded page size. The mobile UI loads 100 entries at a time and shows total directory count plus previous/next controls.
 
-- Sorting remains server-side before slicing, so page order is stable for an unchanged directory.
+- Sorting, filename search and file-type filtering are applied server-side before slicing, so matches and ordering span the entire current directory rather than only the visible page.
 - Invalid or excessively large offsets are rejected at the HTTP boundary.
 - Configured-root and symlink restrictions remain unchanged.
-- Local name/type filtering applies to the currently loaded page; navigating pages fetches the next server-side slice.
+- The UI reports both matching entries and the total directory entry count; changing a filter resets pagination to the first page.
