@@ -36,7 +36,7 @@ test("first-run setup stores only a salted password hash and protects session en
   const port = await freePort();
   baseUrl = `http://127.0.0.1:${port}`;
   child = spawn(process.execPath, [entry], {
-    env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", AGENT_DATA_DIR: dataDir, AGENT_ACCESS_TOKEN: "" },
+    env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", AGENT_DATA_DIR: dataDir, AGENT_ACCESS_TOKEN: "", AGENT_MODEL_ENABLED: "false" },
     stdio: ["ignore", "pipe", "pipe"]
   });
   let stderr = "";
