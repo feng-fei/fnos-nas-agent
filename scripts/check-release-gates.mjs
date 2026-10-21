@@ -93,4 +93,13 @@ assert.equal(policy.evaluate({ risk: "write", approved: true }).allowed, false);
 assert.equal(policy.evaluate({ risk: "destructive", approved: true }).allowed, false);
 assert.equal(policy.snapshot().executionEnabled, false);
 
+const fileBrowserSource = await read("apps/fnos-nas-agent/app/file-browser.mjs");
+const fileBrowserTests = await read("tests/phase-28-file-browser.test.mjs");
+assert.match(fileBrowserSource, /AGENT_FILE_ROOTS/);
+assert.match(fileBrowserSource, /Path is outside configured storage roots/);
+assert.match(fileBrowserSource, /MAX_ENTRIES = 200/);
+assert.match(fileBrowserTests, /refuses paths outside configured roots/);
+assert.match(fileBrowserTests, /refuses a symlink that escapes the volume/);
+assert.match(readme, /\[Phase 28 practical read-only file browser\]\(docs\/phase-28-practical-file-browser\.md\)/);
+
 console.log("Release readiness gates passed: runtime dependency, CI matrix, packaging, and safety invariants.");
