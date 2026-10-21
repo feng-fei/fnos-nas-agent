@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
-import { mkdir, writeFile, rename, chmod, lstat, readFile, unlink } from "node:fs/promises";
+import { mkdir, lstat, open, link, unlink } from "node:fs/promises";
+import { constants } from "node:fs";
 import { join } from "node:path";
 
 export const MAX_ARCHIVE_BYTES = 25 * 1024 * 1024;
@@ -158,41 +159,111 @@ export function extractZipEntry(buffer, entryName, maxOutputBytes = 16 * 1024 * 
   return Buffer.from(data);
 }
 
-export async function saveQuarantinedArchive(dataDir, buffer) {
+export async function saveQuarantinedArchive(dataDir, buffer, {
+  fs: storageFs = { mkdir, lstat, open, link, unlink }
+} = {}) {
   const { entryCount, declaredUncompressedBytes, entries } = inspectZipArchive(buffer);
   const sha256 = createHash("sha256").update(buffer).digest("hex");
-  const quarantineDir = join(dataDir, "skill-quarantine");
-  await mkdir(dataDir, { recursive: true, mode: 0o700 });
-  await mkdir(quarantineDir, { recursive: true, mode: 0o700 });
-  const dirStat = await lstat(quarantineDir);
-  if (!dirStat.isDirectory() || dirStat.isSymbolicLink()) throw Object.assign(new Error("Quarantine directory is not a safe directory"), { statusCode: 500 });
-  await chmod(quarantineDir, 0o700);
+  if (process.platform !== "linux")
+    throw Object.assign(new Error("Secure Skill quarantine storage requires Linux directory descriptors"), { statusCode: 503 });
 
-  const destination = join(quarantineDir, sha256 + ".zip");
-  const temp = join(quarantineDir, "." + randomBytes(12).toString("hex") + ".tmp");
-  await writeFile(temp, buffer, { flag: "wx", mode: 0o600 });
-  try {
-    await chmod(temp, 0o600);
-    try {
-      await rename(temp, destination);
-    } catch (error) {
-      await unlink(temp).catch(() => {});
-      if (error.code !== "EEXIST") throw error;
+  const directoryFlags = constants.O_RDONLY | (constants.O_DIRECTORY || 0) | (constants.O_NOFOLLOW || 0);
+  const readFlags = constants.O_RDONLY | (constants.O_NOFOLLOW || 0);
+  const sameIdentity = (a, b) => BigInt(a.dev) === BigInt(b.dev) && BigInt(a.ino) === BigInt(b.ino);
+  const descriptorPath = handle => "/proc/self/fd/" + handle.fd;
+  const changed = message => Object.assign(new Error(message), { statusCode: 409 });
+  const openDirectory = async (path, message) => {
+    try { return await storageFs.open(path, directoryFlags); }
+    catch (error) {
+      if (["ELOOP", "ENOENT", "ENOTDIR"].includes(error?.code)) throw changed(message);
+      throw error;
     }
-    await chmod(destination, 0o600);
-    const saved = await readFile(destination);
-    if (createHash("sha256").update(saved).digest("hex") !== sha256)
-      throw Object.assign(new Error("Quarantined archive verification failed"), { statusCode: 500 });
-  } catch (error) {
-    await unlink(temp).catch(() => {});
-    throw error;
-  }
-  return {
-    sha256,
-    quarantineFile: "skill-quarantine/" + sha256 + ".zip",
-    sizeBytes: buffer.length,
-    entryCount,
-    declaredUncompressedBytes,
-    entries
   };
+
+  let dataHandle = null, quarantineHandle = null, tempHandle = null, destinationHandle = null;
+  let tempPath = null, destinationPath = null, published = false;
+  try {
+    await storageFs.mkdir(dataDir, { recursive: true, mode: 0o700 });
+    const dataInfo = await storageFs.lstat(dataDir);
+    if (!dataInfo.isDirectory() || dataInfo.isSymbolicLink())
+      throw Object.assign(new Error("Skill data directory is not a safe directory"), { statusCode: 500 });
+    dataHandle = await openDirectory(dataDir, "Skill data directory changed while opening; retry the operation");
+    const openedDataInfo = await dataHandle.stat({ bigint: true });
+    if (!openedDataInfo.isDirectory() || !sameIdentity(openedDataInfo, dataInfo))
+      throw changed("Skill data directory changed while opening; retry the operation");
+    await dataHandle.chmod(0o700);
+
+    const dataDescriptor = descriptorPath(dataHandle);
+    const quarantinePath = join(dataDescriptor, "skill-quarantine");
+    await storageFs.mkdir(quarantinePath, { recursive: true, mode: 0o700 });
+    const quarantineInfo = await storageFs.lstat(quarantinePath);
+    if (!quarantineInfo.isDirectory() || quarantineInfo.isSymbolicLink())
+      throw changed("Quarantine directory changed while opening; retry the operation");
+    quarantineHandle = await openDirectory(quarantinePath, "Quarantine directory changed while opening; retry the operation");
+    const openedQuarantineInfo = await quarantineHandle.stat({ bigint: true });
+    if (!openedQuarantineInfo.isDirectory() || !sameIdentity(openedQuarantineInfo, quarantineInfo))
+      throw changed("Quarantine directory changed while opening; retry the operation");
+    await quarantineHandle.chmod(0o700);
+
+    const quarantineDescriptor = descriptorPath(quarantineHandle);
+    tempPath = join(quarantineDescriptor, "." + randomBytes(12).toString("hex") + ".tmp");
+    destinationPath = join(quarantineDescriptor, sha256 + ".zip");
+    tempHandle = await storageFs.open(tempPath, "wx", 0o600);
+    await tempHandle.writeFile(buffer);
+    await tempHandle.sync();
+    await tempHandle.chmod(0o600);
+    await tempHandle.close();
+    tempHandle = null;
+
+    try {
+      await storageFs.link(tempPath, destinationPath);
+      published = true;
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+    }
+
+    destinationHandle = await storageFs.open(destinationPath, readFlags);
+    const savedInfo = await destinationHandle.stat({ bigint: true });
+    if (!savedInfo.isFile() || savedInfo.size > BigInt(MAX_ARCHIVE_BYTES))
+      throw Object.assign(new Error("Quarantined archive has an unsafe filesystem type or size"), { statusCode: 500 });
+    const saved = await destinationHandle.readFile();
+    if (createHash("sha256").update(saved).digest("hex") !== sha256)
+      throw Object.assign(new Error("Quarantined archive integrity check failed"), { statusCode: 500 });
+
+    const currentDataInfo = await storageFs.lstat(dataDir).catch(() => null);
+    const currentQuarantineInfo = await storageFs.lstat(quarantinePath).catch(() => null);
+    const verifiedDataInfo = await dataHandle.stat({ bigint: true });
+    const verifiedQuarantineInfo = await quarantineHandle.stat({ bigint: true });
+    if (!currentDataInfo || currentDataInfo.isSymbolicLink() || !sameIdentity(currentDataInfo, verifiedDataInfo) ||
+        !currentQuarantineInfo || currentQuarantineInfo.isSymbolicLink() ||
+        !sameIdentity(currentQuarantineInfo, verifiedQuarantineInfo)) {
+      throw changed("Quarantine path changed during storage; retry the import");
+    }
+
+    return {
+      sha256,
+      quarantineFile: "skill-quarantine/" + sha256 + ".zip",
+      sizeBytes: buffer.length,
+      entryCount,
+      declaredUncompressedBytes,
+      entries
+    };
+  } catch (error) {
+    if (published && destinationPath && tempPath) {
+      try {
+        const [tempInfo, destinationInfo] = await Promise.all([
+          storageFs.lstat(tempPath),
+          storageFs.lstat(destinationPath)
+        ]);
+        if (sameIdentity(tempInfo, destinationInfo)) await storageFs.unlink(destinationPath);
+      } catch { /* Do not delete a destination whose identity is uncertain. */ }
+    }
+    throw error;
+  } finally {
+    if (tempHandle) await tempHandle.close().catch(() => {});
+    if (destinationHandle) await destinationHandle.close().catch(() => {});
+    if (tempPath) await storageFs.unlink(tempPath).catch(() => {});
+    if (quarantineHandle) await quarantineHandle.close().catch(() => {});
+    if (dataHandle) await dataHandle.close().catch(() => {});
+  }
 }
