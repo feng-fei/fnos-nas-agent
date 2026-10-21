@@ -1,0 +1,98 @@
+name: Build fnOS FPK
+
+on:
+  push:
+    branches:
+      - phase-2/fpk-packaging
+    paths:
+      - "apps/fnos-nas-agent/**"
+      - "scripts/generate-fpk-icons.py"
+      - ".github/workflows/build-fpk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fpk-{github.ref}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and inspect x86 FPK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.17.0"
+
+      - name: Prepare app payload and icons
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="apps/fnos-nas-agent"
+          mkdir -p "$app/app/bin"
+          cp "$(command -v node)" "$app/app/bin/node"
+          chmod 755 "$app/app/bin/node"
+          python3 scripts/generate-fpk-icons.py "$app"
+
+          test -x "$app/cmd/main"
+          test -x "$app/cmd/install_callback"
+          test -x "$app/cmd/uninstall_callback"
+          bash -n "$app/cmd/main"
+          bash -n "$app/cmd/install_callback"
+          bash -n "$app/cmd/uninstall_callback"
+          "$app/app/bin/node" --version
+          "$app/app/bin/node" --check "$app/app/server.mjs"
+
+      - name: Download and verify official fnpack
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64"
+          expected="54b97fa7b70968c4d05c79840f5daeff508957d0bb2062fdb0376d00d9615c93"
+          curl --fail --location --silent --show-error "$url" --output "$RUNNER_TEMP/fnpack"
+          printf '%s  %s\n' "$expected" "$RUNNER_TEMP/fnpack" | sha256sum --check
+          chmod 755 "$RUNNER_TEMP/fnpack"
+          "$RUNNER_TEMP/fnpack" --help
+
+      - name: Build FPK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd apps/fnos-nas-agent
+          "$RUNNER_TEMP/fnpack" build
+          shopt -s nullglob
+          packages=(./*.fpk)
+          if [ "${"#"}" -eq 0 ]; then
+            echo "fnpack did not produce an FPK file" >&2
+            exit 1
+          fi
+          mkdir -p ../../dist
+          cp "${"{packages[0]}" }" ../../dist/fnos-nas-agent-test.fpk
+
+      - name: Inspect package and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist/fnos-nas-agent-test.fpk
+          sha256sum dist/fnos-nas-agent-test.fpk | tee dist/fnos-nas-agent-test.fpk.sha256
+          file dist/fnos-nas-agent-test.fpk
+          ls -lh dist/fnos-nas-agent-test.fpk*
+
+      - name: Upload test FPK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fnos-nas-agent-test-fpk
+          path: |
+            dist/fnos-nas-agent-test.fpk
+            dist/fnos-nas-agent-test.fpk.sha256
+          if-no-files-found: error
+          retention-days: 14
