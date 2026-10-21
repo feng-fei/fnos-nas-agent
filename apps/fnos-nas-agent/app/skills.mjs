@@ -3,6 +3,7 @@ import { extractZipEntry, inspectZipArchive, MAX_ARCHIVE_BYTES, saveQuarantinedA
 import { isPreviewableSkillTextPath, MAX_SKILL_SOURCE_PREVIEW_BYTES } from "./skill-source-review.mjs";
 import { inspectSkillManifest } from "./skill-manifest.mjs";
 import { mkdir, readFile, writeFile, rename, chmod, unlink, lstat } from "node:fs/promises";
+import { createSerialWriteQueue } from "./serial-write-queue.mjs";
 import { resolve, sep } from "node:path";
 import { join } from "node:path";
 
@@ -35,26 +36,31 @@ function normalizeManifestReview(value) {
   };
 }
 
-export function createSkillStore(dataDir) {
+export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, writeFile, rename, chmod, unlink } } = {}) {
   const file = join(dataDir, "skills.json");
   let records = [];
-  let queue = Promise.resolve();
+  const enqueueWrite = createSerialWriteQueue();
+  const enqueueMutation = createSerialWriteQueue();
 
   async function persist() {
-    const snapshot = JSON.stringify(records);
-    queue = queue.then(async () => {
-      await mkdir(dataDir, { recursive: true, mode: 0o700 });
-      const tmp = file + ".tmp";
-      await writeFile(tmp, snapshot + "\n", { encoding: "utf8", mode: 0o600 });
-      await chmod(tmp, 0o600);
-      await rename(tmp, file);
+    return enqueueWrite(async () => {
+      const snapshot = JSON.stringify(records);
+      await storageFs.mkdir(dataDir, { recursive: true, mode: 0o700 });
+      const tmp = file + "." + randomBytes(8).toString("hex") + ".tmp";
+      try {
+        await storageFs.writeFile(tmp, snapshot + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
+        await storageFs.chmod(tmp, 0o600);
+        await storageFs.rename(tmp, file);
+      } catch (error) {
+        await storageFs.unlink(tmp).catch(() => {});
+        throw error;
+      }
     });
-    return queue;
   }
 
   async function load() {
     try {
-      const value = JSON.parse(await readFile(file, "utf8"));
+      const value = JSON.parse(await storageFs.readFile(file, "utf8"));
       if (!Array.isArray(value) || value.length > MAX_RECORDS) throw new Error("invalid store");
       records = value.filter(item =>
         item && typeof item.id === "string" && typeof item.name === "string" &&
@@ -94,6 +100,7 @@ export function createSkillStore(dataDir) {
   }
 
   async function register(input) {
+    return enqueueMutation(async () => {
     if (records.length >= MAX_RECORDS) throw Object.assign(new Error("Skill inventory limit reached"), { statusCode: 409 });
     if (!input || typeof input.name !== "string" || !input.name.trim() || input.name.trim().length > MAX_NAME)
       throw Object.assign(new Error("name must contain 1 to 100 characters"), { statusCode: 400 });
@@ -125,6 +132,7 @@ export function createSkillStore(dataDir) {
     records.push(record);
     try { await persist(); } catch { records = records.filter(item => item.id !== record.id); throw Object.assign(new Error("Unable to save Skill metadata securely"), { statusCode: 500 }); }
     return { ...record, declaredCapabilities: [...record.declaredCapabilities] };
+    });
   }
 
   function skillById(id) {
@@ -228,6 +236,7 @@ export function createSkillStore(dataDir) {
   }
 
   async function remove(id) {
+    return enqueueMutation(async () => {
     const index = records.findIndex(record => record.id === id);
     if (index < 0) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
     const item = records[index];
@@ -258,9 +267,11 @@ export function createSkillStore(dataDir) {
       return { removed: true, archiveRemoved: true };
     }
     return { removed: true, archiveRemoved: false };
+    });
   }
 
   async function transition(id, input) {
+    return enqueueMutation(async () => {
     const item = records.find(record => record.id === id);
     if (!item) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
     const target = input?.state;
@@ -275,6 +286,7 @@ export function createSkillStore(dataDir) {
       throw Object.assign(new Error("Unable to save Skill state securely"), { statusCode: 500 });
     }
     return { ...item, declaredCapabilities: [...item.declaredCapabilities] };
+    });
   }
 
   return { load, list, register, importArchive, listSourceFiles, previewSourceFile, transition, remove };
