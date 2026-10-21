@@ -429,14 +429,14 @@ const server = createServer(async (req, res) => {
         trimCliStatus = {
           ...raw,
           installationStatus: raw.available ? "installed" : raw.configured ? "unavailable" : "not_installed",
-          connectionStatus: "not_tested",
-          authenticated: null,
-          note: raw.available
+          connectionStatus: raw.connectionStatus || (raw.available ? "not_tested" : "not_ready"),
+          authenticated: raw.authenticated ?? null,
+          note: raw.message || (raw.available
             ? "CLI 可执行，但尚未验证 OAuth 授权和 NAS API 连通性。"
-            : raw.configured ? "已配置 CLI 路径，但当前无法执行。" : "尚未找到已安装的官方 CLI。"
+            : raw.configured ? "已配置 CLI 路径，但当前无法执行。" : "尚未找到已安装的官方 CLI。")
         };
       } catch {
-        trimCliStatus = { configured: false, available: false, installationStatus: "unknown", connectionStatus: "unknown", authenticated: null, reason: "Status unavailable" };
+        trimCliStatus = { configured: false, available: false, installationStatus: "unknown", connectionStatus: "unknown", authenticated: null, errorCategory: "status_unavailable", reason: "Status unavailable", nextAction: "检查 Agent 日志与私有数据目录配置。" };
       }
       return reply(res, 200, { ...agentCore.status(), trimCli: trimCliStatus });
     }
@@ -444,27 +444,39 @@ const server = createServer(async (req, res) => {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
-      const before = await trimCli.status();
+      let before;
+      try { before = await trimCli.status(); }
+      catch { return reply(res, 503, { ok: false, connectionStatus: "not_ready", authenticated: null, errorCategory: "status_unavailable", error: "无法读取官方 CLI 状态。", nextAction: "检查 Agent 日志、Skill 启用状态和私有数据目录。" }); }
       if (!before.available) return reply(res, 503, {
-        ok: false, connectionStatus: "not_ready",
-        error: before.reason || "官方 CLI 未安装或不可执行。"
+        ok: false,
+        connectionStatus: before.connectionStatus || "not_ready",
+        authenticated: null,
+        errorCategory: "not_ready",
+        error: before.reason || before.message || "官方 CLI 未安装或不可执行。",
+        nextAction: before.nextAction || "先安装官方 CLI，并启用官方 fnOS Skill。"
       });
       try {
         const result = await trimCli.runReadOnly("system.info");
+        const connection = trimCli.connectionHealth();
         return reply(res, 200, {
-          ok: true, connectionStatus: "connected", authenticated: true,
-          checkedAt: new Date().toISOString(), command: result.command,
+          ok: true,
+          connectionStatus: connection.connectionStatus,
+          authenticated: connection.authenticated,
+          checkedAt: connection.checkedAt,
+          command: result.command,
           data: result.data,
-          note: "只读探测成功；已验证 CLI 能访问 fnOS API。"
+          note: connection.message,
+          nextAction: connection.nextAction
         });
       } catch (error) {
         const status = [400, 401, 403, 404, 408, 429, 502, 503, 504].includes(error?.statusCode) ? error.statusCode : 502;
         return reply(res, status, {
-          ok: false, connectionStatus: status === 504 ? "timeout" : "failed",
-          authenticated: false,
-          error: status === 504 ? "连接探测超时，请检查 NAS 网络和 CLI 状态。" :
-            status === 503 ? "CLI 尚不可用，请先安装官方 CLI。" :
-            "连接探测失败。请检查官方 CLI 的 OAuth profile、授权是否过期及 NAS API 连通性；敏感 CLI 输出已隐藏。",
+          ok: false,
+          connectionStatus: error?.connectionStatus || trimCli.connectionHealth().connectionStatus || "failed",
+          authenticated: error?.authenticated ?? null,
+          errorCategory: error?.errorCategory || "unexpected",
+          error: error?.message || "连接探测失败；敏感 CLI 输出已隐藏。",
+          nextAction: error?.nextAction || "检查 profile、授权和 NAS 网络后重试。",
           code: error?.code || "TRIM_CLI_PROBE_FAILED"
         });
       }
@@ -581,13 +593,21 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === "/api/tools") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
-      if (req.method === "GET") return reply(res, 200, {
-        tools: readOnlyTools.list(),
-        executionEnabled: false,
-        readOnlyExecutionEnabled: true,
-        routineWriteExecutionEnabled: true,
-        destructiveActionConfirmationEnabled: true
-      });
+      if (req.method === "GET") {
+        let cliAvailable = false;
+        try { cliAvailable = (await trimCli.status()).available; } catch { /* unavailable providers stay disabled in the UI */ }
+        const tools = readOnlyTools.list().map(tool =>
+          tool.id.startsWith("fnos.") ? { ...tool, providerAvailable: cliAvailable } : tool
+        );
+        return reply(res, 200, {
+          tools,
+          executionEnabled: false,
+          readOnlyExecutionEnabled: true,
+          routineWriteExecutionEnabled: true,
+          destructiveActionConfirmationEnabled: true,
+          trimCliProviderAvailable: cliAvailable
+        });
+      }
       return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
     }
     const toolRunMatch = url.pathname.match(/^\/api\/tools\/([a-z][a-z0-9.-]{0,63})\/run$/);
@@ -605,7 +625,12 @@ const server = createServer(async (req, res) => {
     }
     return reply(res, 404, { error: "Not found" });
   } catch (error) {
-    return reply(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Internal server error" });
+    const body = { error: error.statusCode ? error.message : "Internal server error" };
+    if (typeof error.errorCategory === "string") body.errorCategory = error.errorCategory;
+    if (typeof error.connectionStatus === "string") body.connectionStatus = error.connectionStatus;
+    if (typeof error.nextAction === "string") body.nextAction = error.nextAction;
+    if (typeof error.code === "string" && /^TRIM_CLI_[A-Z0-9_]{1,64}$/.test(error.code)) body.code = error.code;
+    return reply(res, error.statusCode || 500, body);
   }
 });
 await loadPassword();
