@@ -90,6 +90,7 @@ assert.match(readme, /\[Phase 21 task persistence and crash recovery\]\(docs\/ph
 assert.match(readme, /\[Phase 22 release-candidate acceptance\]\(docs\/phase-22-release-candidate-acceptance\.md\)/);
 assert.match(readme, /\[Phase 112 — FPK CI Build and Artifact Verification\]\(docs\/phase-112-fpk-ci-build-and-artifact-verification\.md\)/);
 assert.match(readme, /\[Phase 115 — Immutable GitHub Actions References\]\(docs\/phase-115-github-actions-pinning\.md\)/);
+assert.match(readme, /\[Phase 116 — Post-signing Attestation Verification\]\(docs\/phase-116-attestation-verification\.md\)/);
 assert.match(readme, /GitHub Actions builds an unsigned x86 CI test FPK/);
 assert.match(workflow, /node --check "\$file"/);
 assert.match(workflow, /node --check \/tmp\/fnos-agent-ui-check\.mjs/);
