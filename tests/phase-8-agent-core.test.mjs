@@ -57,7 +57,7 @@ test("unknown tool proposed by model is rejected without arbitrary execution", a
   const f = fixture({ enabled: true, plan: { message: "执行", toolCalls: [{ id: "shell.exec", args: {} }] } });
   const result = await f.agent.run({ text: "运行命令" });
   assert.equal(result.status, "failed");
-  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls.length, 0);
   assert.equal(result.results.length, 0);
 });
 
