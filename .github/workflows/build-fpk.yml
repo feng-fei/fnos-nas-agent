@@ -105,6 +105,7 @@ jobs:
           node --check "$app/app/agent-core.mjs"
           node --check "$app/app/task-manager.mjs"
           node --check "$app/app/permission-policy.mjs"
+          node --check "$app/app/skill-manifest.mjs"
 
       - name: Prepare app payload and icons
         if: matrix.node-version == '26.x'
