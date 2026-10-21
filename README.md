@@ -128,6 +128,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 107 — Quarantined Skill Source Preview](docs/phase-107-skill-quarantine-source-preview.md)
 - [Phase 108 — File SHA-256 Checksum](docs/phase-108-file-sha256-checksum.md)
 - [Phase 110 — Approval Queue Revocation Consistency](docs/phase-110-approval-queue-consistency.md)
+- [Phase 111 — Task Snapshot Persistence Retry](docs/phase-111-task-persistence-retry.md)
 
 ### Foundations
 - [Architecture](docs/architecture.md)
