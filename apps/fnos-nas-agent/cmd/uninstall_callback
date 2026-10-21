@@ -1,0 +1,4 @@
+#!/bin/bash
+set -eu
+# fnOS removes app files according to its own lifecycle. Preserve TRIM_PKGVAR user data by default.
+exit 0
