@@ -173,9 +173,10 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
         if (active && !loadedProviders.find(item => item.id === active)?.enabled) throw new Error("Default provider is disabled");
         providers = loadedProviders; activeProviderId = active; loaded = true; unavailable = false;
         if (!raw.providers.length) await persist();
-      } catch {
+      } catch (error) {
         masterKey = null; loaded = false; unavailable = true;
-        fail(503, "Model settings could not be loaded safely. No provider was enabled; verify the private settings and encryption key files.", "MODEL_STORE_UNAVAILABLE");
+        const safeCause = typeof error?.code === "string" && /^[A-Z0-9_]+$/.test(error.code) ? error.code : error?.name === "SyntaxError" ? "INVALID_JSON" : "INVALID_STORE";
+        fail(503, "Model settings could not be loaded safely (" + safeCause + "). Verify the private settings and encryption key files.", "MODEL_STORE_UNAVAILABLE");
       }
       return true;
     });
