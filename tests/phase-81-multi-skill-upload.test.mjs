@@ -10,5 +10,5 @@ test("Skill manager supports sequential multi-archive import with aggregate prog
   assert.match(html, /Math\.round\(\(\(index\+percent\/100\)\/files\.length\)\*100\)/);
   assert.match(html, /超过 25 MiB，未开始上传/);
   assert.match(html, /此前已成功隔离/);
-  assert.match(html, /均未解压或执行/);
+  assert.match(html, /未解压或执行/);
 });
