@@ -1,6 +1,360 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>fnOS NAS Agent</title>
-<style>body{margin:0;background:Canvas;color:CanvasText;font-family:system-ui,sans-serif}main{max-width:680px;margin:auto;padding:24px 16px}.card{border:1px solid #8886;border-radius:14px;padding:16px;margin:14px 0}.muted{opacity:.72}button,input{font:inherit;padding:10px 12px;border-radius:10px;max-width:100%}input{box-sizing:border-box;width:100%;margin:8px 0}button{border:1px solid #8888;margin:4px 0}.hidden{display:none}.error{color:#b42318}.warning{border-left:4px solid #c88719;padding-left:10px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.9rem;background:color-mix(in srgb,CanvasText 5%,Canvas);padding:12px;border-radius:10px}</style></head>
+<style>:root {
+  color-scheme: light;
+  --page: #f3f6fb;
+  --surface: #ffffff;
+  --surface-soft: #f7f9fc;
+  --text: #17233b;
+  --muted: #64748b;
+  --border: #dce4ef;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-soft: #eff6ff;
+  --danger: #b42318;
+  --warning: #a16207;
+  --success: #087f5b;
+  --shadow: 0 14px 36px rgb(15 23 42 / 6%);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 12% 0%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 34rem),
+    var(--page);
+  color: var(--text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+main {
+  width: min(100%, 1360px);
+  margin: 0 auto;
+  padding: 34px 30px 64px;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: start;
+  gap: 20px;
+}
+main > h1,
+main > p:first-of-type { grid-column: 1 / -1; }
+main > h1 {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin: 0;
+  font-size: clamp(1.75rem, 2.4vw, 2.2rem);
+  line-height: 1.25;
+  font-weight: 760;
+  letter-spacing: -0.045em;
+}
+main > h1::before {
+  content: "FN";
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #2563eb, #14b8a6);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  box-shadow: 0 8px 18px rgb(37 99 235 / 22%);
+}
+main > p:first-of-type {
+  margin: -14px 0 3px 57px;
+  color: var(--muted);
+  font-size: 0.96rem;
+}
+.card {
+  min-width: 0;
+  margin: 0;
+  padding: 23px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+#setup-card, #login-card { grid-column: 3 / span 8; }
+#status-card { grid-column: span 5; }
+#models-card { grid-column: span 7; }
+#files-card { grid-column: span 8; }
+#tools-card { grid-column: span 4; }
+#agent-card, #skills-card { grid-column: 1 / -1; }
+main > section.card:last-of-type {
+  grid-column: 3 / span 8;
+  background: var(--surface-soft);
+  box-shadow: none;
+}
+.hidden { display: none !important; }
+h2, h3 {
+  color: var(--text);
+  line-height: 1.35;
+}
+h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-size: 1.12rem;
+  font-weight: 720;
+  letter-spacing: -0.015em;
+}
+h2::before {
+  content: "";
+  display: inline-block;
+  flex: 0 0 4px;
+  width: 4px;
+  height: 19px;
+  border-radius: 4px;
+  background: var(--accent);
+}
+main > section.card:last-of-type h2::before { background: var(--warning); }
+h3 {
+  margin: 22px 0 10px;
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+p { margin: 8px 0 13px; }
+.muted { color: var(--muted); }
+label {
+  display: block;
+  margin: 12px 0 5px;
+  color: var(--text);
+  font-size: 0.87rem;
+  font-weight: 620;
+}
+input, select, textarea, button {
+  font: inherit;
+}
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: 42px;
+  margin: 5px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  outline: none;
+  background: var(--surface-soft);
+  color: var(--text);
+  box-shadow: inset 0 1px 1px rgb(15 23 42 / 2%);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+textarea { min-height: 100px; resize: vertical; }
+input[type="file"] { padding: 7px; }
+input[type="checkbox"], input[type="radio"] {
+  width: 16px !important;
+  height: 16px;
+  min-height: 0;
+  accent-color: var(--accent);
+  vertical-align: middle;
+  flex: 0 0 auto;
+}
+label:has(input[type="checkbox"]), label:has(input[type="radio"]) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 27%, transparent);
+  outline-offset: 2px;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  max-width: 100%;
+  min-height: 38px;
+  margin: 4px 5px 4px 0;
+  padding: 8px 13px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 650;
+  line-height: 1.35;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 3%);
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+  box-shadow: 0 3px 9px rgb(15 23 42 / 5%);
+  transform: translateY(-1px);
+}
+button:active:not(:disabled) { transform: translateY(0); }
+button:disabled { opacity: 0.48; cursor: not-allowed; box-shadow: none; }
+button[type="submit"], #login-form button, #setup-form button, #model-provider-save {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 12px rgb(37 99 235 / 17%);
+}
+button[type="submit"]:hover:not(:disabled), #login-form button:hover:not(:disabled), #setup-form button:hover:not(:disabled), #model-provider-save:hover:not(:disabled) {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+  color: #fff;
+}
+#logout {
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--border));
+  color: var(--danger);
+}
+.warning {
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--warning) 23%, var(--border));
+  border-left: 4px solid #c88719;
+  border-radius: 10px;
+  background: color-mix(in srgb, #f59e0b 8%, var(--surface));
+  color: var(--text);
+}
+.error { color: var(--danger); font-weight: 600; }
+pre {
+  max-width: 100%;
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.84rem;
+  line-height: 1.65;
+  tab-size: 2;
+}
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.9rem;
+}
+th, td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 720;
+  letter-spacing: 0.025em;
+}
+tr:last-child td { border-bottom: 0; }
+#file-breadcrumbs {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  overflow-wrap: anywhere;
+}
+#file-list, #model-provider-list, #tool-list, #skill-list, #agent-recent-tasks {
+  min-width: 0;
+}
+#file-list > *, #model-provider-list > *, #tool-list > *, #skill-list > *, #agent-recent-tasks > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#file-list button, #model-provider-list button, #tool-list button, #skill-list button, #agent-recent-tasks button {
+  max-width: 100%;
+}
+progress {
+  display: block;
+  width: 100%;
+  height: 9px;
+  margin: 10px 0;
+  overflow: hidden;
+  accent-color: var(--accent);
+  border-radius: 99px;
+}
+hr { border: 0; border-top: 1px solid var(--border); margin: 18px 0; }
+a { color: var(--accent); }
+::selection { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0c1220;
+    --surface: #121b2c;
+    --surface-soft: #182337;
+    --text: #e6edf7;
+    --muted: #a3b0c5;
+    --border: #2a3950;
+    --accent: #7aa7ff;
+    --accent-hover: #9bbaff;
+    --accent-soft: #1b2e4b;
+    --danger: #ff8c86;
+    --warning: #f5c66a;
+    --success: #6ee7b7;
+    --shadow: 0 16px 40px rgb(0 0 0 / 18%);
+  }
+  button[type="submit"], #login-form button, #setup-form button, #model-provider-save {
+    color: #0b1220;
+    box-shadow: none;
+  }
+  button[type="submit"]:hover:not(:disabled), #login-form button:hover:not(:disabled), #setup-form button:hover:not(:disabled), #model-provider-save:hover:not(:disabled) {
+    color: #0b1220;
+  }
+  .warning { background: color-mix(in srgb, #f59e0b 9%, var(--surface)); }
+}
+@media (max-width: 1050px) {
+  main { padding: 28px 22px 48px; gap: 16px; }
+  #status-card, #models-card, #files-card, #tools-card { grid-column: span 6; }
+  #setup-card, #login-card, main > section.card:last-of-type { grid-column: 2 / span 10; }
+  .card { padding: 20px; }
+}
+@media (max-width: 720px) {
+  main {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    padding: 22px 14px 36px;
+  }
+  main > h1 { font-size: 1.65rem; gap: 10px; }
+  main > h1::before { flex-basis: 40px; width: 40px; height: 40px; border-radius: 12px; }
+  main > p:first-of-type { margin: -8px 0 4px 50px; font-size: 0.9rem; }
+  .card { width: 100%; padding: 18px; border-radius: 15px; }
+  #setup-card, #login-card, #status-card, #models-card, #files-card, #tools-card, #agent-card, #skills-card, main > section.card:last-of-type {
+    width: 100%;
+    grid-column: auto;
+  }
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
+  button { min-height: 40px; }
+  table { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; }
+  th, td { padding: 9px 10px; }
+}
+@media (max-width: 420px) {
+  main { padding-right: 10px; padding-left: 10px; }
+  .card { padding: 15px; }
+  button { padding: 8px 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+}</style></head>
 <body><main><h1>fnOS NAS Agent</h1><p class="muted">轻量 NAS 助手 · 安全验证测试版</p>
 <section class="card hidden" id="setup-card"><h2>首次安全设置</h2><p>首次使用请设置管理密码（至少 10 个字符）。以后只需输入密码即可登录。</p><p class="warning">首次设置期间，页面可由可信局域网访问。当前版本不执行任意系统命令，也不会运行导入的 Skill。请勿将端口转发到公网或在不可信网络中设置。</p><form id="setup-form"><label for="new-token">设置管理密码</label><input id="new-token" type="password" minlength="10" maxlength="128" autocomplete="new-password" required><button type="submit">保存密码</button></form><p id="setup-error" class="error" role="status"></p></section>
 <section class="card" id="login-card"><h2>登录验证</h2><p class="muted" id="login-help">输入管理密码登录。密码不会保存在浏览器本地存储中。</p><form id="login-form"><label for="token">管理密码</label><input id="token" name="token" type="password" autocomplete="current-password" minlength="10" required><label><input id="remember" type="checkbox" style="width:auto;margin-right:8px">在此设备保持登录 30 天</label><p class="muted">仅在个人可信设备上勾选；共享设备请勿勾选。</p><button type="submit">登录</button></form><p id="login-error" class="error" role="status"></p></section>
