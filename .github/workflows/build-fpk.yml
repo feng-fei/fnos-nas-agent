@@ -3,6 +3,7 @@ name: Build fnOS FPK
 on:
   push:
     branches:
+      - main
       - phase-2/fpk-packaging
       - "phase-2/**"
       - "phase-3/**"
@@ -222,3 +223,46 @@ jobs:
             dist/release-manifest.json
           if-no-files-found: error
           retention-days: 14
+
+  
+  attest:
+    name: Attest verified FPK (main only)
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26.x"
+
+      - name: Download test FPK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fnos-nas-agent-test-fpk-node-26.x
+          path: artifact
+
+      - name: Verify artifact bundle before attestation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/verify-release-artifact.mjs \
+            artifact/fnos-nas-agent-test-node-26.fpk \
+            artifact/fnos-nas-agent-test-node-26.fpk.sha256 \
+            artifact/release-manifest.json
+
+      - name: Generate build provenance attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: artifact/fnos-nas-agent-test-node-26.fpk
