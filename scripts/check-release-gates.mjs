@@ -84,7 +84,7 @@ assert.match(phase116Docs, /--source-ref refs\/heads\/main/);
 assert.match(phase117Docs, /start, status, and stop commands/);
 assert.match(lifecycleSmokeTests, /start must be idempotent/);
 assert.match(lifecycleSmokeTests, /stop must terminate the process/);
-assert.match(fpkTestPlan, /launcher explicitly sets HOST=0\.0\.0\.0/);
+assert.match(fpkTestPlan, /launcher binds to `0\.0\.0\.0`/);
 assert.doesNotMatch(fpkTestPlan, /LAN access remains disabled/);
 assert.match(readme, /\[Phase 117 — FPK Lifecycle Smoke Verification\]\(docs\/phase-117-fpk-lifecycle-smoke\.md\)/);
 assert.match(attestJobSource, /id-token: write/);
