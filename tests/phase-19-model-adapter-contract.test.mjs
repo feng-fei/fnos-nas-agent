@@ -11,7 +11,7 @@ const enabledConfig = overrides => ({
   ...overrides
 });
 const envelope = content => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 });
-const tools = [{ id: "system.status", title: "系统状态", description: "只读状态", inputSchema: { type: "object", properties: {} } }];
+const tools = [{ id: "system.status", title: "系统状态", description: "只读状态", inputSchema: { type: "object", properties: {}, additionalProperties: false } }, { id: "fnos.file.ls", title: "列出文件", description: "只读", inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path"], additionalProperties: false } }];
 
 test("model configuration is disabled unless HTTPS endpoint, key, model and explicit opt-in exist", () => {
   assert.equal(modelConfiguration({}).enabled, false);
@@ -29,7 +29,7 @@ test("disabled adapter never calls fetch and status never exposes credentials", 
   assert.equal(calls, 0);
 });
 
-test("valid model plan is parsed and only empty argument objects are accepted", async () => {
+test("valid model plan is parsed and schema-valid tool arguments are preserved", async () => {
   let request;
   const adapter = createModelAdapter({
     config: enabledConfig(),
@@ -67,4 +67,11 @@ test("tool call count, message size and unknown shape are bounded", async () => 
   await assert.rejects(tooMany.plan("x", tools), error => error.code === "MODEL_INVALID_PLAN");
   const tooLong = createModelAdapter({ config: enabledConfig(), fetchImpl: async () => envelope({ message: "x".repeat(2001), toolCalls: [] }) });
   await assert.rejects(tooLong.plan("x", tools), error => error.code === "MODEL_INVALID_PLAN");
+});
+
+test("model adapter rejects missing required and unknown schema arguments", async () => {
+  const missing = createModelAdapter({ config: enabledConfig(), fetchImpl: async () => envelope({ message: "ok", toolCalls: [{ id: "fnos.file.ls", args: {} }] }) });
+  await assert.rejects(missing.plan("列目录", tools), error => error.code === "MODEL_INVALID_PLAN");
+  const unknown = createModelAdapter({ config: enabledConfig(), fetchImpl: async () => envelope({ message: "ok", toolCalls: [{ id: "fnos.file.ls", args: { path: "/vol1", command: "whoami" } }] }) });
+  await assert.rejects(unknown.plan("列目录", tools), error => error.code === "MODEL_INVALID_PLAN");
 });

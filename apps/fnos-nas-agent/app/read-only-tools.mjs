@@ -1,4 +1,21 @@
+const TRIM_CLI_TOOLS = [
+  ["fnos.system.info", "fnos.system.info", "读取 fnOS 系统信息。", {}],
+  ["fnos.file.ls", "file.ls", "列出 fnOS 文件条目（只读）。", { path: { type: "string", minLength: 1, maxLength: 2048 } }, ["path"]],
+  ["fnos.file.ls-dir", "file.ls-dir", "列出 fnOS 目录分段（只读）。", { path: { type: "string", minLength: 1, maxLength: 2048 } }, ["path"]],
+  ["fnos.file.usage", "file.usage", "读取 fnOS 卷容量统计（只读）。", { volumeId: { type: "integer", minimum: 1, maximum: 10000 } }, ["volumeId"]],
+  ["fnos.app.list", "app.list", "列出已安装应用。", {}],
+  ["fnos.docker.image-list", "docker.image.ls", "列出 Docker 镜像，不执行容器操作。", {}],
+  ["fnos.download.list", "download.ls", "列出下载任务。", {}],
+  ["fnos.monitor.cpu", "monitor.cpu", "读取 fnOS CPU 监控数据。", {}],
+  ["fnos.storage.pools", "storage.pools", "读取存储池列表，不修改存储。", {}],
+  ["fnos.user.info", "user.info", "读取当前用户信息。", {}]
+].map(([id, command, description, properties, required = []]) => ({
+  id, title: id, description, risk: "read-only", trimCliCommand: command,
+  inputSchema: { type: "object", properties, required, additionalProperties: false }
+}));
+
 const definitions = [
+  ...TRIM_CLI_TOOLS,
   {
     id: "system.status",
     title: "系统状态",
@@ -46,7 +63,7 @@ function validArgs(args, schema) {
   return true;
 }
 
-export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null, fileManager = null }) {
+export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null, fileManager = null, trimCli = null }) {
   if (typeof getDiagnostics !== "function") throw new TypeError("getDiagnostics must be a function");
 
   function list() {
@@ -60,6 +77,10 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     const tool = definitions.find(item => item.id === id);
     if (!tool) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
     if (!validArgs(args, tool.inputSchema || { type: "object", properties: {}, additionalProperties: false })) throw Object.assign(new Error("Invalid tool arguments"), { statusCode: 400 });
+    if (tool.trimCliCommand) {
+      if (!trimCli) throw Object.assign(new Error("Official fnOS CLI is unavailable"), { statusCode: 503 });
+      return trimCli.runReadOnly(tool.trimCliCommand, args);
+    }
     if (id === "files.list") {
       if (!fileBrowser) throw Object.assign(new Error("File browser is unavailable"), { statusCode: 503 });
       return fileBrowser.list(args.path || "", args.limit ?? 100);
