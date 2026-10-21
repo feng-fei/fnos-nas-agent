@@ -27,8 +27,10 @@ test("task manager enforces concurrency and queue limits", async () => {
 
 test("task failures are sanitized and history is bounded", async () => {
   const manager = createTaskManager({ historyLimit: 2, execute: async input => { if (input.fail) throw new Error("password=private"); return { ok: true }; } });
-  manager.submit({ fail: true });
-  manager.submit({});
+  const first = manager.submit({ fail: true });
+  for (let i=0; i<30 && manager.get(first.taskId)?.status !== "failed"; i++) await tick();
+  const second = manager.submit({});
+  for (let i=0; i<30 && manager.get(second.taskId)?.status !== "completed"; i++) await tick();
   manager.submit({});
   for (let i=0; i<30 && manager.stats().running + manager.stats().queued; i++) await tick();
   assert.ok(manager.list().length <= 2);
