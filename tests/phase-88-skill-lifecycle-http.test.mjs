@@ -68,7 +68,7 @@ test("single Skill lifecycle transitions enforce review before enablement and pe
   const blockedEnable = await request(`/api/skills/${skill.id}/transition`, {
     method: "POST", body: JSON.stringify({ state: "enabled", note: "must review first" })
   });
-  assert.equal(blockedEnable.status, 400);
+  assert.equal(blockedEnable.status, 409);
   const blockedPayload = await blockedEnable.json();
   assert.match(blockedPayload.error, /transition|state|状态/i);
 
@@ -87,7 +87,7 @@ test("single Skill lifecycle transitions enforce review before enablement and pe
   const reapprove = await request(`/api/skills/${skill.id}/transition`, {
     method: "POST", body: JSON.stringify({ state: "approved" })
   });
-  assert.equal(reapprove.status, 400);
+  assert.equal(reapprove.status, 409);
 
   const disable = await request(`/api/skills/${skill.id}/transition`, {
     method: "POST", body: JSON.stringify({ state: "disabled", note: "test completed" })
