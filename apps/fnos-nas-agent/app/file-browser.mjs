@@ -3,6 +3,9 @@ import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path
 
 const MAX_ENTRIES = 200;
 const DEFAULT_LIMIT = 100;
+const MAX_SEARCH_VISITS = 5000;
+const MAX_SEARCH_DEPTH = 8;
+const MAX_SEARCH_RESULTS = 100;
 
 function within(root, target) {
   const rel = relative(root, target);
@@ -80,5 +83,55 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     };
   }
 
-  return Object.freeze({ list });
+  async function search(pathValue = "", queryValue, requestedLimit = 50) {
+    if (typeof pathValue !== "string" || pathValue.length > 2048 ||
+        typeof queryValue !== "string" || !queryValue.trim() || queryValue.length > 200) {
+      throw Object.assign(new Error("Invalid file search query"), { statusCode: 400 });
+    }
+    const roots = await getRoots();
+    if (!roots.length) return { roots: [], path: null, query: queryValue.trim(), entries: [], scanned: 0, truncated: false };
+    const requestedPath = pathValue.trim() ? resolve(pathValue) : roots[0];
+    let start;
+    try { start = await fs.realpath(requestedPath); }
+    catch { throw Object.assign(new Error("Search directory not found"), { statusCode: 404 }); }
+    const root = roots.find(candidate => within(candidate, start));
+    if (!root) throw Object.assign(new Error("Path is outside configured storage roots"), { statusCode: 403 });
+    const startInfo = await fs.lstat(start);
+    if (!startInfo.isDirectory() || startInfo.isSymbolicLink()) throw Object.assign(new Error("Search path is not a directory"), { statusCode: 400 });
+    const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(MAX_SEARCH_RESULTS, requestedLimit)) : 50;
+    const needle = queryValue.trim().toLocaleLowerCase();
+    const queue = [{ path: start, depth: 0 }];
+    const entries = [];
+    let scanned = 0, truncated = false;
+    while (queue.length && scanned < MAX_SEARCH_VISITS && entries.length < limit) {
+      const current = queue.shift();
+      let dirents;
+      try { dirents = await fs.readdir(current.path, { withFileTypes: true }); }
+      catch { continue; }
+      for (const entry of dirents) {
+        if (scanned >= MAX_SEARCH_VISITS || entries.length >= limit) { truncated = true; break; }
+        scanned++;
+        if (entry.isSymbolicLink()) continue;
+        const fullPath = resolve(current.path, entry.name);
+        if (!within(root, fullPath)) continue;
+        let info;
+        try { info = await fs.lstat(fullPath); } catch { continue; }
+        if (info.isSymbolicLink() || (!info.isDirectory() && !info.isFile())) continue;
+        if (entry.name.toLocaleLowerCase().includes(needle)) {
+          entries.push({ name: entry.name, path: fullPath, type: info.isDirectory() ? "directory" : "file", sizeBytes: info.isFile() ? info.size : null, modifiedAt: info.mtime.toISOString() });
+        }
+        if (info.isDirectory() && current.depth < MAX_SEARCH_DEPTH) {
+          try {
+            const actual = await fs.realpath(fullPath);
+            if (actual === fullPath && within(root, actual)) queue.push({ path: actual, depth: current.depth + 1 });
+          } catch { /* Ignore directories that disappear or become inaccessible. */ }
+        }
+      }
+      if (truncated) break;
+    }
+    if (queue.length && scanned >= MAX_SEARCH_VISITS) truncated = true;
+    return { roots: roots.map(path => ({ name: basename(path), path })), path: start, query: queryValue.trim(), entries, scanned, truncated };
+  }
+
+  return Object.freeze({ list, search });
 }

@@ -53,3 +53,27 @@ test("file browser returns an empty list when no storage root is available", asy
   assert.deepEqual(result.roots, []);
   assert.deepEqual(result.entries, []);
 });
+
+test("file browser searches names with bounded traversal and ignores symlinks", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "fnos-browser-search-"));
+  try {
+    const root = join(temp, "vol1"), docs = join(root, "资料");
+    await mkdir(docs, { recursive: true });
+    await mkdir(join(docs, "nested"));
+    await writeFile(join(docs, "report-2026.txt"), "report");
+    await writeFile(join(docs, "nested", "REPORT-old.txt"), "old");
+    await writeFile(join(root, "private-key.txt"), "outside query");
+    await symlink(join(temp, "outside"), join(docs, "link"));
+    const browser = createFileBrowser({ roots: [root] });
+    const result = await browser.search(docs, "report", 10);
+    assert.equal(result.query, "report");
+    assert.equal(result.entries.length, 2);
+    assert.deepEqual(result.entries.map(x => x.name).sort(), ["REPORT-old.txt", "report-2026.txt"]);
+    assert.ok(result.scanned <= 5000);
+    await assert.rejects(browser.search(join(temp, "outside"), "secret"), error => error.statusCode === 403 || error.statusCode === 404);
+    await assert.rejects(browser.search(docs, ""), error => error.statusCode === 400);
+    const limited = await browser.search(root, "txt", 1);
+    assert.equal(limited.entries.length, 1);
+    assert.equal(limited.truncated, true);
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
