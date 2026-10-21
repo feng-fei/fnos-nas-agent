@@ -108,6 +108,11 @@ assert.match(readme, /\[Phase 28 practical read-only file browser\]\(docs\/phase
 
 const cliSetup = await read("apps/fnos-nas-agent/app/trim-cli-setup.mjs");
 const cliSetupTests = await read("tests/trim-cli-setup.test.mjs");
+const modelProviderStoreSource = await read("apps/fnos-nas-agent/app/model-provider-store.mjs");
+const modelProviderStoreTests = await read("tests/model-provider-store.test.mjs");
+const modelProviderApiTests = await read("tests/model-provider-api.test.mjs");
+const modelProviderUiTests = await read("tests/model-provider-ui.test.mjs");
+const modelAdapterTests = await read("tests/phase-19-model-adapter-contract.test.mjs");
 const cliHealth = await read("apps/fnos-nas-agent/app/trim-cli-health.mjs");
 const cliHealthTests = await read("tests/trim-cli-health.test.mjs");
 const cliMatrixTests = await read("tests/phase-44-read-only-cli-contract.test.mjs");
@@ -132,6 +137,18 @@ assert.match(oauthUiTests, /without accepting a code or token/);
 assert.match(ui, /\/api\/agent\/trim-cli\/login-command/);
 assert.match(readme, /\[Phase 43 guided OAuth setup\]\(docs\/phase-43-guided-oauth-setup\.md\)/);
 assert.match(readme, /\[Phase 44 — CLI Health and Read-only Closure\]\(docs\/phase-44-cli-health-and-readonly-closure\.md\)/);
+assert.match(modelProviderStoreSource, /createCipheriv\("aes-256-gcm"/);
+assert.match(modelProviderStoreSource, /apiKeyEncrypted/);
+assert.match(modelProviderStoreSource, /mode: 0o600/);
+assert.match(server, /modelProviderStore\.load\(\)/);
+assert.match(server, /modelActionMatch/);
+assert.match(auditLog, /"models\.test"/);
+assert.match(modelProviderStoreTests, /API keys are encrypted at rest/);
+assert.match(modelProviderStoreTests, /without echoing provider response bodies/);
+assert.match(modelProviderApiTests, /never returns the API key/);
+assert.match(modelProviderUiTests, /never renders a key value/);
+assert.match(modelAdapterTests, /switches to the newly selected provider/);
+assert.match(readme, /\[Phase 45 — Model Provider Management\]\(docs\/phase-45-model-provider-manager\.md\)/);
 
 console.log("Release readiness gates passed: runtime dependency, CI matrix, packaging, and safety invariants.");
 

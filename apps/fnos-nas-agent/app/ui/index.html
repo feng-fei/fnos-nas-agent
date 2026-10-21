@@ -5,6 +5,24 @@
 <section class="card hidden" id="setup-card"><h2>首次安全设置</h2><p>首次使用请设置管理密码（至少 10 个字符）。以后只需输入密码即可登录。</p><p class="warning">首次设置期间，页面可由可信局域网访问。当前版本不执行任意系统命令，也不会运行导入的 Skill。请勿将端口转发到公网或在不可信网络中设置。</p><form id="setup-form"><label for="new-token">设置管理密码</label><input id="new-token" type="password" minlength="10" maxlength="128" autocomplete="new-password" required><button type="submit">保存密码</button></form><p id="setup-error" class="error" role="status"></p></section>
 <section class="card" id="login-card"><h2>登录验证</h2><p class="muted" id="login-help">输入管理密码登录。密码不会保存在浏览器本地存储中。</p><form id="login-form"><label for="token">管理密码</label><input id="token" name="token" type="password" autocomplete="current-password" minlength="10" required><label><input id="remember" type="checkbox" style="width:auto;margin-right:8px">在此设备保持登录 30 天</label><p class="muted">仅在个人可信设备上勾选；共享设备请勿勾选。</p><button type="submit">登录</button></form><p id="login-error" class="error" role="status"></p></section>
 <section class="card hidden" id="status-card"><h2>服务状态</h2><p id="status">正在检查…</p><p id="detail" class="muted">任意系统命令执行关闭；已登记文件工具按权限策略执行。</p><h3>只读系统诊断</h3><pre id="diagnostics">登录后加载诊断信息…</pre><button id="refresh" type="button">刷新状态</button> <button id="show-audit" type="button">查看操作记录</button> <button id="logout" type="button">退出登录</button><pre id="audit-output" class="hidden">尚未加载操作记录。</pre></section>
+<section class="card hidden" id="models-card"><h2>大模型管理</h2>
+<p class="muted">添加并管理 OpenAI 兼容的 Chat Completions 服务商。API Key 只在提交时发送到本服务，并在 NAS 私有数据目录中加密保存；页面只显示是否已保存，不会再次读取密钥。</p>
+<form id="model-provider-form">
+<input id="model-provider-id" type="hidden">
+<label for="model-provider-name">服务商名称</label><input id="model-provider-name" maxlength="80" placeholder="例如 OpenAI、硅基流动、DeepSeek" required>
+<label for="model-provider-endpoint">API Endpoint（完整地址）</label><input id="model-provider-endpoint" type="url" maxlength="2048" placeholder="https://api.example.com/v1/chat/completions" required>
+<label for="model-provider-model">模型 ID</label><input id="model-provider-model" maxlength="160" placeholder="例如 gpt-4.1-mini" required>
+<label for="model-provider-key">API Key</label><input id="model-provider-key" type="password" maxlength="2048" autocomplete="new-password" placeholder="添加时必填；编辑时留空表示保留已保存密钥">
+<label><input id="model-provider-enabled" type="checkbox" style="width:auto;margin-right:8px" checked>启用此服务商</label>
+<label><input id="model-provider-clear-key" type="checkbox" style="width:auto;margin-right:8px">清除已保存的 API Key（需重新输入才能启用）</label>
+<button id="model-provider-save" type="submit">添加模型服务商</button>
+<button id="model-provider-reset" type="button">清空表单</button>
+</form>
+<p id="model-provider-error" class="error" role="status"></p>
+<p id="model-provider-status" class="muted">正在读取模型配置…</p>
+<button id="model-provider-refresh" type="button">刷新模型列表</button>
+<div id="model-provider-list"><p class="muted">登录后加载。</p></div>
+</section>
 <section class="card hidden" id="files-card"><h2>文件浏览</h2><p class="muted">支持浏览、文本预览、下载、上传、建文件夹、重命名、移动和删除。上传上限 25 MiB；删除需要确认。</p><div id="file-roots"></div><form id="file-form"><label for="file-path">当前目录</label><input id="file-path" maxlength="2048" placeholder="选择一个存储卷" autocomplete="off"><button type="submit">打开目录</button><button id="file-parent" type="button" disabled>上一级</button></form><div class="file-actions"><button id="file-mkdir" type="button">新建文件夹</button><label for="file-upload">上传文件（最大 25 MiB）</label><input id="file-upload" type="file"><button id="file-upload-button" type="button">上传所选文件</button></div><pre id="file-preview" class="hidden"></pre><p id="file-error" class="error" role="status"></p><div id="file-list"><p class="muted">登录后加载目录。</p></div></section>
 <section class="card hidden" id="tools-card"><h2>NAS 工具</h2><p class="muted">只读查询可直接执行；创建文件夹、重命名和移动属于常规文件操作。删除、系统配置变更和任意命令执行仍未开放。</p><div id="tool-list"><p class="muted">登录后加载工具清单…</p></div><pre id="tool-result">选择工具后显示结果。</pre></section>
 <section class="card hidden" id="agent-card"><h2>NAS 智能助手</h2><p class="muted" id="agent-status">规则优先；模型仅可请求已登记且参数校验通过的工具。</p><button id="trim-cli-test" type="button">检测官方 CLI 连接</button><p id="trim-cli-test-result" class="muted" role="status">尚未执行连接检测。CLI 可执行不代表 OAuth 已授权。</p>
@@ -29,10 +47,125 @@
 const setupCard=document.querySelector("#setup-card"),loginCard=document.querySelector("#login-card"),statusCard=document.querySelector("#status-card"),errorEl=document.querySelector("#login-error"),tokenEl=document.querySelector("#token"),newTokenEl=document.querySelector("#new-token");
 async function api(path,options={}){return fetch(path,{cache:"no-store",credentials:"same-origin",...options});}
 async function refresh(){const s=document.querySelector("#status"),d=document.querySelector("#detail"),out=document.querySelector("#diagnostics");try{const r=await api("/api/health");if(!r.ok)throw Error();const h=await r.json();s.textContent=h.ok?"运行正常":"状态异常";d.textContent="版本 "+h.version+"；任意系统命令执行："+(h.executionEnabled?"已启用":"关闭")+"；已登记的常规文件工具可用。";const dr=await api("/api/diagnostics");if(!dr.ok)throw Error("诊断读取失败（HTTP "+dr.status+"）");const x=await dr.json();const gib=n=>(n/1024**3).toFixed(2)+" GiB";out.textContent=["系统："+x.system.platform+" "+x.system.release+" / "+x.system.arch,"Node.js："+x.system.nodeVersion+"；运行时间："+Math.floor(x.system.uptimeSeconds/3600)+" 小时","CPU："+x.cpu.model+"（逻辑核心 "+x.cpu.logicalCores+"）；负载 "+x.cpu.loadAverage.map(n=>n.toFixed(2)).join(" / "),"内存：已用 "+gib(x.memory.usedBytes)+" / "+gib(x.memory.totalBytes)+"（可用 "+gib(x.memory.freeBytes)+"）","网络："+(x.network.flatMap(n=>n.addresses.map(a=>n.name+" "+a.address)).join("；")||"未发现非回环地址"),"存储："+x.storage.map(v=>v.available?v.label+" 已用 "+gib(v.usedBytes)+" / "+gib(v.totalBytes)+"（可用 "+gib(v.freeBytes)+"）":v.label+" 无法读取").join("；")].join("\n");}catch(e){out.textContent=e.message||"诊断信息暂不可用";if(!s.textContent)s.textContent="无法连接服务";}}
-async function init(){try{const r=await api("/api/session");const x=await r.json();if(x.authenticated){loginCard.classList.add("hidden");setupCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#files-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();await refreshPendingActions();}else if(x.setupRequired){loginCard.classList.add("hidden");setupCard.classList.remove("hidden");}}catch{}}
+async function init(){try{const r=await api("/api/session");const x=await r.json();if(x.authenticated){loginCard.classList.add("hidden");setupCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#models-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#files-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshModels();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();await refreshPendingActions();}else if(x.setupRequired){loginCard.classList.add("hidden");setupCard.classList.remove("hidden");}}catch{}}
 
 document.querySelector("#setup-form").addEventListener("submit",async e=>{e.preventDefault();document.querySelector("#setup-error").textContent="";try{const token=newTokenEl.value;const r=await api("/api/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:token})});const x=await r.json();if(!r.ok)throw Error(x.error||"设置失败");tokenEl.value=token;setupCard.classList.add("hidden");loginCard.classList.remove("hidden");document.querySelector("#login-help").textContent="密码已设置，请登录。";newTokenEl.value="";tokenEl.focus();}catch(e){document.querySelector("#setup-error").textContent=e.message||"设置失败";}});
-document.querySelector("#login-form").addEventListener("submit",async e=>{e.preventDefault();errorEl.textContent="";try{const r=await api("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:tokenEl.value,remember:document.querySelector("#remember").checked})});const x=await r.json();if(!r.ok)throw Error(x.error||"登录失败");tokenEl.value="";loginCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#files-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();}catch(e){errorEl.textContent=e.message||"登录失败";}});
+document.querySelector("#login-form").addEventListener("submit",async e=>{e.preventDefault();errorEl.textContent="";try{const r=await api("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:tokenEl.value,remember:document.querySelector("#remember").checked})});const x=await r.json();if(!r.ok)throw Error(x.error||"登录失败");tokenEl.value="";loginCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#models-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#files-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshModels();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();}catch(e){errorEl.textContent=e.message||"登录失败";}});
+function clearModelProviderForm(){
+ const form=document.querySelector("#model-provider-form");
+ form.reset();
+ document.querySelector("#model-provider-id").value="";
+ document.querySelector("#model-provider-key").value="";
+ document.querySelector("#model-provider-enabled").checked=true;
+ document.querySelector("#model-provider-clear-key").checked=false;
+ document.querySelector("#model-provider-save").textContent="添加模型服务商";
+}
+async function refreshModels(){
+ const host=document.querySelector("#model-provider-list"),status=document.querySelector("#model-provider-status"),error=document.querySelector("#model-provider-error");
+ host.replaceChildren();error.textContent="";
+ try{
+  const r=await api("/api/models"),data=await r.json();
+  if(!r.ok)throw Error(data.error||"读取模型配置失败");
+  const active=data.providers.find(item=>item.id===data.activeProviderId);
+  status.textContent=active
+   ?"当前默认模型："+active.name+" / "+active.model
+   :data.modelStatus?.enabled
+    ?"当前使用服务端环境变量配置的模型："+(data.modelStatus.model||"未命名")
+    :"当前没有启用的大模型；规则匹配功能仍可使用。";
+  if(!data.providers.length){
+   const p=document.createElement("p");p.className="muted";p.textContent="尚未添加模型服务商。填写上方表单即可添加。";host.append(p);return;
+  }
+  for(const item of data.providers){
+   const card=document.createElement("div");card.className="card";
+   const heading=document.createElement("strong");heading.textContent=item.name+" · "+(item.isDefault?"当前默认":item.enabled?"已启用":"已停用");card.append(heading);
+   const meta=document.createElement("p");meta.className="muted";meta.textContent="模型："+item.model+"；API Key："+(item.hasApiKey?"已加密保存":"未配置")+"；Endpoint："+item.endpoint;card.append(meta);
+   if(item.lastTest){
+    const last=document.createElement("p");last.className=item.lastTest.ok?"muted":"error";
+    last.textContent=(item.lastTest.ok?"最近连接测试成功：":"最近连接测试失败：")+item.lastTest.message+(item.lastTest.at?"（"+item.lastTest.at+"）":"");card.append(last);
+   }else{
+    const last=document.createElement("p");last.className="muted";last.textContent="尚未测试连接。";card.append(last);
+   }
+   const actions=document.createElement("div");
+   const edit=document.createElement("button");edit.type="button";edit.textContent="编辑";
+   edit.addEventListener("click",()=>{
+    document.querySelector("#model-provider-id").value=item.id;
+    document.querySelector("#model-provider-name").value=item.name;
+    document.querySelector("#model-provider-endpoint").value=item.endpoint;
+    document.querySelector("#model-provider-model").value=item.model;
+    document.querySelector("#model-provider-key").value="";
+    document.querySelector("#model-provider-key").placeholder=item.hasApiKey?"留空保留已保存的 API Key":"请输入 API Key";
+    document.querySelector("#model-provider-enabled").checked=item.enabled;
+    document.querySelector("#model-provider-clear-key").checked=false;
+    document.querySelector("#model-provider-save").textContent="保存修改";
+    document.querySelector("#model-provider-error").textContent="";
+    document.querySelector("#model-provider-name").focus();
+   });
+   const testButton=document.createElement("button");testButton.type="button";testButton.textContent="测试连接";testButton.disabled=!item.hasApiKey;
+   testButton.addEventListener("click",async()=>{
+    testButton.disabled=true;testButton.textContent="测试中…";
+    try{
+     const result=await api("/api/models/"+encodeURIComponent(item.id)+"/test",{method:"POST"});
+     const payload=await result.json();if(!result.ok)throw Error(payload.error||"连接测试失败");
+     document.querySelector("#model-provider-error").textContent=(payload.test?.ok?"连接测试成功：":"连接测试失败：")+(payload.test?.message||"未知结果");
+     await refreshModels();await refreshAgentStatus();
+    }catch(error){document.querySelector("#model-provider-error").textContent=error.message||"连接测试失败";}
+    finally{testButton.disabled=false;testButton.textContent="测试连接";}
+   });
+   const makeDefault=document.createElement("button");makeDefault.type="button";makeDefault.textContent="设为默认";makeDefault.disabled=item.isDefault||!item.enabled||!item.hasApiKey;
+   makeDefault.addEventListener("click",async()=>{
+    makeDefault.disabled=true;
+    try{const response=await api("/api/models/"+encodeURIComponent(item.id)+"/default",{method:"POST"});const payload=await response.json();if(!response.ok)throw Error(payload.error||"设置默认模型失败");await refreshModels();await refreshAgentStatus();}
+    catch(error){error.textContent="";document.querySelector("#model-provider-error").textContent=error.message||"设置默认模型失败";makeDefault.disabled=false;}
+   });
+   const toggle=document.createElement("button");toggle.type="button";toggle.textContent=item.enabled?"停用":"启用";
+   toggle.disabled=!item.hasApiKey&&!item.enabled;
+   toggle.addEventListener("click",async()=>{
+    toggle.disabled=true;
+    try{
+     const response=await api("/api/models/"+encodeURIComponent(item.id),{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({name:item.name,endpoint:item.endpoint,model:item.model,enabled:!item.enabled})});
+     const payload=await response.json();if(!response.ok)throw Error(payload.error||"更新模型状态失败");
+     await refreshModels();await refreshAgentStatus();
+    }catch(error){document.querySelector("#model-provider-error").textContent=error.message||"更新模型状态失败";toggle.disabled=false;}
+   });
+   const remove=document.createElement("button");remove.type="button";remove.textContent="删除";
+   remove.addEventListener("click",async()=>{
+    if(!confirm("确定删除模型服务商“"+item.name+"”？加密保存的 API Key 也会被移除。"))return;
+    remove.disabled=true;
+    try{const response=await api("/api/models/"+encodeURIComponent(item.id),{method:"DELETE"});const payload=await response.json();if(!response.ok)throw Error(payload.error||"删除模型失败");if(document.querySelector("#model-provider-id").value===item.id)clearModelProviderForm();await refreshModels();await refreshAgentStatus();}
+    catch(error){document.querySelector("#model-provider-error").textContent=error.message||"删除模型失败";remove.disabled=false;}
+   });
+   actions.append(edit,testButton,makeDefault,toggle,remove);card.append(actions);host.append(card);
+  }
+ }catch(error){
+  status.textContent="无法读取大模型配置。";
+  const p=document.createElement("p");p.className="error";p.textContent=error.message||"检查 Agent 私有数据目录配置。";host.append(p);
+ }
+}
+document.querySelector("#model-provider-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const error=document.querySelector("#model-provider-error"),save=document.querySelector("#model-provider-save");
+ error.textContent="";save.disabled=true;
+ try{
+  const id=document.querySelector("#model-provider-id").value;
+  const apiKey=document.querySelector("#model-provider-key").value;
+  const clearApiKey=document.querySelector("#model-provider-clear-key").checked;
+  const body={
+   name:document.querySelector("#model-provider-name").value,
+   endpoint:document.querySelector("#model-provider-endpoint").value,
+   model:document.querySelector("#model-provider-model").value,
+   enabled:document.querySelector("#model-provider-enabled").checked
+  };
+  if(apiKey)body.apiKey=apiKey;
+  if(clearApiKey)body.clearApiKey=true;
+  const response=await api(id?"/api/models/"+encodeURIComponent(id):"/api/models",{method:id?"PUT":"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+  const payload=await response.json();if(!response.ok)throw Error(payload.error||"保存模型配置失败");
+  clearModelProviderForm();await refreshModels();await refreshAgentStatus();
+  error.textContent="模型配置已安全保存。";
+ }catch(error){document.querySelector("#model-provider-error").textContent=error.message||"保存模型配置失败";}
+ finally{save.disabled=false;}
+});
+document.querySelector("#model-provider-reset").addEventListener("click",clearModelProviderForm);
+document.querySelector("#model-provider-refresh").addEventListener("click",refreshModels);
 let generatedTrimCliCommand = "";
 const trimHostInput=document.querySelector("#trim-cli-host"),trimPortInput=document.querySelector("#trim-cli-port"),trimSchemeInput=document.querySelector("#trim-cli-scheme");
 let trimPortEdited=false;
@@ -102,7 +235,7 @@ async function refreshAgentStatus(){
   };
   const statusLabel=statuses[cli.connectionStatus]||"状态未知";
   const install=cli.available?"CLI 已安装且可执行":cli.configured?"CLI 路径已配置但不可执行":"官方 CLI 尚未安装";
-  document.querySelector("#agent-status").textContent="规则优先；模型："+(x.model.enabled?"已启用（"+x.model.model+"）":"未配置")+"；可用工具："+x.availableTools+"；官方 CLI："+install+"；连接状态："+statusLabel+"；任意命令执行：关闭。";
+  document.querySelector("#agent-status").textContent="规则优先；模型："+(x.model.enabled?"已启用（"+(x.model.providerName||x.model.model)+" / "+x.model.model+"）":"未配置")+"；可用工具："+x.availableTools+"；官方 CLI："+install+"；连接状态："+statusLabel+"；任意命令执行：关闭。";
   const detail=document.querySelector("#trim-cli-connection-detail");
   const parts=[cli.message||cli.note||"尚无连接状态信息。"];
   if(cli.checkedAt)parts.push("上次检测："+cli.checkedAt);

@@ -9,7 +9,8 @@ import { randomBytes, timingSafeEqual, createHash, scryptSync } from "node:crypt
 import { createSkillStore, skillStates } from "./skills.mjs";
 import { MAX_ARCHIVE_BYTES } from "./skill-archives.mjs";
 import { createReadOnlyToolRegistry } from "./read-only-tools.mjs";
-import { createModelAdapter } from "./model-adapter.mjs";
+import { createModelAdapter, modelConfiguration } from "./model-adapter.mjs";
+import { createModelProviderStore } from "./model-provider-store.mjs";
 import { createAgentCore } from "./agent-core.mjs";
 import { createTaskManager } from "./task-manager.mjs";
 import { createFixedWindowLimiter } from "./request-limiter.mjs";
@@ -34,7 +35,7 @@ const skillStore = dataDir ? createSkillStore(dataDir) : null;
 const auditLogger = dataDir ? createAuditLogger({ dataDir }) : null;
 const SESSION_TTL = 8 * 60 * 60 * 1000;
 const REMEMBER_TTL = 30 * 24 * 60 * 60 * 1000;
-const MAX_BODY = 4096;
+const MAX_BODY = 16 * 1024;
 let saveQueue = Promise.resolve();
 
 function reply(res, status, body, type = "application/json; charset=utf-8", headers = {}) {
@@ -184,7 +185,11 @@ const trimCli = createTrimCliAdapter({
   }
 });
 const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics, fileBrowser, fileManager, trimCli });
-const modelAdapter = createModelAdapter();
+const modelProviderStore = dataDir ? createModelProviderStore({ dataDir }) : null;
+const modelAdapter = createModelAdapter({ configProvider: () => {
+  const managed = modelProviderStore?.runtimeConfig();
+  return managed || modelConfiguration();
+} });
 const actionApprovals = createActionApprovalService({ tools: readOnlyTools });
 const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter, requestApproval: action => actionApprovals.request(action) });
 const taskManager = createTaskManager({ execute: input => agentCore.run(input), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "" });
@@ -202,6 +207,10 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/skills/import") return "skills.import";
   if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
   if (/^\/api\/skills\/([a-f0-9]{24})\/install-cli$/.test(pathname)) return "skills.install-cli";
+  if (pathname === "/api/models") return method === "GET" ? "models.list" : method === "POST" ? "models.add" : "other_api";
+  if (/^\/api\/models\/[a-f0-9]{24}$/.test(pathname)) return method === "PUT" ? "models.update" : method === "DELETE" ? "models.remove" : "other_api";
+  if (/^\/api\/models\/[a-f0-9]{24}\/default$/.test(pathname)) return "models.default";
+  if (/^\/api\/models\/[a-f0-9]{24}\/test$/.test(pathname)) return "models.test";
   if (pathname === "/api/agent/status") return "agent.status";
   if (pathname === "/api/agent/trim-cli/test") return "agent.trim-cli-test";
   if (pathname === "/api/agent/trim-cli/login-command") return "agent.trim-cli-login-command";
@@ -420,6 +429,51 @@ const server = createServer(async (req, res) => {
       try { return reply(res, 200, await skillStore.remove(skillDeleteMatch[1])); }
       catch (error) { const status = [404, 409].includes(error?.statusCode) ? error.statusCode : 500; return reply(res, status, { error: status === 500 ? "Unable to remove Skill record" : error.message }); }
     }
+    if (url.pathname === "/api/models") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!modelProviderStore) return reply(res, 503, { error: "模型管理需要配置 Agent 私有数据目录。" });
+      if (req.method === "GET") {
+        try {
+          return reply(res, 200, { ...modelProviderStore.list(), modelStatus: modelAdapter.status(), storage: modelProviderStore.status() });
+        } catch (error) {
+          return reply(res, error.statusCode || 503, { error: error.statusCode ? error.message : "模型配置暂不可用。" });
+        }
+      }
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json")) return reply(res, 415, { error: "Expected application/json" });
+      try { return reply(res, 201, { provider: await modelProviderStore.add(await jsonBody(req)) }); }
+      catch (error) { const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500; return reply(res, status, { error: error.statusCode ? error.message : "Unable to save model provider securely." }); }
+    }
+    const modelItemMatch = url.pathname.match(/^\/api\/models\/([a-f0-9]{24})$/);
+    if (modelItemMatch) {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!modelProviderStore) return reply(res, 503, { error: "模型管理需要配置 Agent 私有数据目录。" });
+      if (!["PUT", "DELETE"].includes(req.method)) return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "PUT, DELETE" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      try {
+        if (req.method === "DELETE") return reply(res, 200, await modelProviderStore.remove(modelItemMatch[1]));
+        if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json")) return reply(res, 415, { error: "Expected application/json" });
+        return reply(res, 200, { provider: await modelProviderStore.update(modelItemMatch[1], await jsonBody(req)) });
+      } catch (error) {
+        const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: error.statusCode ? error.message : "Unable to update model provider securely." });
+      }
+    }
+    const modelActionMatch = url.pathname.match(/^\/api\/models\/([a-f0-9]{24})\/(default|test)$/);
+    if (modelActionMatch) {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!modelProviderStore) return reply(res, 503, { error: "模型管理需要配置 Agent 私有数据目录。" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      try {
+        if (modelActionMatch[2] === "default") return reply(res, 200, { provider: await modelProviderStore.setDefault(modelActionMatch[1]) });
+        return reply(res, 200, await modelProviderStore.test(modelActionMatch[1]));
+      } catch (error) {
+        const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: error.statusCode ? error.message : "模型操作失败。" });
+      }
+    }
     if (url.pathname === "/api/agent/status") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
@@ -636,6 +690,10 @@ const server = createServer(async (req, res) => {
 await loadPassword();
 await loadSessions();
 if (skillStore) await skillStore.load();
+if (modelProviderStore) {
+  try { await modelProviderStore.load(); }
+  catch { console.error("Model settings unavailable; managed model providers were disabled."); }
+}
 await taskManager.ready;
 // First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
 server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; registered tools enabled, arbitrary shell and imported Skill execution disabled`));
