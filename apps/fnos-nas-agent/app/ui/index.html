@@ -478,10 +478,10 @@ async function refreshFiles(pathValue=currentFilePath,pageOffset=0){
  const host=document.querySelector("#file-list"),roots=document.querySelector("#file-roots"),err=document.querySelector("#file-error"),parent=document.querySelector("#file-parent"),field=document.querySelector("#file-path");
  err.textContent="";host.replaceChildren();roots.replaceChildren();
  try{
-  const params=new URLSearchParams({limit:"100",offset:String(pageOffset)});if(pathValue)params.set("path",pathValue);
+  const params=new URLSearchParams({limit:"100",offset:String(pageOffset),sort:document.querySelector("#file-sort").value,type:document.querySelector("#file-type-filter").value,q:document.querySelector("#file-search").value.trim()});if(pathValue)params.set("path",pathValue);
   const r=await api("/api/files?"+params.toString()),data=await r.json();if(!r.ok)throw Error(data.error||"目录读取失败");
   currentFilePath=data.path||"";currentFileOffset=data.offset||0;field.value=currentFilePath;parent.disabled=!data.parentPath;
-  document.querySelector("#file-page-info").textContent="目录共 "+(data.totalEntries||0)+" 项 · 显示 "+(data.totalEntries?currentFileOffset+1:0)+"–"+Math.min(currentFileOffset+(data.entries||[]).length,data.totalEntries||0);
+  document.querySelector("#file-page-info").textContent="匹配 "+(data.totalEntries||0)+" 项 / 目录共 "+(data.totalDirectoryEntries||0)+" 项 · 显示 "+(data.totalEntries?currentFileOffset+1:0)+"–"+Math.min(currentFileOffset+(data.entries||[]).length,data.totalEntries||0);
   document.querySelector("#file-page-prev").disabled=currentFileOffset<=0;
   document.querySelector("#file-page-next").disabled=currentFileOffset+(data.entries||[]).length>=(data.totalEntries||0);
   parent.onclick=()=>{if(data.parentPath)refreshFiles(data.parentPath);};
