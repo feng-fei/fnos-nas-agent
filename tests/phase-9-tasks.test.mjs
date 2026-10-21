@@ -106,3 +106,15 @@ test("clearTerminal removes only terminal tasks and preserves queued/running wor
   assert.equal(manager.get(queued.taskId).status, "queued");
   release();
 });
+
+test("task manager bounds oversized retained results while preserving the summary", async () => {
+  const manager = createTaskManager({
+    execute: async () => ({ message: "查询完成", results: [{ tool: "files.list", result: { names: Array.from({ length: 500 }, (_, i) => "file-" + i + "-" + "x".repeat(200)) } }] })
+  });
+  const task = manager.submit({});
+  for (let i = 0; i < 50 && manager.get(task.taskId)?.status !== "completed"; i++) await tick();
+  const stored = manager.get(task.taskId).result;
+  assert.equal(stored.message, "查询完成");
+  assert.equal(stored.truncated, true);
+  assert.ok(Buffer.byteLength(JSON.stringify(stored), "utf8") <= 16 * 1024);
+});
