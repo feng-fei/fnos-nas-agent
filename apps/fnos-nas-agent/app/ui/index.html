@@ -182,6 +182,11 @@ async function refreshSkills(){
    const meta=document.createElement("p");meta.className="muted";meta.textContent="版本："+(item.version||"未填写")+"；SHA-256："+item.archiveSha256+(item.quarantineFile?"；隔离归档："+item.archiveSizeBytes+" 字节 / "+item.archiveEntryCount+" 个条目":"；仅登记元数据");card.append(meta);
    if(item.manifestReview){const review=document.createElement("p");review.className=item.manifestReview.findings?.length?"warning":"muted";review.textContent="静态清单："+(item.manifestReview.name||"未识别名称")+"；"+(item.manifestReview.description||"无描述")+"；发现："+((item.manifestReview.findings||[]).join("、")||"未发现规则提示")+"。此结果仅供人工审核，不代表安全认证。";card.append(review);}
    if(item.reviewNote){const note=document.createElement("p");note.textContent="审核备注："+item.reviewNote;card.append(note);}
+   if(item.name?.toLowerCase()==="fnos"&&item.quarantineFile&&item.manifestReview?.name?.toLowerCase()==="fnos"&&["approved","enabled"].includes(item.state)){
+    const install=document.createElement("button");install.type="button";install.textContent="安装官方 CLI（当前平台）";
+    install.addEventListener("click",async()=>{if(!confirm("仅提取官方 Skill 包中与当前 Linux 架构匹配的 trim-cli 二进制；不会解压其他文件，也不会执行 Skill 指令。继续安装？"))return;install.disabled=true;try{const ir=await api("/api/skills/"+item.id+"/install-cli",{method:"POST"});const result=await ir.json();if(!ir.ok)throw Error(result.error||"CLI 安装失败");alert("CLI 已安装："+result.installation.platform+"，"+result.installation.sizeBytes+" 字节。请启用 Skill 后再使用官方只读工具。");await refreshSkills();}catch(error){document.querySelector("#skill-error").textContent=error.message||"CLI 安装失败";}finally{install.disabled=false;}});
+    card.append(install);
+   }
    const choices={pending_review:[["approved","批准"],["rejected","拒绝"]],approved:[["enabled","启用"],["disabled","停用"],["rejected","拒绝"]],enabled:[["disabled","停用"]],disabled:[["approved","重新批准"],["rejected","拒绝"]],rejected:[]};
    for(const [state,label] of (choices[item.state]||[])){
     const btn=document.createElement("button");btn.type="button";btn.textContent=label;
