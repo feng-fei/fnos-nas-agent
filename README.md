@@ -8,6 +8,7 @@ Core development is active. The repository currently includes:
 
 - Password-based setup/login, sessions, read-only diagnostics, and metadata-only audit history.
 - Mobile file browsing, bounded text preview, upload, folder creation, rename/move, batch operations, and confirmation-protected deletion.
+- The mobile file browser can calculate SHA-256 for files up to 256 MiB with streaming reads, root confinement, and a per-session request limit.
 - Rules-first Agent routing, allowlisted tool plans, bounded asynchronous tasks, progress reporting, task filtering/pagination, and queued-task cancellation.
 - Encrypted multi-provider model configuration, catalog discovery, connection tests, fallback routing, bounded retries, and in-memory metrics.
 - Provider presets for OpenAI, DeepSeek, SiliconFlow, Alibaba DashScope, Moonshot, Zhipu, OpenRouter, Google Gemini, Groq, and local Ollama.
@@ -125,6 +126,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 104 — Batch GitHub Skill Import](docs/phase-104-batch-github-skill-import.md)
 - [Phase 105 — Skill Embedded Credential Scanning](docs/phase-105-skill-secret-scanning.md)
 - [Phase 107 — Quarantined Skill Source Preview](docs/phase-107-skill-quarantine-source-preview.md)
+- [Phase 108 — File SHA-256 Checksum](docs/phase-108-file-sha256-checksum.md)
 
 ### Foundations
 - [Architecture](docs/architecture.md)
