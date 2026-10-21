@@ -57,13 +57,26 @@ export function modelConfiguration(env = process.env) {
   });
 }
 
-export function createModelAdapter({ config = modelConfiguration(), fetchImpl = fetch } = {}) {
+export function createModelAdapter({ config = modelConfiguration(), configProvider = null, fetchImpl = fetch } = {}) {
+  if (configProvider !== null && typeof configProvider !== "function") throw new TypeError("configProvider must be a function");
+  const currentConfig = () => {
+    const selected = configProvider ? configProvider() : config;
+    return selected && typeof selected === "object" ? selected : modelConfiguration({});
+  };
   return Object.freeze({
     status() {
-      return { enabled: config.enabled, providerConfigured: Boolean(config.endpoint && config.apiKey && config.model), model: config.enabled ? config.model : null };
+      const selected = currentConfig();
+      return {
+        enabled: selected.enabled === true && Boolean(selected.endpoint && selected.apiKey && selected.model),
+        providerConfigured: Boolean(selected.endpoint && selected.apiKey && selected.model),
+        model: selected.enabled && selected.model ? selected.model : null,
+        providerId: selected.enabled ? selected.providerId || null : null,
+        providerName: selected.enabled ? selected.providerName || null : null
+      };
     },
     async plan(userText, tools) {
-      if (!config.enabled) return null;
+      const config = currentConfig();
+      if (!config.enabled || !config.endpoint || !config.apiKey || !config.model) return null;
       const toolSummary = tools.map(tool => ({ id: tool.id, title: tool.title, description: tool.description, inputSchema: tool.inputSchema }));
       const system = [
         "You are the planning component of a safety-first Feiniu OS NAS assistant.",
