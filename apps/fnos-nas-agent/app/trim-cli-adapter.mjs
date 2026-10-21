@@ -38,7 +38,7 @@ function validateInput(id, input) {
 export function createTrimCliAdapter({
   binaryPath = process.env.TRIM_CLI_PATH || "",
   profile = process.env.TRIM_CLI_PROFILE || "home",
-  execFileImpl = execFile,
+  execFileImpl = execFile,\n  accessImpl = access,
   timeoutMs = DEFAULT_TIMEOUT_MS
 } = {}) {
   if (typeof binaryPath !== "string" || binaryPath.length > 4096) throw new TypeError("Invalid trim-cli binary path");
@@ -48,7 +48,7 @@ export function createTrimCliAdapter({
   async function status() {
     if (!binaryPath) return { configured: false, available: false, profile, reason: "TRIM_CLI_PATH is not configured" };
     try {
-      await access(binaryPath, constants.X_OK);
+      await accessImpl(binaryPath, constants.X_OK);
       return { configured: true, available: true, profile };
     } catch {
       return { configured: true, available: false, profile, reason: "Configured trim-cli executable is not accessible" };
