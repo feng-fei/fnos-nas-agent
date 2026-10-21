@@ -154,9 +154,20 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     while (queue.length && scanned < MAX_SEARCH_VISITS && entries.length < limit) {
       const current = queue.shift();
       let currentPath;
-      try { currentPath = await fs.realpath(current.path); } catch { continue; }
+      try { currentPath = await fs.realpath(current.path); }
+      catch {
+        if (current.depth === 0)
+          throw Object.assign(new Error("Directory changed while searching; retry the operation"), { statusCode: 409 });
+        continue;
+      }
+      if (currentPath !== current.path)
+        throw Object.assign(new Error("Directory changed while searching; retry the operation"), { statusCode: 409 });
       const currentRoot = roots.find(candidate => within(candidate, currentPath));
-      if (!currentRoot) continue;
+      if (!currentRoot) {
+        if (current.depth === 0)
+          throw Object.assign(new Error("Directory changed while searching; retry the operation"), { statusCode: 409 });
+        continue;
+      }
       let currentInfo;
       try { currentInfo = await fs.lstat(currentPath); } catch { continue; }
       if (!currentInfo.isDirectory() || currentInfo.isSymbolicLink()) continue;
