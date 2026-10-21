@@ -51,6 +51,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 6 safe Skill ZIP import](docs/phase-6-skill-archive-import.md)\n- [Phase 7 read-only tool registry](docs/phase-7-read-only-tool-registry.md)
 - [Phase 8 Agent core and model routing](docs/phase-8-agent-core-model-routing.md)
 - [Phase 9 operations task engine](docs/phase-9-operations-task-engine.md)
+- [Phase 10 permission policy foundation](docs/phase-10-permission-policy-foundation.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
 
