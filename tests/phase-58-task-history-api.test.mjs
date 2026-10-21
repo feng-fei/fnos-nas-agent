@@ -12,3 +12,10 @@ test("task history API validates status and pagination and returns bounded query
   assert.match(server, /taskManager\.query\(/);
   assert.match(server, /offset: Math\.trunc\(requestedOffset\), status/);
 });
+
+test("task history API validates bounded metadata search and passes it to the task manager", () => {
+  assert.ok(server.includes('const search = url.searchParams.get("q") || undefined'));
+  assert.ok(server.includes("search.length > 100"));
+  assert.ok(server.includes("Invalid task search query"));
+  assert.ok(server.includes("offset: Math.trunc(requestedOffset), status, search"));
+});

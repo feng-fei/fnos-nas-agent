@@ -108,6 +108,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 
 - [Phase 94 — Model Catalog HTTP Integration](docs/phase-94-model-catalog-http.md)
 - [Phase 95 — Searchable Model Catalog Picker](docs/phase-95-model-catalog-search.md)
+- [Phase 96 — Task History Search](docs/phase-96-task-history-search.md)
 
 ### Foundations
 - [Architecture](docs/architecture.md)

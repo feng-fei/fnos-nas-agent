@@ -184,13 +184,18 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
         .sort((a,b) => b.createdAt.localeCompare(a.createdAt))
         .slice(skipped, skipped + bounded).map(publicTask);
     },
-    query({ limit = 20, offset = 0, status } = {}) {
+    query({ limit = 20, offset = 0, status, search } = {}) {
       const bounded = Number.isInteger(limit) ? Math.min(50, Math.max(1, limit)) : 20;
       const skipped = Number.isInteger(offset) ? Math.min(10000, Math.max(0, offset)) : 0;
-      const filtered = [...tasks.values()].filter(task => !status || task.status === status)
-        .sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+      const needle = typeof search === "string" ? search.trim().slice(0, 100).toLocaleLowerCase() : "";
+      const filtered = [...tasks.values()].filter(task => {
+        if (status && task.status !== status) return false;
+        if (!needle) return true;
+        return [task.taskId, task.status, task.stage, task.error, task.createdAt, task.completedAt]
+          .some(value => typeof value === "string" && value.toLocaleLowerCase().includes(needle));
+      }).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
       return { total: filtered.length, limit: bounded, offset: skipped, status: status || null,
-        tasks: filtered.slice(skipped, skipped + bounded).map(publicTask) };
+        search: needle || null, tasks: filtered.slice(skipped, skipped + bounded).map(publicTask) };
     },
     async clearTerminal() {
       await ready;

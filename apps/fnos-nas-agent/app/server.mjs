@@ -706,13 +706,16 @@ const server = createServer(async (req, res) => {
       const requested = Number(url.searchParams.get("limit") || 20);
       const requestedOffset = Number(url.searchParams.get("offset") || 0);
       const status = url.searchParams.get("status") || undefined;
+      const search = url.searchParams.get("q") || undefined;
       const allowedStatuses = new Set(["queued", "running", "completed", "failed", "cancelled"]);
       if (status && !allowedStatuses.has(status)) return reply(res, 400, { error: "Invalid task status filter" });
+      if (search && (search.length > 100 || /[\x00-\x1f\x7f]/.test(search)))
+        return reply(res, 400, { error: "Invalid task search query" });
       if (!Number.isFinite(requested) || !Number.isFinite(requestedOffset) || requestedOffset < 0 || requestedOffset > 10000)
         return reply(res, 400, { error: "Invalid task pagination" });
       return reply(res, 200, taskManager.query({
         limit: Math.min(50, Math.max(1, Math.trunc(requested))),
-        offset: Math.trunc(requestedOffset), status
+        offset: Math.trunc(requestedOffset), status, search
       }));
     }
     const cancelMatch = url.pathname.match(/^\/api\/tasks\/([a-f0-9-]{8,64})\/cancel$/i);
