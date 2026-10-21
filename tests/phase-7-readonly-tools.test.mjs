@@ -8,13 +8,14 @@ const snapshot = {
   cpu: { logicalCores: 4, loadAverage: [0.1, 0.2, 0.3] },
   memory: { totalBytes: 1000, freeBytes: 400, usedBytes: 600 },
   storage: [{ label: "root", available: true, totalBytes: 5000, freeBytes: 2000, usedBytes: 3000 }],
-  network: [{ name: "eth0", addresses: [{ address: "192.0.2.1", family: "IPv4", cidr: "192.0.2.1/24" }] }]
+  network: [{ name: "eth0", addresses: [{ address: "192.0.2.1", family: "IPv4", cidr: "192.0.2.1/24" }] }],
+  processes: { available: true, count: 42 }
 };
 
 test("registry exposes only explicit read-only tools with closed input schemas", () => {
   const registry = createReadOnlyToolRegistry({ getDiagnostics: async () => snapshot });
   const tools = registry.list();
-  assert.deepEqual(tools.map(tool => tool.id), ["system.status", "storage.summary", "network.interfaces"]);
+  assert.deepEqual(tools.map(tool => tool.id), ["system.status", "storage.summary", "network.interfaces", "system.process-summary"]);
   assert.ok(tools.every(tool => tool.risk === "read-only"));
   assert.ok(tools.every(tool => tool.inputSchema.additionalProperties === false));
 });
@@ -29,6 +30,9 @@ test("each tool returns only its scoped diagnostic data", async () => {
   });
   assert.deepEqual(await registry.invoke("network.interfaces", {}), {
     collectedAt: snapshot.collectedAt, network: snapshot.network
+  });
+  assert.deepEqual(await registry.invoke("system.process-summary", {}), {
+    collectedAt: snapshot.collectedAt, processes: snapshot.processes
   });
 });
 
