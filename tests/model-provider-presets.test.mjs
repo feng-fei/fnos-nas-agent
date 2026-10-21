@@ -19,6 +19,9 @@ test("model provider presets contain verified OpenAI-compatible HTTPS Chat Compl
     assert.equal(Object.hasOwn(preset, "apiKey"), false);
     assert.equal(Object.hasOwn(preset, "model"), false);
   }
+  assert.equal(byId.moonshot.endpoint, "https://api.moonshot.cn/v1/chat/completions");
+  assert.equal(byId.zhipu.endpoint, "https://open.bigmodel.cn/api/paas/v4/chat/completions");
+  assert.equal(byId.openrouter.endpoint, "https://openrouter.ai/api/v1/chat/completions");
   assert.equal(byId.custom.endpoint, "");
   assert.ok(byId.openai.docsUrl.startsWith("https://"));
 });
