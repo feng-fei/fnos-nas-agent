@@ -43,6 +43,7 @@ export function inspectZipArchive(buffer) {
   const commentLength = buffer.readUInt16LE(eocd + 20);
   if (disk !== 0 || centralDisk !== 0 || entriesOnDisk !== entryCount) invalid("Multi-disk ZIP archives are not supported");
   if (entryCount === 0xffff || centralSize === 0xffffffff || centralOffset === 0xffffffff) invalid("ZIP64 archives are not supported");
+  if (entryCount === 0) invalid("ZIP archive contains no entries");
   if (entryCount > MAX_ARCHIVE_ENTRIES) invalid("ZIP archive has too many entries");
   if (centralSize > MAX_CENTRAL_DIRECTORY_BYTES) invalid("ZIP central directory exceeds limit");
   if (eocd + 22 + commentLength !== buffer.length) invalid("ZIP archive has trailing or malformed data");
