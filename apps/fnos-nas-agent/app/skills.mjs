@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { saveQuarantinedArchive } from "./skill-archives.mjs";
+import { inspectSkillManifest } from "./skill-manifest.mjs";
 import { mkdir, readFile, writeFile, rename, chmod } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -14,6 +15,20 @@ const TRANSITIONS = {
 const MAX_RECORDS = 500;
 const MAX_NAME = 100;
 const MAX_NOTE = 500;
+
+function normalizeManifestReview(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const statuses = new Set(["needs_review", "manifest_parsed"]);
+  return {
+    status: statuses.has(value.status) ? value.status : "needs_review",
+    manifestFound: value.manifestFound === true,
+    entryPath: typeof value.entryPath === "string" ? value.entryPath.slice(0, 1024) : null,
+    name: typeof value.name === "string" ? value.name.slice(0, 100) : null,
+    description: typeof value.description === "string" ? value.description.slice(0, 1000) : null,
+    findings: Array.isArray(value.findings) ? value.findings.filter(x => typeof x === "string").slice(0, 20).map(x => x.slice(0, 100)) : [],
+    archiveEntryCount: Number.isSafeInteger(value.archiveEntryCount) ? value.archiveEntryCount : null
+  };
+}
 
 export function createSkillStore(dataDir) {
   const file = join(dataDir, "skills.json");
@@ -49,6 +64,7 @@ export function createSkillStore(dataDir) {
         archiveEntryCount: Number.isSafeInteger(item.archiveEntryCount) ? item.archiveEntryCount : null,
         declaredUncompressedBytes: Number.isSafeInteger(item.declaredUncompressedBytes) ? item.declaredUncompressedBytes : null,
         declaredCapabilities: Array.isArray(item.declaredCapabilities) ? item.declaredCapabilities.slice(0, 20) : [],
+        manifestReview: normalizeManifestReview(item.manifestReview),
         reviewNote: typeof item.reviewNote === "string" ? item.reviewNote.slice(0, MAX_NOTE) : "",
         reviewedAt: item.reviewedAt || null
       }));
