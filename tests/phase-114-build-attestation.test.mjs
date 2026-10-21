@@ -18,8 +18,8 @@ test("FPK provenance attestation is limited to verified main-branch builds", asy
   assert.match(attestJob, /subject-path: artifact\/fnos-nas-agent-test-node-26\.fpk/);
 
   for (const permission of ["id-token: write", "attestations: write", "artifact-metadata: write"]) {
-    assert.match(attestJob, new RegExp(permission.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.doesNotMatch(buildJob, new RegExp(permission.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.ok(attestJob.includes(permission), "attestation job must declare " + permission);
+    assert.ok(!buildJob.includes(permission), "build job must not declare " + permission);
   }
 
   const verificationIndex = attestJob.indexOf("Verify artifact bundle before attestation");
