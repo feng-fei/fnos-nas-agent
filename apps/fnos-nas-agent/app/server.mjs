@@ -615,7 +615,12 @@ const server = createServer(async (req, res) => {
     }
     return reply(res, 404, { error: "Not found" });
   } catch (error) {
-    return reply(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Internal server error" });
+    const body = { error: error.statusCode ? error.message : "Internal server error" };
+    if (typeof error.errorCategory === "string") body.errorCategory = error.errorCategory;
+    if (typeof error.connectionStatus === "string") body.connectionStatus = error.connectionStatus;
+    if (typeof error.nextAction === "string") body.nextAction = error.nextAction;
+    if (typeof error.code === "string" && /^TRIM_CLI_[A-Z0-9_]{1,64}$/.test(error.code)) body.code = error.code;
+    return reply(res, error.statusCode || 500, body);
   }
 });
 await loadPassword();
