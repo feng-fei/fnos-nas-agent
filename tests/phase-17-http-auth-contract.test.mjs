@@ -84,7 +84,7 @@ test("HTTP auth contract: setup, session, origin checks and logout", async t => 
   assert.equal(agentStatusPayload.trimCli.configured, false);
   assert.match(agentStatusPayload.trimCli.reason, /TRIM_CLI_PATH is not configured/);
 
-  const missingSkillInstall = await request("/api/skills/${"a".repeat(24)}/install-cli", {
+  const missingSkillInstall = await request("/api/skills/aaaaaaaaaaaaaaaaaaaaaaaa/install-cli", {
     method: "POST", headers: { cookie }
   });
   assert.equal(missingSkillInstall.status, 404, "CLI install endpoint must match the route and require an existing reviewed Skill");
