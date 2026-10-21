@@ -410,6 +410,36 @@ const server = createServer(async (req, res) => {
       const skill = await skillStore.importArchive({ name, version, sourceLabel }, archiveBuffer);
       return reply(res, 201, { skill, note: "Archive stored in quarantine; no extraction or execution occurred." });
     }
+    if (url.pathname === "/api/skills/transitions/batch") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      if (!skillStore) return reply(res, 503, { error: "App data directory is not configured" });
+      let body;
+      try { body = await jsonBody(req); } catch (error) { return reply(res, 400, { error: "Invalid JSON body" }); }
+      if (!body || !Array.isArray(body.items) || body.items.length < 1 || body.items.length > 20)
+        return reply(res, 400, { error: "items must contain 1 to 20 Skill transitions" });
+      if (body.items.some(item => !item || typeof item !== "object" || Array.isArray(item) ||
+          typeof item.id !== "string" || !/^[a-f0-9]{24}$/.test(item.id) ||
+          typeof item.state !== "string" || (item.note !== undefined && typeof item.note !== "string")))
+        return reply(res, 400, { error: "Each transition requires a valid Skill ID and target state" });
+      if (new Set(body.items.map(item => item.id)).size !== body.items.length)
+        return reply(res, 400, { error: "Duplicate Skill IDs are not allowed" });
+      const results = [];
+      for (const item of body.items) {
+        try {
+          const skill = await skillStore.transition(item.id, { state: item.state, note: item.note });
+          results.push({ id: item.id, ok: true, state: skill.state });
+        } catch (error) {
+          const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+          results.push({ id: item.id, ok: false, statusCode: status, error: status === 500 ? "Unable to update Skill state" : error.message });
+        }
+      }
+      return reply(res, 200, { total: results.length, succeeded: results.filter(item => item.ok).length,
+        failed: results.filter(item => !item.ok).length, results });
+    }
     const transitionMatch = url.pathname.match(/^\/api\/skills\/([a-f0-9]{24})\/transition$/);
     if (transitionMatch) {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
