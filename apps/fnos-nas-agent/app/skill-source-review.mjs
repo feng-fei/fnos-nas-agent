@@ -3,7 +3,8 @@ import { extractZipEntry, inspectZipArchive } from "./skill-archives.mjs";
 const MAX_SOURCE_FILES = 32;
 const MAX_SOURCE_FILE_BYTES = 64 * 1024;
 const MAX_SOURCE_TOTAL_BYTES = 512 * 1024;
-const TEXT_SOURCE = /\.(?:sh|bash|zsh|fish|py|pyw|js|mjs|cjs|ts|tsx|jsx|ps1|bat|cmd|rb|php|pl|lua|go|rs|service|yaml|yml|json|toml)$/i;
+const TEXT_SOURCE = /\.(?:sh|bash|zsh|fish|py|pyw|js|mjs|cjs|ts|tsx|jsx|ps1|bat|cmd|rb|php|pl|lua|go|rs|service|yaml|yml|json|toml|conf|ini|cfg|properties|xml|sql|pem|key|crt)$/i;
+const SECRET_CONFIG = /(?:^|\/)(?:\.env(?:\.[a-z0-9_-]+)?|\.npmrc|\.pypirc)$/i;
 
 const RULES = [
   ["shell-execution-api", /\b(?:child_process|execFileSync|execSync|spawnSync|subprocess|Popen)\b|\bos\.system\s*\(|\bexec\s*\(/i],
@@ -11,7 +12,12 @@ const RULES = [
   ["download-piped-to-shell", /\b(?:curl|wget)\b[^\n]{0,180}\|\s*(?:sh|bash|zsh)\b/i],
   ["privilege-escalation-command", /\b(?:sudo|doas|pkexec)\b/i],
   ["destructive-system-command", /\brm\s+-rf\b|\bmkfs(?:\.\w+)?\b|\bdd\s+if=|\bchmod\s+777\b|\bchown\s+-R\b|Remove-Item[^\n]{0,120}-Recurse/i],
-  ["credential-or-private-key-path", /\/etc\/shadow|~\/\.ssh(?:\/|\b)|\.aws\/credentials|\.docker\/config\.json|cookies\.sqlite|(?:^|[\\/])Login Data(?:$|[\\/])/i]
+  ["credential-or-private-key-path", /\/etc\/shadow|~\/\.ssh(?:\/|\b)|\.aws\/credentials|\.docker\/config\.json|cookies\.sqlite|(?:^|[\\/])Login Data(?:$|[\\/])/i],
+  ["private-key-material", /-----BEGIN (?:(?:RSA|EC|OPENSSH|DSA|ENCRYPTED) )?PRIVATE KEY-----/i],
+  ["cloud-access-key-id", /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
+  ["github-token-pattern", /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/],
+  ["hardcoded-secret-assignment", /\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|passwd|secret|authorization)\b\s*[:=]\s*["']?[A-Za-z0-9/+_.=-]{24,}/i],
+  ["package-registry-token", /(?:_authToken|_password)\s*=\s*[A-Za-z0-9_+/=-]{20,}/i]
 ];
 
 /**
@@ -22,7 +28,7 @@ const RULES = [
 export function inspectSkillSource(buffer, validatedArchive = null) {
   const archive = validatedArchive || inspectZipArchive(buffer);
   const candidates = archive.entries.filter(entry =>
-    !entry.name.endsWith("/") && TEXT_SOURCE.test(entry.name)
+    !entry.name.endsWith("/") && (TEXT_SOURCE.test(entry.name) || SECRET_CONFIG.test(entry.name))
   );
   const findings = [];
   const addFinding = finding => {
