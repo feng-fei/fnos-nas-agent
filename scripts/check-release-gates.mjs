@@ -6,7 +6,7 @@ import { createPermissionPolicy } from "../apps/fnos-nas-agent/app/permission-po
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = path => readFile(join(root, path), "utf8");
-const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme] = await Promise.all([
+const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs] = await Promise.all([
   read("package.json"),
   read(".github/workflows/build-fpk.yml"),
   read("apps/fnos-nas-agent/app/server.mjs"),
@@ -17,7 +17,10 @@ const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, audit
   read("apps/fnos-nas-agent/app/task-manager.mjs"),
   read("apps/fnos-nas-agent/app/audit-log.mjs"),
   read("tests/phase-21-task-persistence.test.mjs"),
-  read("README.md")
+  read("README.md"),
+  read("scripts/create-release-manifest.mjs"),
+  read("tests/phase-25-release-manifest.test.mjs"),
+  read("docs/phase-25-release-manifest-and-provenance.md")
 ].map(async promise => promise));
 const packageJson = JSON.parse(pkg);
 
@@ -27,6 +30,16 @@ assert.match(workflow, /node-version:\s*\["24\.x",\s*"26\.x"\]/);
 assert.match(workflow, /Build FPK/);
 assert.match(workflow, /Inspect package and checksum/);
 assert.match(workflow, /phase-24-\*/);
+assert.match(workflow, /phase-25-\*/);
+assert.match(workflow, /create-release-manifest\.mjs/);
+assert.match(workflow, /dist\/release-manifest\.json/);
+assert.match(workflow, /dist\/release-manifest\.json/);
+assert.match(releaseManifestScript, /createHash\("sha256"\)/);
+assert.match(releaseManifestScript, /GITHUB_SHA/);
+assert.match(releaseManifestScript, /signature: "not-provided"/);
+assert.match(releaseManifestTests, /records artifact checksum/);
+assert.match(releaseManifestTests, /refuses to overwrite/);
+assert.match(releaseManifestDocs, /not a cryptographic signature/);
 assert.doesNotMatch(readme, /\\\\n- \[Phase 21/);
 assert.match(readme, /\[Phase 21 task persistence and crash recovery\]\(docs\/phase-21-task-persistence-recovery\.md\)/);
 assert.match(readme, /\[Phase 22 release-candidate acceptance\]\(docs\/phase-22-release-candidate-acceptance\.md\)/);
