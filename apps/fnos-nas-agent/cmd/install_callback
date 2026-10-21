@@ -1,0 +1,15 @@
+#!/bin/bash
+set -eu
+
+APP_VAR="${TRIM_PKGVAR:-}"
+APP_LOG="${TRIM_TEMP_LOGFILE:-/tmp/fnos-nas-agent-install.log}"
+
+if [ -z "$APP_VAR" ]; then
+  printf '%s\n' "TRIM_PKGVAR 未设置，无法初始化应用数据目录。" > "$APP_LOG"
+  exit 1
+fi
+
+mkdir -p "$APP_VAR"
+chmod 700 "$APP_VAR"
+# No network access, system package installation, NAS inspection, or secret creation here.
+exit 0
