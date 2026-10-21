@@ -138,7 +138,46 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
    return {name:target.name,path:target.target,sizeBytes:buffer.length};
   } finally { await parent.handle.close(); }
  }
- async function operate(input){if(!input||typeof input!=="object"||Array.isArray(input))fail(400,"Invalid operation");const action=input.action;if(action==="mkdir"){const d=await destination(input.path,input.name);await ensureAbsent(d.target);await fs.mkdir(d.target,{mode:0o750});return {action,name:d.name,path:d.target};}if(action==="rename"||action==="move"){const source=await resolveExisting(input.path);if(source.path===source.root)fail(403,"Cannot rename or move a storage root");const dir=action==="move"?input.destination:dirname(source.path),d=await destination(dir,action==="move"?basename(source.path):input.name);if(d.target===source.path)return {action,path:source.path,unchanged:true};await ensureAbsent(d.target);await fs.rename(source.path,d.target);return {action,path:d.target,name:basename(d.target)};}if(action==="delete"){if(input.confirm!==true)fail(400,"Explicit confirmation is required");const source=await resolveExisting(input.path);if(source.path===source.root)fail(403,"Cannot delete a storage root");if(source.info.isDirectory())await fs.rmdir(source.path);else if(source.info.isFile())await fs.unlink(source.path);else fail(400,"Unsupported file type");return {action,path:source.path,deleted:true};}fail(400,"Unsupported file operation");}
+ async function operate(input){
+  if(!input||typeof input!=="object"||Array.isArray(input))fail(400,"Invalid operation");
+  const action=input.action;
+  if(action==="mkdir"){
+   const d=await destination(input.path,input.name),parent=await openValidatedDirectory(d);
+   try { const targetPath=join(parent.path,d.name);await ensureAbsent(targetPath);await fs.mkdir(targetPath,{mode:0o750});return {action,name:d.name,path:d.target}; }
+   finally { await parent.handle.close(); }
+  }
+  if(action==="rename"||action==="move"){
+   const source=await resolveExisting(input.path);
+   if(source.path===source.root)fail(403,"Cannot rename or move a storage root");
+   if(!source.info.isFile()&&!source.info.isDirectory())fail(400,"Unsupported file type");
+   const dir=action==="move"?input.destination:dirname(source.path),d=await destination(dir,action==="move"?basename(source.path):input.name);
+   if(d.target===source.path)return {action,path:source.path,unchanged:true};
+   const sourceParentItem=await resolveExisting(dirname(source.path),"directory"),sourceParent=await openValidatedDirectory(sourceParentItem);
+   let destinationParent;
+   try {
+    const sourcePath=await validatedChildPath(sourceParent,source);
+    destinationParent=await openValidatedDirectory(d);
+    const targetPath=join(destinationParent.path,d.name);
+    await ensureAbsent(targetPath);
+    await fs.rename(sourcePath,targetPath);
+    return {action,path:d.target,name:basename(d.target)};
+   } finally { if(destinationParent)await destinationParent.handle.close().catch(()=>{});await sourceParent.handle.close(); }
+  }
+  if(action==="delete"){
+   if(input.confirm!==true)fail(400,"Explicit confirmation is required");
+   const source=await resolveExisting(input.path);
+   if(source.path===source.root)fail(403,"Cannot delete a storage root");
+   const sourceParentItem=await resolveExisting(dirname(source.path),"directory"),sourceParent=await openValidatedDirectory(sourceParentItem);
+   try {
+    const sourcePath=await validatedChildPath(sourceParent,source);
+    if(source.info.isDirectory())await fs.rmdir(sourcePath);
+    else if(source.info.isFile())await fs.unlink(sourcePath);
+    else fail(400,"Unsupported file type");
+    return {action,path:source.path,deleted:true};
+   } finally { await sourceParent.handle.close(); }
+  }
+  fail(400,"Unsupported file operation");
+ }
 
   async function operateBatch(input) {
     if (!input || typeof input !== "object" || Array.isArray(input) || !Array.isArray(input.operations))
