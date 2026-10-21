@@ -16,7 +16,7 @@ const RULES = [
   ["private-key-material", /-----BEGIN (?:(?:RSA|EC|OPENSSH|DSA|ENCRYPTED) )?PRIVATE KEY-----/i],
   ["cloud-access-key-id", /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
   ["github-token-pattern", /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/],
-  ["hardcoded-secret-assignment", /\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|passwd|secret|authorization)\b\s*[:=]\s*["']?[A-Za-z0-9/+_.=-]{24,}/i],
+  ["hardcoded-secret-assignment", /\b[A-Za-z0-9_-]*(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|passwd|secret|authorization)\b\s*[:=]\s*["']?[A-Za-z0-9/+_.=-]{24,}/i],
   ["package-registry-token", /(?:_authToken|_password)\s*=\s*[A-Za-z0-9_+/=-]{20,}/i]
 ];
 
