@@ -29,3 +29,15 @@ The current FPK serves plain HTTP. The setup token and login token are therefore
 - This is a single shared-token proof of concept, not per-user identity or role-based authorization.
 - In-memory rate limiting is best-effort and resets on restart.
 - Authentication is not a substitute for network isolation.
+
+
+## Remember this device (phase-3)
+
+The login page offers an optional “在此设备保持登录 30 天” checkbox:
+- Unchecked: the server-side session expires after 8 hours.
+- Checked: the server-side session expires after 30 days and survives Agent restarts.
+- The browser receives only a random session ID in an HttpOnly, SameSite=Strict cookie. The server stores a SHA-256 hash of that ID in `sessions.json`, not the raw cookie value.
+- The session store is atomically replaced and set to mode 0600 under the app data directory. Logout revokes the current server-side session.
+- These are expiry limits, not a full device-management UI: there is not yet a list of devices or remote revoke-all control. Restarting the service does not revoke remembered sessions; deleting the session store does.
+
+The current service uses HTTP and binds to the LAN, so a person able to observe traffic on the network may steal a session cookie. Use only on a trusted LAN; do not port-forward it. HTTPS and explicit device revocation should be completed before use outside a trusted LAN.
