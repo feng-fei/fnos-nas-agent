@@ -5,7 +5,7 @@ const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const ROUTES = new Set([
   "setup", "login", "logout", "diagnostics", "audit.list", "files.list", "files.manage", "skills.list", "skills.register",
   "skills.import", "skills.transition", "skills.remove", "agent.status", "agent.message",
-  "tasks.status", "tasks.list", "tasks.cancel", "tasks.get", "tools.list",
+  "tasks.status", "tasks.list", "tasks.cancel", "tasks.get", "actions.pending", "actions.confirm", "tools.list",
   "tools.run", "other_api"
 ]);
 
