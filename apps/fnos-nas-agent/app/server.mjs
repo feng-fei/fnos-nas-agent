@@ -281,7 +281,7 @@ const server = createServer(async (req, res) => {
       });
       return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
     }
-    const toolRunMatch = url.pathname.match(/^\\/api\\/tools\\/([a-z][a-z0-9.-]{0,63})\\/run$/);
+    const toolRunMatch = url.pathname.match(/^\/api\/tools\/([a-z][a-z0-9.-]{0,63})\/run$/);
     if (toolRunMatch) {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
