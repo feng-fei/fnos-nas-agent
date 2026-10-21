@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { saveQuarantinedArchive } from "./skill-archives.mjs";
 import { inspectSkillManifest } from "./skill-manifest.mjs";
-import { mkdir, readFile, writeFile, rename, chmod } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, chmod, unlink } from "node:fs/promises";
+import { resolve, sep } from "node:path";
 import { join } from "node:path";
 
 const STATES = new Set(["pending_review", "approved", "enabled", "disabled", "rejected"]);
@@ -126,6 +127,30 @@ export function createSkillStore(dataDir) {
     return { ...record, archiveEntries: archive.entries };
   }
 
+  async function remove(id) {
+    const index = records.findIndex(record => record.id === id);
+    if (index < 0) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
+    const item = records[index];
+    if (item.state !== "rejected") throw Object.assign(new Error("Only rejected Skills can be removed; reject it during review first"), { statusCode: 409 });
+    const archivePath = item.quarantineFile ? resolve(dataDir, item.quarantineFile) : "";
+    const quarantineRoot = resolve(dataDir, "skill-quarantine");
+    if (archivePath && !(archivePath.startsWith(quarantineRoot + sep) && archivePath.endsWith(".zip"))) {
+      throw Object.assign(new Error("Quarantined archive path is invalid"), { statusCode: 500 });
+    }
+    records.splice(index, 1);
+    try { await persist(); }
+    catch {
+      records.splice(index, 0, item);
+      throw Object.assign(new Error("Unable to save Skill inventory securely"), { statusCode: 500 });
+    }
+    if (archivePath && !records.some(record => record.archiveSha256 === item.archiveSha256)) {
+      try { await unlink(archivePath); }
+      catch (error) { if (error.code !== "ENOENT") return { removed: true, archiveRemoved: false, warning: "Metadata removed; quarantined archive cleanup failed." }; }
+      return { removed: true, archiveRemoved: true };
+    }
+    return { removed: true, archiveRemoved: false };
+  }
+
   async function transition(id, input) {
     const item = records.find(record => record.id === id);
     if (!item) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
@@ -143,7 +168,7 @@ export function createSkillStore(dataDir) {
     return { ...item, declaredCapabilities: [...item.declaredCapabilities] };
   }
 
-  return { load, list, register, importArchive, transition };
+  return { load, list, register, importArchive, transition, remove };
 }
 
 export const skillStates = [...STATES];
