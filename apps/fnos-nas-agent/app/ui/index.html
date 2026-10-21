@@ -27,7 +27,7 @@
 <button id="model-provider-refresh" type="button">刷新模型列表</button>
 <div id="model-provider-list"><p class="muted">登录后加载。</p></div>
 </section>
-<section class="card hidden" id="files-card"><h2>文件浏览</h2><p class="muted">支持浏览、文本预览、下载、上传、建文件夹、重命名、移动和删除。上传上限 25 MiB；删除需要确认。</p><div id="file-roots"></div><form id="file-form"><label for="file-path">当前目录</label><input id="file-path" maxlength="2048" placeholder="选择一个存储卷" autocomplete="off"><button type="submit">打开目录</button><button id="file-parent" type="button" disabled>上一级</button></form><div class="file-actions"><button id="file-mkdir" type="button">新建文件夹</button><label for="file-upload">上传文件（最大 25 MiB）</label><input id="file-upload" type="file"><button id="file-upload-button" type="button">上传所选文件</button></div><pre id="file-preview" class="hidden"></pre><p id="file-error" class="error" role="status"></p><div id="file-list"><p class="muted">登录后加载目录。</p></div></section>
+<section class="card hidden" id="files-card"><h2>文件浏览</h2><p class="muted">支持浏览、文本预览、下载、上传、建文件夹、重命名、移动和删除。上传上限 25 MiB；删除需要确认。</p><div id="file-roots"></div><form id="file-form"><label for="file-path">当前目录</label><input id="file-path" maxlength="2048" placeholder="选择一个存储卷" autocomplete="off"><button type="submit">打开目录</button><button id="file-parent" type="button" disabled>上一级</button></form><div class="file-actions"><button id="file-mkdir" type="button">新建文件夹</button><label for="file-upload">上传文件（最大 25 MiB）</label><input id="file-upload" type="file"><button id="file-upload-button" type="button">上传所选文件</button></div><div id="file-batch-actions"><p id="file-selection-count" class="muted">已选择 0 项</p><button id="file-batch-move" type="button" disabled>批量移动</button><button id="file-batch-delete" type="button" disabled>批量删除</button></div><pre id="file-batch-result" class="hidden"></pre><pre id="file-preview" class="hidden"></pre><p id="file-error" class="error" role="status"></p><div id="file-list"><p class="muted">登录后加载目录。</p></div></section>
 <section class="card hidden" id="tools-card"><h2>NAS 工具</h2><p class="muted">只读查询可直接执行；创建文件夹、重命名和移动属于常规文件操作。删除、系统配置变更和任意命令执行仍未开放。</p><div id="tool-list"><p class="muted">登录后加载工具清单…</p></div><pre id="tool-result">选择工具后显示结果。</pre></section>
 <section class="card hidden" id="agent-card"><h2>NAS 智能助手</h2><p class="muted" id="agent-status">规则优先；模型仅可请求已登记且参数校验通过的工具。</p><button id="trim-cli-test" type="button">检测官方 CLI 连接</button><p id="trim-cli-test-result" class="muted" role="status">尚未执行连接检测。CLI 可执行不代表 OAuth 已授权。</p>
 <p id="trim-cli-connection-detail" class="muted" role="status">完成授权后，这里会显示最近一次检测状态与恢复建议。</p>
@@ -384,18 +384,22 @@ document.querySelector("#agent-form").addEventListener("submit",async e=>{
  finally{send.disabled=false;send.textContent="发送";field.focus();}
 });
 let currentFilePath="";
+let selectedFileItems=new Map();
+let selectionDirectory="";
+function refreshBatchSelectionControls(){const count=selectedFileItems.size;document.querySelector("#file-selection-count").textContent="已选择 "+count+" 项";document.querySelector("#file-batch-move").disabled=count===0;document.querySelector("#file-batch-delete").disabled=count===0;}
 async function refreshFiles(pathValue=currentFilePath){
  const host=document.querySelector("#file-list"),roots=document.querySelector("#file-roots"),err=document.querySelector("#file-error"),parent=document.querySelector("#file-parent"),field=document.querySelector("#file-path");
  err.textContent="";host.replaceChildren();roots.replaceChildren();
  try{
   const query=pathValue?"?path="+encodeURIComponent(pathValue):"";
   const r=await api("/api/files"+query),data=await r.json();if(!r.ok)throw Error(data.error||"目录读取失败");
-  currentFilePath=data.path||"";field.value=currentFilePath;parent.disabled=!data.parentPath;
+  currentFilePath=data.path||"";if(selectionDirectory!==currentFilePath){selectedFileItems.clear();selectionDirectory=currentFilePath;}refreshBatchSelectionControls();field.value=currentFilePath;parent.disabled=!data.parentPath;
   parent.onclick=()=>{if(data.parentPath)refreshFiles(data.parentPath);};
   for(const root of data.roots||[]){const btn=document.createElement("button");btn.type="button";btn.textContent=root.name;btn.addEventListener("click",()=>refreshFiles(root.path));roots.append(btn);}
   if(!data.entries.length){const p=document.createElement("p");p.className="muted";p.textContent=data.roots?.length?"此目录为空。":"未发现存储卷。请检查 fnOS 卷路径，或通过 AGENT_FILE_ROOTS 配置允许的绝对路径。";host.append(p);}
   for(const item of data.entries){
    const row=document.createElement("div");row.className="card";
+   const selectLabel=document.createElement("label");const selectBox=document.createElement("input");selectBox.type="checkbox";selectBox.style.width="auto";selectBox.style.marginRight="8px";selectBox.checked=selectedFileItems.has(item.path);selectBox.setAttribute("aria-label","选择 "+item.name);selectBox.addEventListener("change",()=>{if(selectBox.checked)selectedFileItems.set(item.path,item);else selectedFileItems.delete(item.path);refreshBatchSelectionControls();});selectLabel.append(selectBox,document.createTextNode("选择此项"));row.append(selectLabel);
    if(item.type==="directory"){const btn=document.createElement("button");btn.type="button";btn.textContent="📁 "+item.name;btn.addEventListener("click",()=>refreshFiles(item.path));row.append(btn);}
    else{const name=document.createElement("strong");name.textContent="📄 "+item.name;row.append(name);}
    const meta=document.createElement("p");meta.className="muted";meta.textContent=(item.type==="directory"?"文件夹":"文件")+" · "+(item.sizeBytes===null?"—":(item.sizeBytes/1024).toFixed(1)+" KiB")+" · "+item.modifiedAt;row.append(meta);
@@ -414,6 +418,33 @@ async function refreshFiles(pathValue=currentFilePath){
  }catch(e){err.textContent=e.message||"目录读取失败";host.textContent="无法读取此目录。";}
 }
 document.querySelector("#file-form").addEventListener("submit",e=>{e.preventDefault();refreshFiles(document.querySelector("#file-path").value.trim());});
+async function runBatchFileOperations(action){
+ const err=document.querySelector("#file-error"),out=document.querySelector("#file-batch-result");
+ const selected=[...selectedFileItems.values()];
+ if(!selected.length)return;
+ let operations;
+ if(action==="delete"){
+  if(!confirm("确定删除选中的 "+selected.length+" 项？文件夹仅能删除空目录。每一项都会独立执行，失败项会保留在选择中。"))return;
+  operations=selected.map(item=>({action:"delete",path:item.path,confirm:true}));
+ }else{
+  const destination=prompt("输入目标文件夹的完整路径",currentFilePath);
+  if(!destination)return;
+  operations=selected.map(item=>({action:"move",path:item.path,destination}));
+ }
+ err.textContent="";
+ const move=document.querySelector("#file-batch-move"),del=document.querySelector("#file-batch-delete");
+ move.disabled=true;del.disabled=true;
+ try{
+  const r=await api("/api/files/operations/batch",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({operations})});
+  const data=await r.json();if(!r.ok)throw Error(data.error||"批量操作失败");
+  const lines=data.results.map((result,index)=>{if(result.ok)selectedFileItems.delete(selected[index].path);return selected[index].name+"："+(result.ok?"成功":result.error||"失败");});
+  out.classList.remove("hidden");out.textContent="批量操作完成：成功 "+data.succeeded+" 项，失败 "+data.failed+" 项。\\n"+lines.join("\\n");
+  await refreshFiles(currentFilePath);
+ }catch(e){err.textContent=e.message||"批量操作失败";}
+ finally{refreshBatchSelectionControls();}
+}
+document.querySelector("#file-batch-move").addEventListener("click",()=>runBatchFileOperations("move"));
+document.querySelector("#file-batch-delete").addEventListener("click",()=>runBatchFileOperations("delete"));
 async function runFileOperation(payload){const err=document.querySelector("#file-error");err.textContent="";try{const r=await api("/api/files/operation",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const data=await r.json();if(!r.ok)throw Error(data.error||"文件操作失败");document.querySelector("#file-preview").classList.add("hidden");await refreshFiles(currentFilePath);return data;}catch(e){err.textContent=e.message||"文件操作失败";throw e;}}
 document.querySelector("#file-mkdir").addEventListener("click",async()=>{const name=prompt("新文件夹名称");if(name)try{await runFileOperation({action:"mkdir",path:currentFilePath,name});}catch{}});
 document.querySelector("#file-upload-button").addEventListener("click",async()=>{const field=document.querySelector("#file-upload"),file=field.files[0],err=document.querySelector("#file-error");err.textContent="";if(!file){err.textContent="请先选择文件";return;}if(file.size>25*1024*1024){err.textContent="文件不能超过 25 MiB";return;}try{const u="/api/files/upload?path="+encodeURIComponent(currentFilePath)+"&name="+encodeURIComponent(file.name);const r=await api(u,{method:"POST",headers:{"content-type":"application/octet-stream"},body:file});const data=await r.json();if(!r.ok)throw Error(data.error||"上传失败");field.value="";await refreshFiles(currentFilePath);alert("上传完成："+data.name);}catch(e){err.textContent=e.message||"上传失败";}});
