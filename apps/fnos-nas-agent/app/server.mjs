@@ -164,13 +164,7 @@ const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagn
 const modelAdapter = createModelAdapter();
 const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter });
 const taskManager = createTaskManager({ execute: input => agentCore.run(input), concurrency: 2, historyLimit: 50, queueLimit: 20 });
-function limited(req) {
-  const key = req.socket.remoteAddress || "unknown", now = Date.now();
-  let item = attempts.get(key);
-  if (!item || now - item.start > 60_000) { item = { start: now, count: 0 }; attempts.set(key, item); }
-  item.count++;
-  return item.count > 10;
-}
+function limited(req) { return !authLimiter.allow(req.socket.remoteAddress || "unknown"); }
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", "http://localhost");
@@ -213,6 +207,9 @@ const server = createServer(async (req, res) => {
       if (!passwordValid(body.password)) return reply(res, 401, { error: "Invalid password" });
       const remember = body.remember === true;
       const ttl = remember ? REMEMBER_TTL : SESSION_TTL;
+      const now = Date.now();
+      for (const [key, session] of sessions) if (session.expiresAt <= now) sessions.delete(key);
+      if (sessions.size >= MAX_SESSIONS) return reply(res, 503, { error: "Session capacity is full; try again later." });
       const id = randomBytes(32).toString("base64url");
       const key = sessionKey(id);
       sessions.set(key, { createdAt: Date.now(), expiresAt: Date.now() + ttl });
@@ -221,7 +218,7 @@ const server = createServer(async (req, res) => {
         sessions.delete(key);
         return reply(res, 500, { error: "Unable to persist session securely" });
       }
-      attempts.delete(req.socket.remoteAddress || "unknown");
+      authLimiter.reset(req.socket.remoteAddress || "unknown");
       return reply(res, 200, { authenticated: true, remembered: remember }, "application/json; charset=utf-8", {
         "set-cookie": `nas_agent_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(ttl / 1000)}${req.socket.encrypted ? "; Secure" : ""}`
       });
