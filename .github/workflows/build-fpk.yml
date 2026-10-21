@@ -10,6 +10,7 @@ on:
       - "phase-6/**"
       - "phase-7/**"
       - "phase-8/**"
+      - "phase-9/**"
       - "fix/**"
       - "test/**"
     paths:
@@ -89,6 +90,7 @@ jobs:
           node --check "$app/app/read-only-tools.mjs"
           node --check "$app/app/model-adapter.mjs"
           node --check "$app/app/agent-core.mjs"
+          node --check "$app/app/task-manager.mjs"
 
       - name: Prepare app payload and icons
         if: matrix.node-version == '26.x'
