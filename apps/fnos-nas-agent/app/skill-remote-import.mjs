@@ -194,6 +194,7 @@ export async function fetchGitHubSkillArchive(value, {
     current = validateGitHubArchiveUrl(value);
     sourceUrl = current.url;
     if (current.refType === "commit") {
+      refType = "commit";
       commitSha = current.ref;
     } else {
       branch = current.ref;
