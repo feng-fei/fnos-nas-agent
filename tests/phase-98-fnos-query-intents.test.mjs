@@ -47,7 +47,6 @@ test("common fnOS directory and capability queries use exact validated arguments
 
 test("invalid volume identifiers fail tool schema validation without invoking a CLI tool", async () => {
   const f = fixture();
-  const result = await f.agent.run({ text: "查看存储卷容量 99999" });
-  assert.equal(result.status, "failed");
+  await assert.rejects(f.agent.run({ text: "查看存储卷容量 99999" }), { statusCode: 400 });
   assert.deepEqual(f.calls, []);
 });
