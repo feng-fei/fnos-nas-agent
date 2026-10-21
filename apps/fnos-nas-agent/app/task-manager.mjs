@@ -4,6 +4,56 @@ import { dirname, join } from "node:path";
 
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 const INTERRUPTED_ERROR = "服务重启导致任务中断；为避免重复执行，该任务未自动重试。";
+const MAX_RESULT_BYTES = 16 * 1024;
+function boundedTaskResult(value) {
+  const state = { remaining: MAX_RESULT_BYTES - 2048, nodes: 0, truncated: false };
+  function project(item, depth = 0) {
+    if (state.remaining <= 0 || state.nodes >= 250 || depth > 6) {
+      state.truncated = true;
+      return "[结果已截断]";
+    }
+    state.nodes++;
+    if (item === null || typeof item === "boolean" || typeof item === "number") return item;
+    if (typeof item === "string") {
+      const max = Math.max(0, Math.min(item.length, state.remaining));
+      let result = item.slice(0, max);
+      while (result && Buffer.byteLength(result, "utf8") > state.remaining) result = result.slice(0, -1);
+      state.remaining -= Buffer.byteLength(result, "utf8");
+      if (result.length < item.length) state.truncated = true;
+      return result;
+    }
+    if (Array.isArray(item)) {
+      const result = item.slice(0, 40).map(child => project(child, depth + 1));
+      if (item.length > result.length) state.truncated = true;
+      return result;
+    }
+    if (typeof item === "object") {
+      const result = {};
+      const entries = Object.entries(item);
+      const priority = ["message", "status", "mode", "tool", "results", "result"];
+      entries.sort((a, b) => {
+        const ai = priority.indexOf(a[0]), bi = priority.indexOf(b[0]);
+        return (ai < 0 ? priority.length : ai) - (bi < 0 ? priority.length : bi);
+      });
+      for (const [key, child] of entries.slice(0, 40)) {
+        if (state.remaining <= 0 || state.nodes >= 250) { state.truncated = true; break; }
+        const safeKey = key.slice(0, 80);
+        state.remaining = Math.max(0, state.remaining - Buffer.byteLength(safeKey, "utf8"));
+        result[safeKey] = project(child, depth + 1);
+      }
+      if (entries.length > 40) state.truncated = true;
+      return result;
+    }
+    return String(item).slice(0, 100);
+  }
+  let bounded;
+  try { bounded = project(value); }
+  catch { return { truncated: true, message: "任务结果无法安全显示。" }; }
+  if (!state.truncated) return bounded;
+  if (bounded && typeof bounded === "object" && !Array.isArray(bounded)) bounded.truncated = true;
+  else bounded = { truncated: true, result: bounded };
+  return bounded;
+}
 
 export function createTaskManager({ execute, now = () => new Date().toISOString(), id = randomUUID, concurrency = 2, historyLimit = 50, queueLimit = 20, storageFile = "" } = {}) {
   if (typeof execute !== "function") throw new TypeError("execute must be a function");
@@ -91,7 +141,7 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
           return true;
         }
       }))).then(
-        result => { task.status = "completed"; task.progress = 100; task.stage = "已完成"; task.result = result; },
+        result => { task.status = "completed"; task.progress = 100; task.stage = "已完成"; task.result = boundedTaskResult(result); },
         error => { task.status = "failed"; task.stage = "执行失败"; task.error = error?.statusCode === 400 ? "请求参数无效。" : "任务执行失败；未执行任意系统命令。"; }
       ).finally(() => { task.completedAt = now(); active--; prune(); void persist().catch(() => {}); pump(); });
     }
