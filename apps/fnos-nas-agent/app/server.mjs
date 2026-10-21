@@ -23,6 +23,7 @@ import { createTrimCliAdapter } from "./trim-cli-adapter.mjs";
 import { createTrimCliLoginCommand, validateTrimCliLoginInput } from "./trim-cli-setup.mjs";
 import { createSkillInstaller } from "./skill-installer.mjs";
 import { fetchGitHubSkillArchive } from "./skill-remote-import.mjs";
+import { importGitHubSkillBatch } from "./skill-remote-import-batch.mjs";
 import { createActionApprovalService } from "./action-approval-service.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -212,7 +213,7 @@ function auditRoute(pathname, method) {
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
   if (/^\/api\/skills\/[a-f0-9]{24}$/.test(pathname)) return "skills.remove";
-  if (pathname === "/api/skills/import" || pathname === "/api/skills/import-remote") return "skills.import";
+  if (pathname === "/api/skills/import" || pathname === "/api/skills/import-remote" || pathname === "/api/skills/import-remote-batch") return "skills.import";
   if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
   if (/^\/api\/skills\/([a-f0-9]{24})\/install-cli$/.test(pathname)) return "skills.install-cli";
   if (pathname === "/api/models/presets") return "models.presets";
@@ -469,6 +470,35 @@ const server = createServer(async (req, res) => {
         return reply(res, status, { error: status >= 500 ? (error?.code?.startsWith("SKILL_REMOTE_") ? error.message : "Unable to import GitHub Skill archive.") : error.message });
       }
     }
+    if (url.pathname === "/api/skills/import-remote-batch") {
+      const activeSession = sessionFor(req);
+      if (!activeSession) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!skillStore) return reply(res, 503, { error: "App data directory is not configured" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      if (!skillRemoteImportLimiter.allow(activeSession.key))
+        return reply(res, 429, { error: "GitHub Skill imports are limited to 5 requests per minute." }, "application/json; charset=utf-8", { "retry-after": "60" });
+      let body;
+      try { body = await jsonBody(req); }
+      catch (error) { return reply(res, Number.isInteger(error?.statusCode) ? error.statusCode : 400, { error: "Invalid JSON body" }); }
+      if (!body || typeof body !== "object" || Array.isArray(body) || !Array.isArray(body.items))
+        return reply(res, 400, { error: "Expected a JSON object containing an items array." });
+      try {
+        const result = await importGitHubSkillBatch(body.items, {
+          importArchive: (input, archiveBuffer) => skillStore.importArchive(input, archiveBuffer)
+        });
+        return reply(res, 200, {
+          ...result,
+          note: "Each successful ZIP is in quarantine and requires static review; downloaded code was not extracted or executed."
+        });
+      } catch (error) {
+        const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status >= 500 ? "Unable to process GitHub Skill batch." : error.message });
+      }
+    }
+
     if (url.pathname === "/api/skills/transitions/batch") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
