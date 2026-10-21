@@ -23,9 +23,10 @@ function text(value, field, max, optional = false) {
 function endpoint(value) {
   const valueText = text(value, "API endpoint", 2048);
   let url;
-  try { url = new URL(valueText); } catch { fail(400, "API endpoint must be a valid HTTPS URL.", "MODEL_INVALID_ENDPOINT"); }
-  if (url.protocol !== "https:" || !url.hostname || url.username || url.password || url.search || url.hash)
-    fail(400, "API endpoint must use HTTPS and contain no credentials, query or fragment.", "MODEL_INVALID_ENDPOINT");
+  try { url = new URL(valueText); } catch { fail(400, "API endpoint must be HTTPS, or HTTP on loopback for a local model server.", "MODEL_INVALID_ENDPOINT"); }
+  const loopbackHttp = url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname.toLowerCase());
+  if ((url.protocol !== "https:" && !loopbackHttp) || !url.hostname || url.username || url.password || url.search || url.hash)
+    fail(400, "API endpoint must use HTTPS; plain HTTP is allowed only for localhost, 127.0.0.1, or ::1.", "MODEL_INVALID_ENDPOINT");
   url.pathname = url.pathname.replace(/\/+$/, "");
   if (!url.pathname.endsWith("/chat/completions"))
     fail(400, "Endpoint must end with /chat/completions (such as /v1/chat/completions).", "MODEL_INVALID_ENDPOINT");

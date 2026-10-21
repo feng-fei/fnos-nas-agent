@@ -56,6 +56,14 @@ const PRESETS = [
     docsUrl: "https://openrouter.ai/docs/api-reference/overview"
   },
   {
+    id: "ollama-local",
+    name: "本机 Ollama（仅回环地址）",
+    endpoint: "http://127.0.0.1:11434/v1/chat/completions",
+    modelPlaceholder: "填写已通过 ollama list 确认的模型名称",
+    description: "本机 Ollama OpenAI 兼容接口；仅允许 localhost/127.0.0.1/::1 的 HTTP",
+    docsUrl: "https://github.com/ollama/ollama/blob/main/docs/openai.md"
+  },
+  {
     id: "custom",
     name: "自定义 OpenAI 兼容接口",
     endpoint: "",

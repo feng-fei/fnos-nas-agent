@@ -18,6 +18,8 @@ test("model configuration is disabled unless HTTPS endpoint, key, model and expl
   assert.equal(modelConfiguration({ AGENT_MODEL_ENABLED: "true", AGENT_MODEL_ENDPOINT: "http://model.example", AGENT_MODEL_API_KEY: "x", AGENT_MODEL_NAME: "m" }).enabled, false);
   assert.equal(modelConfiguration({ AGENT_MODEL_ENABLED: "true", AGENT_MODEL_ENDPOINT: "https://user:pass@model.example/v1", AGENT_MODEL_API_KEY: "x", AGENT_MODEL_NAME: "m" }).enabled, false);
   assert.equal(modelConfiguration({ AGENT_MODEL_ENABLED: "true", AGENT_MODEL_ENDPOINT: "https://model.example/v1", AGENT_MODEL_API_KEY: "x", AGENT_MODEL_NAME: "m" }).enabled, true);
+  assert.equal(modelConfiguration({ AGENT_MODEL_ENABLED: "true", AGENT_MODEL_ENDPOINT: "http://127.0.0.1:11434/v1/chat/completions", AGENT_MODEL_API_KEY: "ollama", AGENT_MODEL_NAME: "llama3.2" }).enabled, true);
+  assert.equal(modelConfiguration({ AGENT_MODEL_ENABLED: "true", AGENT_MODEL_ENDPOINT: "http://192.168.1.20:11434/v1/chat/completions", AGENT_MODEL_API_KEY: "x", AGENT_MODEL_NAME: "m" }).enabled, false);
 });
 
 test("disabled adapter never calls fetch and status never exposes credentials", async () => {
