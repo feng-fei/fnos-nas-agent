@@ -184,7 +184,7 @@ const server = createServer(async (req, res) => {
     return reply(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Internal server error" });
   }
 });
-await loadPassword();\nawait loadPassword();
+await loadPassword();
 await loadSessions();
 // First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
 server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; execution disabled`));
