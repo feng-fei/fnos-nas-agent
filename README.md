@@ -153,6 +153,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 114 — FPK Build Provenance Attestation](docs/phase-114-build-provenance-attestation.md)
 - [Phase 121 — Recoverable Session Persistence](docs/phase-121-session-persistence-retry.md)
 - [Phase 122 — File Mutation Directory Descriptor Confinement](docs/phase-122-file-write-directory-descriptor-confinement.md)
+- [Phase 123 — Recoverable Skill Inventory Persistence](docs/phase-123-skill-store-persistence-retry.md)
 - [Phase 115 — Immutable GitHub Actions References](docs/phase-115-github-actions-pinning.md)
 - [Phase 116 — Post-signing Attestation Verification](docs/phase-116-attestation-verification.md)
 - [Phase 117 — FPK Lifecycle Smoke Verification](docs/phase-117-fpk-lifecycle-smoke.md)
