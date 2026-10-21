@@ -22,7 +22,20 @@ async function readBoundedText(response, limit) {
   return Buffer.concat(chunks, size).toString("utf8");
 }
 
-function matchesSchema(args, schema) {\n  if (!args || typeof args !== "object" || Array.isArray(args)) return false;\n  const properties = schema?.properties || {};\n  if (schema?.additionalProperties === false && Object.keys(args).some(key => !Object.hasOwn(properties, key))) return false;\n  for (const key of schema?.required || []) if (!Object.hasOwn(args, key)) return false;\n  for (const [key, value] of Object.entries(args)) {\n    const rule = properties[key]; if (!rule) return false;\n    if (rule.type === "string" && (typeof value !== "string" || (rule.minLength !== undefined && value.length < rule.minLength) || (rule.maxLength !== undefined && value.length > rule.maxLength))) return false;\n    if (rule.type === "integer" && (!Number.isInteger(value) || (rule.minimum !== undefined && value < rule.minimum) || (rule.maximum !== undefined && value > rule.maximum))) return false;\n  }\n  return true;\n}\n\nfunction safeEndpoint(value) {
+function matchesSchema(args, schema) {
+  if (!args || typeof args !== "object" || Array.isArray(args)) return false;
+  const properties = schema?.properties || {};
+  if (schema?.additionalProperties === false && Object.keys(args).some(key => !Object.hasOwn(properties, key))) return false;
+  for (const key of schema?.required || []) if (!Object.hasOwn(args, key)) return false;
+  for (const [key, value] of Object.entries(args)) {
+    const rule = properties[key]; if (!rule) return false;
+    if (rule.type === "string" && (typeof value !== "string" || (rule.minLength !== undefined && value.length < rule.minLength) || (rule.maxLength !== undefined && value.length > rule.maxLength))) return false;
+    if (rule.type === "integer" && (!Number.isInteger(value) || (rule.minimum !== undefined && value < rule.minimum) || (rule.maximum !== undefined && value > rule.maximum))) return false;
+  }
+  return true;
+}
+
+function safeEndpoint(value) {
   if (!value) return null;
   let url;
   try { url = new URL(value); } catch { return null; }
