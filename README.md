@@ -70,6 +70,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 26 release artifact verification](docs/phase-26-release-artifact-verification.md)
 - [Phase 28 practical read-only file browser](docs/phase-28-practical-file-browser.md)
 - [Phase 31 practical fnOS photo tools](docs/phase-31-fnos-photo-tools.md)
+- [Phase 32 confirm-first action policy](docs/phase-32-confirm-first-action-policy.md)
 - [Phase 30 fnOS CLI path traversal guard](docs/phase-30-trim-cli-path-traversal-guard.md)
 - [Phase 29 mobile fnOS read-only tool usability](docs/phase-29-mobile-fnos-tools.md)
 - [Practical file management](docs/practical-file-management.md)
