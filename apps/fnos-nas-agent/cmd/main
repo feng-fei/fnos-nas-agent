@@ -8,7 +8,6 @@ APP_LOG="${TRIM_TEMP_LOGFILE:-/tmp/fnos-nas-agent-fpk.log}"
 PID_FILE="${APP_VAR}/agent.pid"
 NODE_BIN="${APP_ROOT}/bin/node"
 ENTRY="${APP_ROOT}/server.mjs"
-TOKEN_FILE="${APP_VAR}/access-token"
 
 fail() {
   message="$1"
@@ -30,12 +29,6 @@ case "${1:-}" in
     mkdir -p "$APP_VAR"
     if is_running; then exit 0; fi
     rm -f "$PID_FILE"
-    if [ -f "$TOKEN_FILE" ]; then
-      token="$(cat "$TOKEN_FILE")"
-      [ "${#token}" -ge 32 ] || fail "access-token 文件格式错误；请使用至少 32 个字符的随机令牌。"
-      export AGENT_ACCESS_TOKEN="$token"
-      unset token
-    fi
     # First run exposes only the setup/status UI. All NAS execution remains disabled.
     AGENT_DATA_DIR="$APP_VAR" HOST=0.0.0.0 PORT="$APP_PORT" "$NODE_BIN" "$ENTRY" >> "$APP_VAR/agent.log" 2>&1 &
     pid=$!

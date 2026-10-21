@@ -31,7 +31,7 @@ async function waitForHealth(url) {
   throw new Error("packaged server did not become healthy");
 }
 
-test("first-run setup persists a private token and protects session endpoints", async t => {
+test("first-run setup stores only a salted password hash and protects session endpoints", async t => {
   dataDir = await mkdtemp(join(tmpdir(), "fnos-agent-auth-"));
   const port = await freePort();
   baseUrl = `http://127.0.0.1:${port}`;
@@ -55,34 +55,37 @@ test("first-run setup persists a private token and protects session endpoints", 
   const state = await (await fetch(baseUrl + "/api/session")).json();
   assert.equal(state.setupRequired, true);
 
-  const token = "a".repeat(64);
+  const password = "CorrectHorseBatteryStaple!";
   const setup = await fetch(baseUrl + "/api/setup", {
     method: "POST",
     headers: { origin: baseUrl, "content-type": "application/json" },
-    body: JSON.stringify({ token })
+    body: JSON.stringify({ password })
   });
   assert.equal(setup.status, 201);
-  assert.equal(await readFile(join(dataDir, "access-token"), "utf8"), token + "\n");
-  assert.equal((await stat(join(dataDir, "access-token"))).mode & 0o777, 0o600);
+  const passwordPath = join(dataDir, "password.json");
+  const passwordRecord = JSON.parse(await readFile(passwordPath, "utf8"));
+  assert.equal(passwordRecord.algorithm, "scrypt");
+  assert.notEqual(passwordRecord.hash, password);
+  assert.equal((await stat(passwordPath)).mode & 0o777, 0o600);
 
   const repeatSetup = await fetch(baseUrl + "/api/setup", {
     method: "POST",
     headers: { origin: baseUrl, "content-type": "application/json" },
-    body: JSON.stringify({ token: "b".repeat(64) })
+    body: JSON.stringify({ password: "AnotherPassword!123" })
   });
   assert.equal(repeatSetup.status, 409);
 
   const badOrigin = await fetch(baseUrl + "/api/session", {
     method: "POST",
     headers: { origin: "http://attacker.invalid", "content-type": "application/json" },
-    body: JSON.stringify({ token })
+    body: JSON.stringify({ password })
   });
   assert.equal(badOrigin.status, 403);
 
   const login = await fetch(baseUrl + "/api/session", {
     method: "POST",
     headers: { origin: baseUrl, "content-type": "application/json" },
-    body: JSON.stringify({ token, remember: true })
+    body: JSON.stringify({ password, remember: true })
   });
   assert.equal(login.status, 200);
   const setCookie = login.headers.get("set-cookie");
