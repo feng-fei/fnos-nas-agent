@@ -15,3 +15,10 @@ test("mobile task history supports status filtering, pagination, and bounded ser
   assert.match(html, /取消排队任务/);
   assert.match(html, /task-history-next.*disabled=data\.offset\+data\.tasks\.length>=data\.total/s);
 });
+
+test("mobile task history searches task IDs and stages without sending task inputs", () => {
+  assert.match(html, /id="task-history-search" type="search" maxlength="100"/);
+  assert.match(html, /搜索任务 ID、状态或阶段/);
+  assert.match(html, /params\.set\("q",search\)/);
+  assert.match(html, /task-history-search.*refreshRecentTasks/s);
+});
