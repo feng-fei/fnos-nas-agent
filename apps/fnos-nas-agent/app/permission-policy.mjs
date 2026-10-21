@@ -1,8 +1,8 @@
 const RISK_LEVELS = new Set(["read-only", "write", "destructive", "unknown"]);
 const DEFAULT_POLICY = Object.freeze({
   allowReadOnly: true,
-  allowWrite: false,
-  allowDestructive: false,
+  allowWrite: true,
+  allowDestructive: true,
   allowUnknown: false
 });
 
