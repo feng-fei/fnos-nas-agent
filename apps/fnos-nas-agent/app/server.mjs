@@ -472,7 +472,8 @@ const server = createServer(async (req, res) => {
         tools: readOnlyTools.list(),
         executionEnabled: false,
         readOnlyExecutionEnabled: true,
-        routineWriteExecutionEnabled: true
+        routineWriteExecutionEnabled: true,
+        destructiveActionConfirmationEnabled: true
       });
       return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
     }
