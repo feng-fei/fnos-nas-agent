@@ -334,8 +334,14 @@ const server = createServer(async (req, res) => {
         const result = await fileBrowser.list(url.searchParams.get("path") || "", rawLimit, rawOffset, sort, query, type);
         return reply(res, 200, result);
       } catch (error) {
-        const status = [400, 403, 404].includes(error?.statusCode) ? error.statusCode : 500;
-        return reply(res, status, { error: status === 403 ? "Path is outside configured storage roots" : status === 404 ? "Directory not found" : status === 400 ? "Invalid directory path" : "Unable to list directory" });
+        const status = [400, 403, 404, 409].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, {
+          error: status === 403 ? "Path is outside configured storage roots" :
+            status === 404 ? "Directory not found" :
+            status === 400 ? "Invalid directory path" :
+            status === 409 ? "Directory changed while listing; retry the operation" :
+            "Unable to list directory"
+        });
       }
     }
     if (url.pathname === "/api/files/checksum") {
