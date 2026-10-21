@@ -61,3 +61,26 @@ test("history limit retains the newest completed tasks without rejecting submiss
   assert.equal(manager.list().length, 2);
   assert.ok(!JSON.stringify(manager.list()).includes("must-not-leak"));
 });
+
+test("task history queries filter by status and paginate without exposing inputs", async () => {
+  const manager = createTaskManager({
+    execute: async input => { if (input.fail) throw new Error("private input"); return { ok: true }; },
+    id: (() => { let n = 0; return () => "query-task-" + (++n); })(),
+    historyLimit: 10
+  });
+  const failed = manager.submit({ fail: true, secret: "do-not-return" });
+  const completedA = manager.submit({ secret: "also-private" });
+  const completedB = manager.submit({});
+  for (let i = 0; i < 100 && [failed, completedA, completedB].some(task => !["completed", "failed"].includes(manager.get(task.taskId)?.status)); i++) await tick();
+  const all = manager.query({ limit: 2, offset: 0 });
+  assert.equal(all.total, 3);
+  assert.equal(all.tasks.length, 2);
+  assert.equal(all.limit, 2);
+  assert.equal(all.offset, 0);
+  assert.equal(manager.query({ status: "failed" }).total, 1);
+  assert.equal(manager.query({ status: "completed" }).total, 2);
+  assert.equal(manager.query({ status: "queued" }).total, 0);
+  assert.equal(manager.query({ limit: 1, offset: 1 }).tasks.length, 1);
+  assert.equal(JSON.stringify(all).includes("do-not-return"), false);
+  assert.equal(JSON.stringify(manager.query({ status: "failed" })).includes("private input"), false);
+});
