@@ -132,6 +132,28 @@ test("first-run setup stores only a salted password hash and protects session en
     method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: "{}"
   });
   assert.equal(unknownToolRun.status, 404);
+  const hiddenAgent = await fetch(baseUrl + "/api/agent/message", {
+    method: "POST", headers: { "content-type": "application/json", origin: baseUrl }, body: JSON.stringify({ text: "查看系统状态" })
+  });
+  assert.equal(hiddenAgent.status, 401);
+  const agentStatus = await fetch(baseUrl + "/api/agent/status", { headers: { cookie } });
+  assert.equal(agentStatus.status, 200);
+  const agentStatusBody = await agentStatus.json();
+  assert.equal(agentStatusBody.rulesFirst, true);
+  assert.equal(agentStatusBody.arbitraryExecutionEnabled, false);
+  assert.equal("apiKey" in agentStatusBody.model, false);
+  const wrongOriginAgent = await fetch(baseUrl + "/api/agent/message", {
+    method: "POST", headers: { cookie, origin: "http://attacker.invalid", "content-type": "application/json" }, body: JSON.stringify({ text: "查看系统状态" })
+  });
+  assert.equal(wrongOriginAgent.status, 403);
+  const directAgent = await fetch(baseUrl + "/api/agent/message", {
+    method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: JSON.stringify({ text: "查看系统状态" })
+  });
+  assert.equal(directAgent.status, 200);
+  const directAgentBody = await directAgent.json();
+  assert.equal(directAgentBody.mode, "rules");
+  assert.equal(directAgentBody.status, "completed");
+  assert.equal(directAgentBody.results[0].tool, "system.status");
   const diagnosticResponse = await fetch(baseUrl + "/api/diagnostics", { headers: { cookie } });
   assert.equal(diagnosticResponse.status, 200);
   const diagnostics = await diagnosticResponse.json();
