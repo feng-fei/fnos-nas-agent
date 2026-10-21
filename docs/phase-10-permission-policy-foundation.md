@@ -1,14 +1,14 @@
 # Phase 10: permission policy foundation
 
-This phase introduces a centralized, fail-closed risk policy for future Skill/tool integrations.
+This phase introduces a centralized risk policy designed for a personal NAS assistant: normal work stays convenient, while risky actions require explicit confirmation.
 
 ## Policy behavior
 
 - `read-only`: allowed by default.
-- `write` and `destructive`: denied by default and report that explicit approval is required.
-- Enabling a risk tier in configuration is not enough by itself: a write/destructive request must also carry an explicit approved decision.
+- `write` and `destructive`: enabled as capabilities by default, but **never execute without an explicit approved decision**. No separate configuration switch is needed for ordinary confirmed operations.
+- Approval remains a separate, mandatory decision: a write/destructive request without approval is blocked; with approval, the default policy allows it.
 - `unknown` or unrecognized risk values are denied.
-- Policy evaluation does not execute tools, issue approval tokens, or enable arbitrary execution. The runtime remains execution-disabled for write/destructive operations.
+- This module still does not execute tools or issue approval tokens. Runtime integration must bind confirmation to the exact action and arguments. Unknown risk classes remain blocked until classified by a server-side executor.
 
 ## Integration contract
 
