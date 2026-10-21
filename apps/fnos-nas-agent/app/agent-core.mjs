@@ -11,7 +11,7 @@ const DIRECT_INTENTS = [
   { pattern: /^(?:查看|查询|显示|检查)?\s*(?:系统)?网络(?:监控|流量|速率)?\s*[。！!？?]?$/i, tool: "fnos.monitor.network", message: "正在读取网络运行态指标。" },
   { pattern: /^(?:查看|查询|显示|检查)?\s*(?:系统)?磁盘(?:监控|I\/O|读写情况)?\s*[。！!？?]?$/i, tool: "fnos.monitor.disk", message: "正在读取磁盘运行态指标。" },
   { pattern: /^(?:查看|查询|显示)?\s*(?:fnOS\s*)?(?:系统运行时间|运行时间|开机时间|系统 uptime)\s*[。！!？?]?$/i, tool: "fnos.system.uptime", message: "正在读取 NAS 系统运行时间。" },
-  { pattern: /^(?:查看|查询|显示)?\s*(?:fnOS\s*)?(?:系统版本|fnOS版本|OS版本)\s*[。！!？?]?$/i, tool: "fnos.system.trim-version", message: "正在读取 fnOS 版本。" },
+  { pattern: /^(?:查看|查询|显示)?\s*(?:fnOS\s*)?(?:系统版本|版本|OS版本)\s*[。！!？?]?$/i, tool: "fnos.system.trim-version", message: "正在读取 fnOS 版本。" },
   { pattern: /^(?:查看|查询|显示)?\s*(?:Linux\s*)?内核版本\s*[。！!？?]?$/i, tool: "fnos.system.kernel-version", message: "正在读取 Linux 内核版本。" },
   { pattern: /^(?:查看|查询|显示)?\s*(?:NAS\s*)?主机名\s*[。！!？?]?$/i, tool: "fnos.system.hostname", message: "正在读取 NAS 主机名。" },
   { pattern: /^(?:查看|查询|列出|显示)?\s*(?:全部|所有)?存储卷列表\s*[。！!？?]?$/i, tool: "fnos.system.volumes", message: "正在列出存储卷。" },
