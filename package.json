@@ -5,7 +5,7 @@
   "description": "A lightweight, safety-first Agent for Feiniu OS NAS",
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "scripts": {
     "start": "node src/server.mjs",
