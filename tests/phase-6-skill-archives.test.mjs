@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { inspectZipArchive, saveQuarantinedArchive, MAX_ARCHIVE_BYTES } from "../apps/fnos-nas-agent/app/skill-archives.mjs";
+import { inspectZipArchive, saveQuarantinedArchive, MAX_ARCHIVE_BYTES, MAX_DECLARED_UNCOMPRESSED_BYTES } from "../apps/fnos-nas-agent/app/skill-archives.mjs";
 import { createSkillStore } from "../apps/fnos-nas-agent/app/skills.mjs";
 
 function makeZip(name = "SKILL.md", data = "review me") {
@@ -79,6 +79,11 @@ test("quarantine import computes digest from bytes and stores archive privately"
   assert.equal(imported.state, "pending_review");
   assert.equal(imported.archiveSizeBytes, archive.length);
   assert.equal(imported.quarantineFile, result.quarantineFile);
+});
+
+test("archive limits accommodate the supplied official fnOS Skill package", () => {
+  assert.ok(MAX_ARCHIVE_BYTES >= 18 * 1024 * 1024);
+  assert.ok(MAX_DECLARED_UNCOMPRESSED_BYTES >= 44 * 1024 * 1024);
 });
 
 test("archive byte limit is enforced before ZIP parsing", () => {
