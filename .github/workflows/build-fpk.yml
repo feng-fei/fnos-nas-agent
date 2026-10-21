@@ -49,6 +49,13 @@ jobs:
           chmod 755 "$app/app/bin/node"
           python3 scripts/generate-fpk-icons.py "$app"
 
+          # fnpack validates these native package metadata files before archiving.
+          test -s "$app/config/privilege"
+          test -s "$app/config/resource"
+          test -d "$app/wizard"
+          python3 -m json.tool "$app/config/privilege" >/dev/null
+          python3 -m json.tool "$app/config/resource" >/dev/null
+
           chmod 755 "$app/cmd/main" "$app/cmd/install_callback" "$app/cmd/uninstall_callback"
           test -x "$app/cmd/main"
           test -x "$app/cmd/install_callback"
