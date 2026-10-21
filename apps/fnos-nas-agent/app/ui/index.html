@@ -591,6 +591,15 @@ async function refreshFiles(pathValue=currentFilePath,pageOffset=0){
    if(item.type==="file"){
     actionButton("预览",async()=>{try{const r=await api("/api/files/preview?path="+encodeURIComponent(item.path));const data=await r.json();if(!r.ok)throw Error(data.error||"预览失败");const pre=document.querySelector("#file-preview");pre.classList.remove("hidden");pre.textContent="文件："+data.name+"（"+data.sizeBytes+" 字节）\\n\\n"+data.content;}catch(e){err.textContent=e.message||"预览失败";}});
     actionButton("下载",()=>{const a=document.createElement("a");a.href="/api/files/download?path="+encodeURIComponent(item.path);a.download=item.name;document.body.append(a);a.click();a.remove();});
+    actionButton("计算 SHA-256",async()=>{
+     err.textContent="";
+     try{
+      const response=await api("/api/files/checksum?path="+encodeURIComponent(item.path)),result=await response.json();
+      if(!response.ok)throw Error(result.error||"SHA-256 计算失败");
+      const pre=document.querySelector("#file-preview");pre.classList.remove("hidden");
+      pre.textContent="文件："+result.name+"（"+result.sizeBytes+" 字节）\\n算法："+result.algorithm+"\\nSHA-256："+result.sha256+"\\n\\n"+(result.note||"按流式分块读取，未将文件整体载入内存。");
+     }catch(error){err.textContent=error.message||"SHA-256 计算失败";}
+    });
    }
    actionButton("重命名",async()=>{const name=prompt("输入新的名称",item.name);if(name&&name!==item.name)try{await runFileOperation({action:"rename",path:item.path,name});}catch{}});
    actionButton("移动",async()=>{const destination=prompt("输入目标文件夹的完整路径",currentFilePath);if(destination)try{await runFileOperation({action:"move",path:item.path,destination});}catch{}});
