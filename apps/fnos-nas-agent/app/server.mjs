@@ -35,6 +35,7 @@ let passwordRecord = null;
 const sessions = new Map();
 const authLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
 const modelActionLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
+const fileChecksumLimiter = createFixedWindowLimiter({ limit: 5, windowMs: 60_000, maxKeys: 1000 });
 const skillRemoteImportLimiter = createFixedWindowLimiter({ limit: 5, windowMs: 60_000, maxKeys: 1000 });
 const MAX_SESSIONS = 1000;
 const skillStore = dataDir ? createSkillStore(dataDir) : null;
@@ -210,6 +211,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/logout") return "logout";
   if (pathname === "/api/diagnostics") return "diagnostics";
   if (pathname === "/api/audit") return "audit.list";
+  if (pathname === "/api/files/checksum") return "files.checksum";
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
   if (/^\/api\/skills\/[a-f0-9]{24}\/source-files$/.test(pathname) || /^\/api\/skills\/[a-f0-9]{24}\/source-preview$/.test(pathname)) return "skills.list";
@@ -328,6 +330,19 @@ const server = createServer(async (req, res) => {
       } catch (error) {
         const status = [400, 403, 404].includes(error?.statusCode) ? error.statusCode : 500;
         return reply(res, status, { error: status === 403 ? "Path is outside configured storage roots" : status === 404 ? "Directory not found" : status === 400 ? "Invalid directory path" : "Unable to list directory" });
+      }
+    }
+    if (url.pathname === "/api/files/checksum") {
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const activeSession = sessionFor(req);
+      if (!activeSession) return reply(res, 401, { error: "Unauthorized" });
+      if (!fileChecksumLimiter.allow(activeSession.key))
+        return reply(res, 429, { error: "File checksum is limited to 5 requests per minute." }, "application/json; charset=utf-8", { "retry-after": "60" });
+      try {
+        return reply(res, 200, await fileManager.checksum(url.searchParams.get("path") || ""));
+      } catch (error) {
+        const status = [400, 403, 404, 409, 413].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 500 ? "Unable to calculate file checksum" : error.message });
       }
     }
     if (url.pathname === "/api/files/preview") {

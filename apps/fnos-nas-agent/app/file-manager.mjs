@@ -1,7 +1,9 @@
 import { readdir, lstat, realpath, mkdir, open, link, unlink, rename, rmdir, readFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024, MAX_PREVIEW_BYTES = 1024 * 1024, MAX_TEXT_CREATE_BYTES = 1024 * 1024;
+export const MAX_CHECKSUM_BYTES = 256 * 1024 * 1024;
+const CHECKSUM_CHUNK_BYTES = 1024 * 1024;
 function within(root,target){const rel=relative(root,target);return rel===""||(!rel.startsWith(".."+sep)&&rel!==".."&&!isAbsolute(rel));}
 function fail(statusCode,message){throw Object.assign(new Error(message),{statusCode});}
 function safeName(name){if(typeof name!=="string"||!name.trim()||name.length>255||name==="."||name===".."||/[\\/\0]/.test(name)||name.trim()!==name||/[\x00-\x1f\x7f]/.test(name))fail(400,"Invalid file name");return name;}
@@ -12,6 +14,41 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
  async function ensureAbsent(path){try{await fs.lstat(path);fail(409,"A file or directory with that name already exists");}catch(e){if(e.statusCode)throw e;if(e.code!=="ENOENT")throw e;}}
  async function preview(value){const item=await resolveExisting(value,"file");if(item.info.size>MAX_PREVIEW_BYTES)fail(413,"Preview is limited to 1 MiB");const b=await fs.readFile(item.path);if(b.includes(0))fail(415,"Binary files cannot be previewed");let content;try{content=new TextDecoder("utf-8",{fatal:true}).decode(b);}catch{fail(415,"File is not valid UTF-8 text");}return {name:basename(item.path),sizeBytes:item.info.size,content};}
  async function download(value){const item=await resolveExisting(value,"file");return {path:item.path,name:basename(item.path),sizeBytes:item.info.size};}
+ async function checksum(value) {
+  const item = await resolveExisting(value, "file");
+  if (item.info.size > MAX_CHECKSUM_BYTES) fail(413, "SHA-256 calculation is limited to 256 MiB");
+  const handle = await fs.open(item.path, "r");
+  try {
+    const before = await handle.stat({ bigint: true });
+    if (!before.isFile()) fail(400, "Expected a regular file");
+    if (before.size > BigInt(MAX_CHECKSUM_BYTES)) fail(413, "SHA-256 calculation is limited to 256 MiB");
+    const expectedSize = Number(before.size);
+    const hash = createHash("sha256");
+    const chunk = Buffer.alloc(CHECKSUM_CHUNK_BYTES);
+    let position = 0;
+    while (position < expectedSize) {
+      const requested = Math.min(chunk.length, expectedSize - position);
+      const { bytesRead } = await handle.read(chunk, 0, requested, position);
+      if (bytesRead <= 0) break;
+      hash.update(chunk.subarray(0, bytesRead));
+      position += bytesRead;
+    }
+    const after = await handle.stat({ bigint: true });
+    if (position !== expectedSize || after.size !== before.size ||
+        after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs) {
+      fail(409, "File changed while SHA-256 was being calculated; retry after writes finish");
+    }
+    return {
+      name: basename(item.path),
+      path: item.path,
+      sizeBytes: position,
+      algorithm: "SHA-256",
+      sha256: hash.digest("hex")
+    };
+  } finally {
+    await handle.close();
+  }
+ }
  async function createText(directory,name,content){if(typeof content!=="string")fail(400,"Text content must be a string");const buffer=Buffer.from(content,"utf8");if(buffer.length>MAX_TEXT_CREATE_BYTES)fail(413,"Text files are limited to 1 MiB");if(content.includes("\0"))fail(400,"Text content cannot contain NUL characters");const target=await destination(directory,name);await ensureAbsent(target.target);const temp=resolve(target.path,".fnos-text-"+randomUUID()+".tmp"),handle=await fs.open(temp,"wx",0o600);try{await handle.writeFile(buffer);await handle.sync();}finally{await handle.close();}try{await fs.link(temp,target.target);}catch(e){if(e.code==="EEXIST")fail(409,"A file or directory with that name already exists");throw e;}finally{await fs.unlink(temp).catch(()=>{});}return {name:target.name,path:target.target,sizeBytes:buffer.length};}
  async function upload(directory,name,buffer){if(!Buffer.isBuffer(buffer))fail(400,"Upload body must be binary");if(buffer.length>MAX_UPLOAD_BYTES)fail(413,"Upload is limited to 25 MiB");const target=await destination(directory,name);await ensureAbsent(target.target);const temp=resolve(target.path,".fnos-upload-"+randomUUID()+".tmp"),handle=await fs.open(temp,"wx",0o600);try{await handle.writeFile(buffer);await handle.sync();}finally{await handle.close();}try{await fs.link(temp,target.target);}catch(e){if(e.code==="EEXIST")fail(409,"A file or directory with that name already exists");throw e;}finally{await fs.unlink(temp).catch(()=>{});}return {name:target.name,path:target.target,sizeBytes:buffer.length};}
  async function operate(input){if(!input||typeof input!=="object"||Array.isArray(input))fail(400,"Invalid operation");const action=input.action;if(action==="mkdir"){const d=await destination(input.path,input.name);await ensureAbsent(d.target);await fs.mkdir(d.target,{mode:0o750});return {action,name:d.name,path:d.target};}if(action==="rename"||action==="move"){const source=await resolveExisting(input.path);if(source.path===source.root)fail(403,"Cannot rename or move a storage root");const dir=action==="move"?input.destination:dirname(source.path),d=await destination(dir,action==="move"?basename(source.path):input.name);if(d.target===source.path)return {action,path:source.path,unchanged:true};await ensureAbsent(d.target);await fs.rename(source.path,d.target);return {action,path:d.target,name:basename(d.target)};}if(action==="delete"){if(input.confirm!==true)fail(400,"Explicit confirmation is required");const source=await resolveExisting(input.path);if(source.path===source.root)fail(403,"Cannot delete a storage root");if(source.info.isDirectory())await fs.rmdir(source.path);else if(source.info.isFile())await fs.unlink(source.path);else fail(400,"Unsupported file type");return {action,path:source.path,deleted:true};}fail(400,"Unsupported file operation");}
@@ -46,5 +83,5 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
     return { total: input.operations.length, succeeded, failed, results };
   }
 
- return Object.freeze({getRoots,preview,download,upload,createText,operate,operateBatch,limits:{maxUploadBytes:MAX_UPLOAD_BYTES,maxPreviewBytes:MAX_PREVIEW_BYTES,maxTextCreateBytes:MAX_TEXT_CREATE_BYTES}});
+ return Object.freeze({getRoots,preview,download,checksum,upload,createText,operate,operateBatch,limits:{maxUploadBytes:MAX_UPLOAD_BYTES,maxPreviewBytes:MAX_PREVIEW_BYTES,maxTextCreateBytes:MAX_TEXT_CREATE_BYTES,maxChecksumBytes:MAX_CHECKSUM_BYTES}});
 }
