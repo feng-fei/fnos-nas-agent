@@ -149,7 +149,7 @@ test("batch API and mobile UI enforce authenticated sequential quarantine import
   assert.match(route, /skillRemoteImportLimiter\.allow/);
   assert.match(route, /importGitHubSkillBatch\(body\.items/);
   assert.match(route, /skillStore\.importArchive\(input, archiveBuffer\)/);
-  assert.match(route, /no extraction or execution occurred/);
+  assert.match(route, /downloaded code was not extracted or executed/);
   assert.match(server, /import-remote-batch.*skills\.import/);
   assert.match(html, /id="skill-remote-batch-form"/);
   assert.match(html, /id="skill-remote-batch-urls"/);
