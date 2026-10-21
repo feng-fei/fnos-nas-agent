@@ -1,0 +1,13 @@
+appname               = fnos-nas-agent
+version               = 0.1.0
+display_name          = fnOS NAS Agent
+desc                  = 轻量 NAS Agent 测试版，仅提供状态页面，不执行 NAS 管理操作。
+platform              = x86
+source                = thirdparty
+maintainer            = feng-fei
+maintainer_url        = https://github.com/feng-fei/fnos-nas-agent
+distributor           = feng-fei
+distributor_url       = https://github.com/feng-fei/fnos-nas-agent
+desktop_uidir         = ui
+desktop_applaunchname = fnos-nas-agent.main
+service_port          = 18787
