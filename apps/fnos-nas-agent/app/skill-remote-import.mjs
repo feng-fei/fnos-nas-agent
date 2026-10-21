@@ -97,7 +97,6 @@ export async function fetchGitHubSkillArchive(value, {
           const buffer = Buffer.from(chunk);
           size += buffer.length;
           if (size > maxBytes) {
-            await response.body.cancel?.().catch(() => {});
             throw Object.assign(new Error("GitHub ZIP archive exceeds the 25 MiB import limit."), {
               statusCode: 413, code: "SKILL_REMOTE_TOO_LARGE"
             });
