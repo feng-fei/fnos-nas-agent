@@ -37,7 +37,8 @@ test("expired grants and revoked task grants cannot be consumed", () => {
   assert.equal(ledger.consume({ ...action(), token: second.token }).approved, false);
 });
 test("pending approvals are bounded and unknown risk levels fail closed", () => {
-  const ledger = createApprovalLedger({ token: () => Math.random().toString(36).padEnd(40, "q"), now: () => 1000, maxPending: 1 });
+  let n = 0;
+  const ledger = createApprovalLedger({ token: () => String(++n).padEnd(40, "q"), now: () => 1000, maxPending: 1 });
   ledger.issue(action());
   assert.throws(() => ledger.issue(action({ taskId: "task_abcdefgh" })), { statusCode: 429 });
   assert.throws(() => ledger.issue(action({ risk: "read-only" })), TypeError);
