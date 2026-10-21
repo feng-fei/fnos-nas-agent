@@ -1,5 +1,6 @@
-import { readdir, lstat, realpath } from "node:fs/promises";
-import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { readdir, lstat, realpath, open } from "node:fs/promises";
+import { constants } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const MAX_ENTRIES = 200;
 const DEFAULT_LIMIT = 100;
@@ -12,7 +13,28 @@ function within(root, target) {
   return rel === "" || (!rel.startsWith(".." + sep) && rel !== ".." && !isAbsolute(rel));
 }
 
-export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs = { readdir, lstat, realpath } } = {}) {
+export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs = { readdir, lstat, realpath, open } } = {}) {
+  function descriptorPath(handle) {
+    if (process.platform !== "linux")
+      throw Object.assign(new Error("Secure directory browsing requires Linux descriptor paths"), { statusCode: 503 });
+    return "/proc/self/fd/" + handle.fd;
+  }
+
+  async function openValidatedDirectory(path, expectedInfo) {
+    let handle;
+    try {
+      handle = await fs.open(path, constants.O_RDONLY | (constants.O_DIRECTORY || 0) | (constants.O_NOFOLLOW || 0));
+      const info = await handle.stat({ bigint: true });
+      if (!info.isDirectory() || info.dev !== BigInt(expectedInfo.dev) || info.ino !== BigInt(expectedInfo.ino))
+        throw Object.assign(new Error("Directory changed while opening; retry the operation"), { statusCode: 409 });
+      return handle;
+    } catch (error) {
+      if (handle) await handle.close().catch(() => {});
+      if (["ELOOP", "ENOENT", "ENOTDIR"].includes(error?.code))
+        throw Object.assign(new Error("Directory changed while opening; retry the operation"), { statusCode: 409 });
+      throw error;
+    }
+  }
   async function getRoots() {
     let candidates = suppliedRoots;
     if (!Array.isArray(candidates)) {
@@ -57,23 +79,30 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     if (!["directories-first", "name-asc", "name-desc", "size-desc", "modified-desc"].includes(requestedSort)) throw Object.assign(new Error("Invalid directory sort mode"), { statusCode: 400 });
     if (typeof requestedQuery !== "string" || requestedQuery.length > 160) throw Object.assign(new Error("Invalid directory search query"), { statusCode: 400 });
     if (!["all", "directory", "file"].includes(requestedType)) throw Object.assign(new Error("Invalid directory type filter"), { statusCode: 400 });
-    const dirents = await fs.readdir(actual, { withFileTypes: true });
+    const handle = await openValidatedDirectory(actual, info);
     const entries = [];
-    for (const entry of dirents) {
-      if (entry.isSymbolicLink()) continue;
-      const fullPath = resolve(actual, entry.name);
-      if (!within(root, fullPath)) continue;
-      try {
-        const stat = await fs.lstat(fullPath);
-        if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile())) continue;
-        entries.push({
-          name: entry.name,
-          path: fullPath,
-          type: stat.isDirectory() ? "directory" : "file",
-          sizeBytes: stat.isFile() ? stat.size : null,
-          modifiedAt: stat.mtime.toISOString()
-        });
-      } catch { /* Ignore entries that disappear during listing. */ }
+    try {
+      const fdPath = descriptorPath(handle);
+      const dirents = await fs.readdir(fdPath, { withFileTypes: true });
+      for (const entry of dirents) {
+        if (entry.isSymbolicLink()) continue;
+        const fullPath = resolve(actual, entry.name);
+        if (!within(root, fullPath)) continue;
+        try {
+          // Resolve metadata through the opened directory descriptor, not a mutable pathname.
+          const stat = await fs.lstat(join(fdPath, entry.name));
+          if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile())) continue;
+          entries.push({
+            name: entry.name,
+            path: fullPath,
+            type: stat.isDirectory() ? "directory" : "file",
+            sizeBytes: stat.isFile() ? stat.size : null,
+            modifiedAt: stat.mtime.toISOString()
+          });
+        } catch { /* Ignore entries that disappear during listing. */ }
+      }
+    } finally {
+      await handle.close();
     }
     const totalDirectoryEntries = entries.length;
     const query = requestedQuery.trim().toLocaleLowerCase();
@@ -124,27 +153,49 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     let scanned = 0, truncated = false;
     while (queue.length && scanned < MAX_SEARCH_VISITS && entries.length < limit) {
       const current = queue.shift();
-      let dirents;
-      try { dirents = await fs.readdir(current.path, { withFileTypes: true }); }
-      catch { continue; }
-      for (const entry of dirents) {
-        if (scanned >= MAX_SEARCH_VISITS || entries.length >= limit) { truncated = true; break; }
-        scanned++;
-        if (entry.isSymbolicLink()) continue;
-        const fullPath = resolve(current.path, entry.name);
-        if (!within(root, fullPath)) continue;
-        let info;
-        try { info = await fs.lstat(fullPath); } catch { continue; }
-        if (info.isSymbolicLink() || (!info.isDirectory() && !info.isFile())) continue;
-        if (entry.name.toLocaleLowerCase().includes(needle)) {
-          entries.push({ name: entry.name, path: fullPath, type: info.isDirectory() ? "directory" : "file", sizeBytes: info.isFile() ? info.size : null, modifiedAt: info.mtime.toISOString() });
+      let currentPath;
+      try { currentPath = await fs.realpath(current.path); }
+      catch {
+        if (current.depth === 0)
+          throw Object.assign(new Error("Directory changed while searching; retry the operation"), { statusCode: 409 });
+        continue;
+      }
+      if (currentPath !== current.path)
+        throw Object.assign(new Error("Directory changed while searching; retry the operation"), { statusCode: 409 });
+      const currentRoot = roots.find(candidate => within(candidate, currentPath));
+      if (!currentRoot) {
+        if (current.depth === 0)
+          throw Object.assign(new Error("Directory changed while searching; retry the operation"), { statusCode: 409 });
+        continue;
+      }
+      let currentInfo;
+      try { currentInfo = await fs.lstat(currentPath); } catch { continue; }
+      if (!currentInfo.isDirectory() || currentInfo.isSymbolicLink()) continue;
+      let handle;
+      try {
+        handle = await openValidatedDirectory(currentPath, currentInfo);
+        const fdPath = descriptorPath(handle);
+        const dirents = await fs.readdir(fdPath, { withFileTypes: true });
+        for (const entry of dirents) {
+          if (scanned >= MAX_SEARCH_VISITS || entries.length >= limit) { truncated = true; break; }
+          scanned++;
+          if (entry.isSymbolicLink()) continue;
+          const fullPath = resolve(currentPath, entry.name);
+          if (!within(currentRoot, fullPath)) continue;
+          let info;
+          try { info = await fs.lstat(join(fdPath, entry.name)); } catch { continue; }
+          if (info.isSymbolicLink() || (!info.isDirectory() && !info.isFile())) continue;
+          if (entry.name.toLocaleLowerCase().includes(needle)) {
+            entries.push({ name: entry.name, path: fullPath, type: info.isDirectory() ? "directory" : "file", sizeBytes: info.isFile() ? info.size : null, modifiedAt: info.mtime.toISOString() });
+          }
+          if (info.isDirectory() && current.depth < MAX_SEARCH_DEPTH) {
+            queue.push({ path: fullPath, depth: current.depth + 1 });
+          }
         }
-        if (info.isDirectory() && current.depth < MAX_SEARCH_DEPTH) {
-          try {
-            const actual = await fs.realpath(fullPath);
-            if (actual === fullPath && within(root, actual)) queue.push({ path: actual, depth: current.depth + 1 });
-          } catch { /* Ignore directories that disappear or become inaccessible. */ }
-        }
+      } catch (error) {
+        if (error?.statusCode === 409 || error?.statusCode === 503) throw error;
+      } finally {
+        if (handle) await handle.close().catch(() => {});
       }
       if (truncated) break;
     }
