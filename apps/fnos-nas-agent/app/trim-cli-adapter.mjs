@@ -38,7 +38,8 @@ function validateInput(id, input) {
 export function createTrimCliAdapter({
   binaryPath = process.env.TRIM_CLI_PATH || "",
   profile = process.env.TRIM_CLI_PROFILE || "home",
-  execFileImpl = execFile,\n  accessImpl = access,
+  execFileImpl = execFile,,
+  accessImpl = access,
   timeoutMs = DEFAULT_TIMEOUT_MS
 } = {}) {
   if (typeof binaryPath !== "string" || binaryPath.length > 4096) throw new TypeError("Invalid trim-cli binary path");
