@@ -151,6 +151,8 @@ export function createSkillStore(dataDir) {
     if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory() ||
         archiveInfo.isSymbolicLink() || !archiveInfo.isFile())
       throw Object.assign(new Error("Quarantined archive filesystem type is unsafe"), { statusCode: 500 });
+    if (archiveInfo.size > MAX_ARCHIVE_BYTES)
+      throw Object.assign(new Error("Quarantined archive exceeds the inspection size limit"), { statusCode: 413 });
     const buffer = await readFile(archivePath);
     if (buffer.length > MAX_ARCHIVE_BYTES)
       throw Object.assign(new Error("Quarantined archive exceeds the inspection size limit"), { statusCode: 413 });
