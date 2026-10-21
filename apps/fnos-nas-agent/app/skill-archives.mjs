@@ -51,6 +51,7 @@ export function inspectZipArchive(buffer) {
   if (centralOffset + centralSize > eocd || centralOffset + centralSize < centralOffset) invalid("ZIP central directory is out of bounds");
 
   const entries = [];
+  const localRanges = [];
   const seen = new Set();
   let cursor = centralOffset;
   let declaredBytes = 0;
@@ -110,6 +111,9 @@ export function inspectZipArchive(buffer) {
       invalid("ZIP entry data is out of bounds");
     const localName = buffer.subarray(localOffset + 30, localOffset + 30 + localNameLength);
     if (!localName.equals(nameBytes)) invalid("ZIP local and central entry names do not match");
+    if (localRanges.some(range => localOffset < range.end && dataEnd > range.start))
+      invalid("ZIP local file records overlap");
+    localRanges.push({ start: localOffset, end: dataEnd });
     declaredBytes += uncompressedSize;
     if (declaredBytes > MAX_DECLARED_UNCOMPRESSED_BYTES)
       invalid("ZIP declared uncompressed size exceeds 64 MiB limit");
