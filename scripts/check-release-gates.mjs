@@ -223,7 +223,7 @@ const modelAdapterSource = await read("apps/fnos-nas-agent/app/model-adapter.mjs
 assert.match(conversationContextSource, /MAX_HISTORY_MESSAGES = 8/);
 assert.match(conversationContextSource, /MAX_HISTORY_TOTAL_CHARS = 2400/);
 assert.match(conversationContextSource, /\["user", "assistant"\]/);
-assert.match(conversationContextTests, /keeps only the newest eight messages/);
+assert.match(conversationContextTests, /caps the newest eight messages/);
 assert.match(phase47Tests, /forwards validated prior turns/);
 assert.match(phase47Tests, /inserts bounded history between system policy/);
 assert.match(agentCoreSource, /normalizeConversationHistory\(input\.history\)/);
