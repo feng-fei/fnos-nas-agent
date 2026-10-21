@@ -185,7 +185,7 @@ export function createSkillStore(dataDir) {
 
   async function previewSourceFile(id, path) {
     if (typeof path !== "string" || !path.trim() || path.length > 1024 ||
-        /[\\x00-\\x1f\\x7f]/.test(path))
+        /[\x00-\x1f\x7f]/.test(path))
       throw Object.assign(new Error("Provide a valid archive file path"), { statusCode: 400 });
     const item = skillById(id);
     const { buffer, archive } = await readQuarantinedArchive(item);
