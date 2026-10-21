@@ -22,7 +22,7 @@ A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mob
 - `tests/` — Node built-in test runner tests.
 - `docs/phase-2.md` — current implementation boundary and acceptance checks.
 
-No third-party runtime dependencies are required. Node.js 20 or newer is required.
+No third-party runtime dependencies are required. **Node.js 26.x is the default packaged runtime** (latest patch in the 26.x line); Node.js 24.x is retained as a CI regression line. Upgrade to a newer major only after CI and fnOS validation.
 
 ## Run locally
 
@@ -45,6 +45,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [fnOS tool mapping](docs/fnos-tool-mapping.md)
 - [Development plan](docs/development.md)
 - [Phase 2 skeleton boundaries](docs/phase-2.md)
+- [Phase 3 Skill Manager contract](docs/phase-3-skill-manager.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
 
