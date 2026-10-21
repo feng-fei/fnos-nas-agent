@@ -2,7 +2,7 @@
 
 A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mobile-friendly web interface, controlled NAS operations, and a reviewable Skill manager.
 
-> **Status: Practical NAS functionality in progress.** Phases 2–46 are integrated on `main`; Phase 47 adds bounded multi-turn conversation context for follow-up requests on this feature branch. The Agent generates a terminal command but never runs the OAuth login or receives the one-time code. Task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, registered read-only and routine-write tools, one-time destructive-action confirmation, rules-first Agent routing, an optional server-configured model adapter, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Development CI currently uses Node.js 26 core tests and syntax checks only; FPK build, checksum, artifact upload, and provenance jobs are temporarily paused while core capabilities stabilize.
+> **Status: Practical NAS functionality in progress.** Phases 2–47 are integrated on `main`; Phase 48 adds bounded task progress reporting on this feature branch. The Agent generates a terminal command but never runs the OAuth login or receives the one-time code. Task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, registered read-only and routine-write tools, one-time destructive-action confirmation, rules-first Agent routing, an optional server-configured model adapter, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Development CI currently uses Node.js 26 core tests and syntax checks only; FPK build, checksum, artifact upload, and provenance jobs are temporarily paused while core capabilities stabilize.
 
 ## Goals
 
@@ -38,6 +38,8 @@ Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, set a management 
 The official fnOS Skill is the first capability pack. Its reviewed archive can provide a platform-matched trim-cli binary, which the Agent exposes only through an allowlisted read-only adapter. OAuth uses the official interactive Authorization Code + PKCE flow: the user signs in and pastes the one-time code directly into the CLI terminal. The Agent never collects credentials or executes arbitrary Skill instructions. See [Phase 40 reviewed CLI installation](docs/phase-40-reviewed-cli-install.md), [Phase 42 connection health](docs/phase-42-cli-connection-health.md), and [Phase 43 guided OAuth setup](docs/phase-43-guided-oauth-setup.md).
 
 ## Design documents
+
+- [Phase 48 — Bounded Task Progress](docs/phase-48-task-progress.md)
 
 - [Architecture](docs/architecture.md)
 - [Security model](docs/security.md)
