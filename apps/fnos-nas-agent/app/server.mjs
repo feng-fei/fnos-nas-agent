@@ -13,6 +13,7 @@ import { createModelAdapter, modelConfiguration } from "./model-adapter.mjs";
 import { createModelProviderStore } from "./model-provider-store.mjs";
 import { listModelProviderPresets } from "./model-provider-presets.mjs";
 import { createAgentCore } from "./agent-core.mjs";
+import { normalizeConversationHistory } from "./conversation-context.mjs";
 import { createTaskManager } from "./task-manager.mjs";
 import { createFixedWindowLimiter } from "./request-limiter.mjs";
 import { createAuditLogger } from "./audit-log.mjs";
@@ -595,8 +596,11 @@ const server = createServer(async (req, res) => {
       const input = await jsonBody(req);
       if (!input || typeof input !== "object" || Array.isArray(input) || typeof input.text !== "string" || !input.text.trim() || input.text.trim().length > 2000)
         return reply(res, 400, { error: "Message must contain 1 to 2000 characters" });
+      let history;
+      try { history = normalizeConversationHistory(input.history); }
+      catch { return reply(res, 400, { error: "Conversation history is invalid or too large" }); }
       let task;
-      try { task = taskManager.submit({ text: input.text.trim() }); }
+      try { task = taskManager.submit({ text: input.text.trim(), history }); }
       catch (error) {
         const status = Number.isInteger(error?.statusCode) && [429, 503].includes(error.statusCode) ? error.statusCode : 500;
         return reply(res, status, { error: status === 429 ? "Task queue is full; try again shortly." : status === 503 ? "Task capacity is temporarily full; try again shortly." : "Unable to accept task." }, "application/json; charset=utf-8", status === 429 ? { "retry-after": "2" } : {});
