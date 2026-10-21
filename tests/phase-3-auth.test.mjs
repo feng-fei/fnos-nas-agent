@@ -106,7 +106,7 @@ test("first-run setup stores only a salted password hash and protects session en
   const toolCatalogue = await tools.json();
   assert.equal(toolCatalogue.executionEnabled, false);
   assert.equal(toolCatalogue.readOnlyExecutionEnabled, true);
-  assert.deepEqual(toolCatalogue.tools.map(tool => tool.id), ["system.status", "storage.summary", "network.interfaces"]);
+  assert.deepEqual(toolCatalogue.tools.map(tool => tool.id), ["system.status", "storage.summary", "system.process-summary", "network.interfaces"]);
   assert.ok(toolCatalogue.tools.every(tool => tool.risk === "read-only" && tool.inputSchema.additionalProperties === false));
 
   const hiddenToolRun = await fetch(baseUrl + "/api/tools/system.status/run", {
