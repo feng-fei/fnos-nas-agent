@@ -13,3 +13,30 @@ test("file manager requires explicit confirmation before deletion and refuses ro
 test("file manager rejects unsafe names and oversized previews",async()=>fixture(async({root})=>{const m=createFileManager({roots:[root]});await assert.rejects(m.upload(root,"../bad",Buffer.from("x")),e=>e.statusCode===400);const f=join(root,"large.txt");await writeFile(f,Buffer.alloc(1024*1024+1,65));await assert.rejects(m.preview(f),e=>e.statusCode===413);}));
 
 test("file manager creates UTF-8 text files atomically without overwriting",async()=>fixture(async({root})=>{const m=createFileManager({roots:[root]});const r=await m.createText(root,"notes.txt","NAS 文本\\n第二行");assert.equal(await readFile(r.path,"utf8"),"NAS 文本\\n第二行");assert.equal(r.sizeBytes,Buffer.byteLength("NAS 文本\\n第二行"));await assert.rejects(m.createText(root,"notes.txt","overwrite"),e=>e.statusCode===409);await assert.rejects(m.createText(root,"../bad.txt","x"),e=>e.statusCode===400);await assert.rejects(m.createText(root,"large.txt","x".repeat(1024*1024+1)),e=>e.statusCode===413);assert.equal((await readdir(root)).some(n=>n.startsWith(".fnos-text-")),false);}));
+
+test("batch file operations are bounded and return per-item sanitized outcomes", async () => {
+  const { mkdtemp, mkdir, writeFile, rm, readFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { createFileManager } = await import("../apps/fnos-nas-agent/app/file-manager.mjs");
+  const root = await mkdtemp(join(tmpdir(), "fnos-batch-"));
+  try {
+    const fm = createFileManager({ roots: [root] });
+    const results = await fm.operateBatch({ operations: [
+      { action: "mkdir", path: root, name: "created" },
+      { action: "rename", path: join(root, "missing"), name: "renamed" },
+      { action: "mkdir", path: root, name: "created" },
+      { action: "create-text", path: root, name: "unused", content: "x" }
+    ]});
+    assert.equal(results.total, 4);
+    assert.equal(results.succeeded, 1);
+    assert.equal(results.failed, 3);
+    assert.deepEqual(results.results.map(x => x.index), [0, 1, 2, 3]);
+    assert.equal(results.results[0].ok, true);
+    assert.equal(results.results[1].ok, false);
+    assert.equal("stack" in results.results[1], false);
+    assert.equal(await readFile(join(root, "created"), "utf8").then(() => true, () => false), false);
+    const countError = await fm.operateBatch({ operations: Array.from({length: 21}, () => ({ action: "mkdir", path: root, name: "x" })) }).catch(e => e);
+    assert.equal(countError.statusCode, 400);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

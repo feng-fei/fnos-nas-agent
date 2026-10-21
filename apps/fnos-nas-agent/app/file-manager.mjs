@@ -15,5 +15,36 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
  async function createText(directory,name,content){if(typeof content!=="string")fail(400,"Text content must be a string");const buffer=Buffer.from(content,"utf8");if(buffer.length>MAX_TEXT_CREATE_BYTES)fail(413,"Text files are limited to 1 MiB");if(content.includes("\0"))fail(400,"Text content cannot contain NUL characters");const target=await destination(directory,name);await ensureAbsent(target.target);const temp=resolve(target.path,".fnos-text-"+randomUUID()+".tmp"),handle=await fs.open(temp,"wx",0o600);try{await handle.writeFile(buffer);await handle.sync();}finally{await handle.close();}try{await fs.link(temp,target.target);}catch(e){if(e.code==="EEXIST")fail(409,"A file or directory with that name already exists");throw e;}finally{await fs.unlink(temp).catch(()=>{});}return {name:target.name,path:target.target,sizeBytes:buffer.length};}
  async function upload(directory,name,buffer){if(!Buffer.isBuffer(buffer))fail(400,"Upload body must be binary");if(buffer.length>MAX_UPLOAD_BYTES)fail(413,"Upload is limited to 25 MiB");const target=await destination(directory,name);await ensureAbsent(target.target);const temp=resolve(target.path,".fnos-upload-"+randomUUID()+".tmp"),handle=await fs.open(temp,"wx",0o600);try{await handle.writeFile(buffer);await handle.sync();}finally{await handle.close();}try{await fs.link(temp,target.target);}catch(e){if(e.code==="EEXIST")fail(409,"A file or directory with that name already exists");throw e;}finally{await fs.unlink(temp).catch(()=>{});}return {name:target.name,path:target.target,sizeBytes:buffer.length};}
  async function operate(input){if(!input||typeof input!=="object"||Array.isArray(input))fail(400,"Invalid operation");const action=input.action;if(action==="mkdir"){const d=await destination(input.path,input.name);await ensureAbsent(d.target);await fs.mkdir(d.target,{mode:0o750});return {action,name:d.name,path:d.target};}if(action==="rename"||action==="move"){const source=await resolveExisting(input.path);if(source.path===source.root)fail(403,"Cannot rename or move a storage root");const dir=action==="move"?input.destination:dirname(source.path),d=await destination(dir,action==="move"?basename(source.path):input.name);if(d.target===source.path)return {action,path:source.path,unchanged:true};await ensureAbsent(d.target);await fs.rename(source.path,d.target);return {action,path:d.target,name:basename(d.target)};}if(action==="delete"){if(input.confirm!==true)fail(400,"Explicit confirmation is required");const source=await resolveExisting(input.path);if(source.path===source.root)fail(403,"Cannot delete a storage root");if(source.info.isDirectory())await fs.rmdir(source.path);else if(source.info.isFile())await fs.unlink(source.path);else fail(400,"Unsupported file type");return {action,path:source.path,deleted:true};}fail(400,"Unsupported file operation");}
- return Object.freeze({getRoots,preview,download,upload,createText,operate,limits:{maxUploadBytes:MAX_UPLOAD_BYTES,maxPreviewBytes:MAX_PREVIEW_BYTES,maxTextCreateBytes:MAX_TEXT_CREATE_BYTES}});
+
+  async function operateBatch(input) {
+    if (!input || typeof input !== "object" || Array.isArray(input) || !Array.isArray(input.operations))
+      fail(400, "Batch operations must be an array");
+    if (input.operations.length < 1 || input.operations.length > 20)
+      fail(400, "Batch operation count must be between 1 and 20");
+    const results = [];
+    let succeeded = 0, failed = 0;
+    for (let index = 0; index < input.operations.length; index++) {
+      const operation = input.operations[index];
+      try {
+        const result = await operate(operation);
+        results.push({ index, ok: true, result });
+        succeeded++;
+      } catch (error) {
+        results.push({
+          index,
+          ok: false,
+          error: error?.statusCode === 400 ? "请求参数无效。" :
+            error?.statusCode === 403 ? "操作路径不在允许范围内。" :
+            error?.statusCode === 404 ? "文件或目录不存在。" :
+            error?.statusCode === 409 ? "目标已存在或状态冲突。" :
+            error?.statusCode === 413 ? "内容超过允许大小。" :
+            "此项操作失败。"
+        });
+        failed++;
+      }
+    }
+    return { total: input.operations.length, succeeded, failed, results };
+  }
+
+ return Object.freeze({getRoots,preview,download,upload,createText,operate,operateBatch,limits:{maxUploadBytes:MAX_UPLOAD_BYTES,maxPreviewBytes:MAX_PREVIEW_BYTES,maxTextCreateBytes:MAX_TEXT_CREATE_BYTES}});
 }
