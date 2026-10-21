@@ -38,12 +38,12 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     return roots.sort((a, b) => a.localeCompare(b));
   }
 
-  async function list(pathValue = "", requestedLimit = DEFAULT_LIMIT) {
+  async function list(pathValue = "", requestedLimit = DEFAULT_LIMIT, requestedOffset = 0) {
     if (typeof pathValue !== "string" || pathValue.length > 2048) {
       throw Object.assign(new Error("Invalid directory path"), { statusCode: 400 });
     }
     const roots = await getRoots();
-    if (!roots.length) return { roots: [], path: null, parentPath: null, entries: [], limit: 0, note: "未发现可浏览的存储卷；可通过 AGENT_FILE_ROOTS 配置允许的绝对路径。" };
+    if (!roots.length) return { roots: [], path: null, parentPath: null, entries: [], limit: 0, offset: 0, totalEntries: 0, note: "未发现可浏览的存储卷；可通过 AGENT_FILE_ROOTS 配置允许的绝对路径。" };
     const requestedPath = pathValue.trim() ? resolve(pathValue) : roots[0];
     let actual;
     try { actual = await fs.realpath(requestedPath); }
@@ -53,6 +53,7 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     const info = await fs.lstat(actual);
     if (!info.isDirectory()) throw Object.assign(new Error("Path is not a directory"), { statusCode: 400 });
     const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(MAX_ENTRIES, requestedLimit)) : DEFAULT_LIMIT;
+    const offset = Number.isInteger(requestedOffset) ? Math.max(0, Math.min(100_000, requestedOffset)) : 0;
     const dirents = await fs.readdir(actual, { withFileTypes: true });
     const entries = [];
     for (const entry of dirents) {
@@ -77,9 +78,10 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
       roots: roots.map(path => ({ name: basename(path), path })),
       path: actual,
       parentPath: parent && within(root, parent) ? parent : null,
-      entries: entries.slice(0, limit),
+      entries: entries.slice(offset, offset + limit),
       totalEntries: entries.length,
-      limit
+      limit,
+      offset
     };
   }
 
