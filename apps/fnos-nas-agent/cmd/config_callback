@@ -1,0 +1,4 @@
+#!/bin/bash
+set -eu
+# This release has no user-editable configuration wizard.
+exit 0
