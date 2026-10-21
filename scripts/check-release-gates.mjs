@@ -24,7 +24,8 @@ const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, audit
   read("scripts/verify-release-artifact.mjs"),
   read("tests/phase-26-release-artifact-verification.test.mjs"),
   read("docs/phase-26-release-artifact-verification.md"),
-  read("docs/phase-27-build-provenance-attestation.md")
+  read("docs/phase-27-build-provenance-attestation.md"),
+  read("docs/phase-116-attestation-verification.md")
 ].map(async promise => promise));
 const packageJson = JSON.parse(pkg);
 
@@ -68,6 +69,15 @@ assert.match(workflow, /uses: actions\/checkout@fbc6f3992d24b796d5a048ff273f7fcc
 assert.match(workflow, /uses: actions\/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5\.0\.0/);
 assert.doesNotMatch(workflow, /uses:\s+actions\/(?:checkout|setup-node|upload-artifact|download-artifact|attest)@v\d/);
 assert.match(attestJobSource, /subject-path: artifact\/fnos-nas-agent-test-node-26\.fpk/);
+assert.match(attestJobSource, /Verify generated provenance attestation/);
+assert.match(attestJobSource, /gh attestation verify/);
+assert.match(attestJobSource, /GH_TOKEN: \$\{\{ github\.token \}\}/);
+assert.match(attestJobSource, /--repo feng-fei\/fnos-nas-agent/);
+assert.match(attestJobSource, /--signer-workflow feng-fei\/fnos-nas-agent\/\.github\/workflows\/build-fpk\.yml/);
+assert.match(attestJobSource, /--source-ref refs\/heads\/main/);
+assert.match(provenanceDocs, /does not prove that the source code is safe/);
+assert.match(phase116Docs, /--signer-workflow/);
+assert.match(phase116Docs, /--source-ref refs\/heads\/main/);
 assert.match(attestJobSource, /id-token: write/);
 assert.match(attestJobSource, /attestations: write/);
 assert.match(attestJobSource, /artifact-metadata: write/);
