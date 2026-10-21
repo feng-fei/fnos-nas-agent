@@ -12,7 +12,7 @@ const DIRECT_INTENTS = [
   { pattern: /^(?:查看|查询|显示|检查)?\s*(?:CPU监控|CPU使用情况|处理器状态)\s*[。！!？?]?$/i, tool: "fnos.monitor.cpu", message: "正在读取 CPU 监控数据。" },
   { pattern: /^(?:查看|查询|显示|列出)?\s*(?:存储池|存储池列表)\s*[。！!？?]?$/i, tool: "fnos.storage.pools", message: "正在读取存储池列表，不会修改存储配置。" },
   { pattern: /^(?:查看|查询|显示)?\s*(?:当前用户|NAS用户信息|用户信息)\s*[。！!？?]?$/i, tool: "fnos.user.info", message: "正在读取当前用户信息。" },
-  { pattern: /^(?:查看|查询|显示|检查|看看)?\s*(?:文件|文件夹|目录)(?:列表)?(?:\s+(.{1,2048}))?\s*[。！!？?]?$/i, tool: "files.list", args: match => match[1] ? ({ path: match[1].trim() }) : ({}), message: "正在读取允许存储卷中的文件目录。" },
+  { pattern: /^(?:查看|查询|显示|检查|看看|列出|浏览)?\s*(?:文件|文件夹|目录)(?:列表)?(?:\s+(.{1,2048}))?\s*[。！!？?]?$/i, tool: "files.list", args: match => match[1] ? ({ path: match[1].trim() }) : ({}), message: "正在读取允许存储卷中的文件目录。" },
   { pattern: /^(?:预览|读取|查看)文本文件\s+(.{1,2048})$/i, tool: "files.preview", args: match => ({ path: match[1].trim() }), message: "正在预览 UTF-8 文本文件。" },
   { pattern: /^(?:查看|列出|浏览)(?:一下)?fnOS文件(?:列表)?\s+(.{1,2048})$/i, tool: "fnos.file.ls", args: match => ({ path: match[1].trim() }), message: "正在读取 fnOS 文件列表。" },
   { pattern: /^(?:查看|列出|浏览)(?:一下)?(?:相册文件夹|照片文件夹)\s*[。！!？?]?$/i, tool: "fnos.photos.folders", message: "正在读取相册文件夹。" },
