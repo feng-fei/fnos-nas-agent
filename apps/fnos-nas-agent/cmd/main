@@ -29,8 +29,8 @@ case "${1:-}" in
     mkdir -p "$APP_VAR"
     if is_running; then exit 0; fi
     rm -f "$PID_FILE"
-    # LAN access is required for the web UI. Keep the app unprivileged;
-    # do not expose this port to the public Internet.
+    # Status-only endpoint for trusted LAN testing; no NAS command execution is enabled.
+    # 0.0.0.0 listens on all interfaces: never expose this unauthenticated build publicly.
     HOST=0.0.0.0 PORT="$APP_PORT" "$NODE_BIN" "$ENTRY" >> "$APP_VAR/agent.log" 2>&1 &
     pid=$!
     printf '%s\n' "$pid" > "$PID_FILE"

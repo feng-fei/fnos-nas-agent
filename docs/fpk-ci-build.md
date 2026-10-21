@@ -4,7 +4,7 @@ The repository builds the native x86 FPK on GitHub Actions; no build tools are i
 
 ## Trigger
 
-- Push changes affecting the app or build script to `phase-2/fpk-packaging`.
+- Push changes affecting the app or build script to the FPK packaging branch.
 - Or use **Actions → Build fnOS FPK → Run workflow**.
 
 ## What the workflow does
@@ -21,10 +21,12 @@ The artifact is a **test build**, not a production release. The package uses `ru
 
 Open the workflow run in the repository's **Actions** tab, open the successful run, and download `fnos-nas-agent-test-fpk`.
 
-## Safety boundary
+## Network and safety boundary
 
-The current app is status-page-only. Its lifecycle script binds the HTTP server to loopback. This build does not enable LAN access, shell execution, Skills, model calls, or NAS administration. Do not expose it to a network until authentication and authorization are implemented and tested.
+The current test app is status-page-only and binds to `0.0.0.0` so computers and phones on the LAN can reach it. The only HTTP routes are the status page and `GET /api/health`; NAS command execution, Skill execution, and model calls remain disabled.
+
+**Security note:** this status-only build has no client authentication. Binding to `0.0.0.0` listens on all network interfaces; it does not itself restrict access to the LAN. Use only on a trusted private LAN, do not configure router port forwarding, and do not expose port 18787 to the public internet. Before adding any NAS management or execution features, implement and test authentication, authorization, CSRF protections where applicable, and explicit confirmation for risky actions. A LAN-accessible status page is not a security boundary by itself.
 
 ## Follow-up real-device validation
 
-On a test fnOS device, install the downloaded FPK through the app center and validate install, start, status, stop, restart, and uninstall. Do not treat a green CI build as a substitute for this step.
+On a test fnOS device, validate install, start, status, stop, restart, and uninstall through the app center. Also confirm that the service listens on the intended interfaces and that `/api/health` returns HTTP 200 from a LAN client. Do not treat a green CI build as a substitute for lifecycle testing on the target fnOS version.
