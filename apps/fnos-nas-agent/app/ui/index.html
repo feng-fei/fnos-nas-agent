@@ -1,9 +1,17 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>fnOS NAS Agent</title>
-<style>body{margin:0;background:Canvas;color:CanvasText;font-family:system-ui,sans-serif}main{max-width:680px;margin:auto;padding:24px 16px}.card{border:1px solid #8886;border-radius:14px;padding:16px;margin:14px 0}.muted{opacity:.72}button{font:inherit;padding:10px 14px;border-radius:10px}</style></head>
-<body><main><h1>fnOS NAS Agent</h1><p class="muted">原生 FPK 测试版 · 仅状态页面</p>
-<section class="card"><h2>服务状态</h2><p id="status">正在检查…</p><p id="detail" class="muted">此版本不会执行 NAS 管理操作。</p><button id="refresh">刷新</button></section>
+<style>body{margin:0;background:Canvas;color:CanvasText;font-family:system-ui,sans-serif}main{max-width:680px;margin:auto;padding:24px 16px}.card{border:1px solid #8886;border-radius:14px;padding:16px;margin:14px 0}.muted{opacity:.72}button,input{font:inherit;padding:10px 12px;border-radius:10px;max-width:100%}input{box-sizing:border-box;width:100%;margin:8px 0}button{border:1px solid #8888}.hidden{display:none}.error{color:#b42318}</style></head>
+<body><main><h1>fnOS NAS Agent</h1><p class="muted">轻量 NAS 助手 · 安全验证测试版</p>
+<section class="card" id="login-card"><h2>登录验证</h2><p class="muted" id="login-help">输入本机配置的访问令牌。令牌不会保存在浏览器本地存储中。</p><form id="login-form"><label for="token">访问令牌</label><input id="token" name="token" type="password" autocomplete="current-password" minlength="32" required><button type="submit">登录</button></form><p id="login-error" class="error" role="status"></p></section>
+<section class="card hidden" id="status-card"><h2>服务状态</h2><p id="status">正在检查…</p><p id="detail" class="muted">当前版本不执行 NAS 管理操作。</p><button id="refresh" type="button">刷新状态</button> <button id="logout" type="button">退出登录</button></section>
+<section class="card"><h2>安全说明</h2><p class="muted" id="safety">NAS 执行能力默认关闭。未配置访问令牌时，服务只监听本机回环地址，无法从其他设备访问。</p></section>
 <script>
-async function refresh(){const s=document.querySelector("#status"),d=document.querySelector("#detail");try{const r=await fetch("/api/health",{cache:"no-store"});if(!r.ok)throw Error();const j=await r.json();s.textContent=j.ok?"运行正常":"状态异常";d.textContent="版本 "+j.version+"；NAS 执行能力："+(j.executionEnabled?"已启用":"关闭");}catch{s.textContent="无法连接服务";d.textContent="请检查应用是否运行。";}}
-document.querySelector("#refresh").addEventListener("click",refresh);refresh();
+const loginCard=document.querySelector("#login-card"),statusCard=document.querySelector("#status-card"),errorEl=document.querySelector("#login-error"),tokenEl=document.querySelector("#token");
+async function api(path,options={}){return fetch(path,{cache:"no-store",credentials:"same-origin",...options});}
+async function refresh(){const s=document.querySelector("#status"),d=document.querySelector("#detail");try{const r=await api("/api/health");if(!r.ok)throw Error();const h=await r.json();s.textContent=h.ok?"运行正常":"状态异常";d.textContent="版本 "+h.version+"；NAS 执行能力："+(h.executionEnabled?"已启用":"关闭");}catch{s.textContent="无法连接服务";d.textContent="请检查应用是否运行。";}}
+async function init(){try{const r=await api("/api/session");const x=await r.json();if(x.authenticated){loginCard.classList.add("hidden");statusCard.classList.remove("hidden");await refresh();}else if(x.setupRequired){document.querySelector("#login-form").classList.add("hidden");document.querySelector("#login-help").textContent="尚未配置访问令牌。服务处于本机回环模式，请先按项目文档安全配置令牌。";}}catch{}}
+document.querySelector("#login-form").addEventListener("submit",async e=>{e.preventDefault();errorEl.textContent="";try{const r=await api("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({token:tokenEl.value})});const x=await r.json();if(!r.ok)throw Error(x.error||"登录失败");tokenEl.value="";loginCard.classList.add("hidden");statusCard.classList.remove("hidden");await refresh();}catch(e){errorEl.textContent=e.message||"登录失败";}});
+document.querySelector("#refresh").addEventListener("click",refresh);
+document.querySelector("#logout").addEventListener("click",async()=>{await api("/api/logout",{method:"POST"});statusCard.classList.add("hidden");loginCard.classList.remove("hidden");});
+init();
 </script></main></body></html>

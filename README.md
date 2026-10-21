@@ -31,7 +31,7 @@ npm test
 npm start
 ```
 
-Open `http://127.0.0.1:8787`. The service binds to loopback by default. Non-loopback binding requires a long `AGENT_ACCESS_TOKEN`, but the current web page does not yet implement token entry. Do not expose it to a LAN or the public internet until an appropriate client authentication flow is implemented.
+Open `http://127.0.0.1:8787`. The FPK now remains loopback-only unless a private `access-token` file is configured. See [Phase 3 web authentication](docs/phase-3-web-auth.md) for setup and important plain-HTTP limitations. Do not expose it to untrusted networks or the public internet.
 
 ## Planned first capability
 
@@ -46,6 +46,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Development plan](docs/development.md)
 - [Phase 2 skeleton boundaries](docs/phase-2.md)
 - [Phase 3 Skill Manager contract](docs/phase-3-skill-manager.md)
+- [Phase 3 web authentication](docs/phase-3-web-auth.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
 
