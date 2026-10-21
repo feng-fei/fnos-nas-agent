@@ -260,6 +260,18 @@ const server = createServer(async (req, res) => {
         "set-cookie": `nas_agent_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${req.socket.encrypted ? "; Secure" : ""}`
       });
     }
+    if (url.pathname === "/api/files") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      try {
+        const rawLimit = Number(url.searchParams.get("limit") || 100);
+        const result = await fileBrowser.list(url.searchParams.get("path") || "", rawLimit);
+        return reply(res, 200, result);
+      } catch (error) {
+        const status = [400, 403, 404].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 403 ? "Path is outside configured storage roots" : status === 404 ? "Directory not found" : status === 400 ? "Invalid directory path" : "Unable to list directory" });
+      }
+    }
     if (req.method === "GET" && url.pathname === "/api/diagnostics") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       return reply(res, 200, await readOnlyDiagnostics());
