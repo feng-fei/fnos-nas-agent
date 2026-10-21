@@ -140,6 +140,6 @@ assert.match(fileManagerTests, /creates UTF-8 text files atomically without over
 assert.match(await read("apps/fnos-nas-agent/app/agent-core.mjs"), /argsMatchSchema/);
 assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /task-stats/);
 
-assert.match(fileManagerSource, /content.includes\("\\\\0"\)/);
-assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\\.upload/);
+assert.match(fileManagerSource, /content\.includes\("\\0"\)/);
+assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\.upload/);
 assert.match(fileManagerTests, /Agent upload tool is a bounded routine write/);
