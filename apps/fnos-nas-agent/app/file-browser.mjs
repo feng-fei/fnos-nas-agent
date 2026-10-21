@@ -38,12 +38,12 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     return roots.sort((a, b) => a.localeCompare(b));
   }
 
-  async function list(pathValue = "", requestedLimit = DEFAULT_LIMIT) {
+  async function list(pathValue = "", requestedLimit = DEFAULT_LIMIT, requestedOffset = 0, requestedSort = "directories-first", requestedQuery = "", requestedType = "all") {
     if (typeof pathValue !== "string" || pathValue.length > 2048) {
       throw Object.assign(new Error("Invalid directory path"), { statusCode: 400 });
     }
     const roots = await getRoots();
-    if (!roots.length) return { roots: [], path: null, parentPath: null, entries: [], limit: 0, note: "未发现可浏览的存储卷；可通过 AGENT_FILE_ROOTS 配置允许的绝对路径。" };
+    if (!roots.length) return { roots: [], path: null, parentPath: null, entries: [], limit: 0, offset: 0, totalEntries: 0, note: "未发现可浏览的存储卷；可通过 AGENT_FILE_ROOTS 配置允许的绝对路径。" };
     const requestedPath = pathValue.trim() ? resolve(pathValue) : roots[0];
     let actual;
     try { actual = await fs.realpath(requestedPath); }
@@ -53,6 +53,10 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     const info = await fs.lstat(actual);
     if (!info.isDirectory()) throw Object.assign(new Error("Path is not a directory"), { statusCode: 400 });
     const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(MAX_ENTRIES, requestedLimit)) : DEFAULT_LIMIT;
+    const offset = Number.isInteger(requestedOffset) ? Math.max(0, Math.min(100_000, requestedOffset)) : 0;
+    if (!["directories-first", "name-asc", "name-desc", "size-desc", "modified-desc"].includes(requestedSort)) throw Object.assign(new Error("Invalid directory sort mode"), { statusCode: 400 });
+    if (typeof requestedQuery !== "string" || requestedQuery.length > 160) throw Object.assign(new Error("Invalid directory search query"), { statusCode: 400 });
+    if (!["all", "directory", "file"].includes(requestedType)) throw Object.assign(new Error("Invalid directory type filter"), { statusCode: 400 });
     const dirents = await fs.readdir(actual, { withFileTypes: true });
     const entries = [];
     for (const entry of dirents) {
@@ -71,15 +75,30 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
         });
       } catch { /* Ignore entries that disappear during listing. */ }
     }
-    entries.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === "directory" ? -1 : 1));
+    const totalDirectoryEntries = entries.length;
+    const query = requestedQuery.trim().toLocaleLowerCase();
+    let filteredEntries = entries.filter(item => (requestedType === "all" || item.type === requestedType) &&
+      (!query || item.name.toLocaleLowerCase().includes(query)));
+    filteredEntries.sort((a, b) => {
+      if (requestedSort === "size-desc") return (b.sizeBytes ?? -1) - (a.sizeBytes ?? -1) || a.name.localeCompare(b.name);
+      if (requestedSort === "modified-desc") return String(b.modifiedAt || "").localeCompare(String(a.modifiedAt || "")) || a.name.localeCompare(b.name);
+      if (requestedSort === "name-desc") return b.name.localeCompare(a.name);
+      if (requestedSort === "name-asc") return a.name.localeCompare(b.name);
+      return a.type === b.type ? a.name.localeCompare(b.name) : a.type === "directory" ? -1 : 1;
+    });
     const parent = actual === root ? null : dirname(actual);
     return {
       roots: roots.map(path => ({ name: basename(path), path })),
       path: actual,
       parentPath: parent && within(root, parent) ? parent : null,
-      entries: entries.slice(0, limit),
-      totalEntries: entries.length,
-      limit
+      entries: filteredEntries.slice(offset, offset + limit),
+      totalEntries: filteredEntries.length,
+      totalDirectoryEntries,
+      limit,
+      offset,
+      sort: requestedSort,
+      query: requestedQuery.trim(),
+      type: requestedType
     };
   }
 
