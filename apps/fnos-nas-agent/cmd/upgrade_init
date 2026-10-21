@@ -1,0 +1,4 @@
+#!/bin/bash
+set -eu
+# No migration is required for the initial status-only release.
+exit 0

@@ -45,6 +45,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [fnOS tool mapping](docs/fnos-tool-mapping.md)
 - [Development plan](docs/development.md)
 - [Phase 2 skeleton boundaries](docs/phase-2.md)
+- [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
 
 ## Roadmap
@@ -54,7 +55,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 3. **Skill manager** — safe ZIP import, quarantine, inventory, hashing, review, and lifecycle.
 4. **fnOS adapter** — a small set of verified read-only operations.
 5. **Model adapter** — structured plans, schema validation, bounded retries, and token-saving routing.
-6. **FPK packaging** — validate install/start/stop/upgrade/uninstall on a test fnOS system.
+6. **FPK packaging** — GitHub Actions builds a test FPK; then validate install/start/stop/upgrade/uninstall on a test fnOS system.
 
 ## License
 
