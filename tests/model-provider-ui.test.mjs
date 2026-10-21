@@ -29,7 +29,7 @@ test("model UI calls authenticated CRUD, connection test and active-provider end
   assert.match(html, /设为默认/);
   assert.match(html, /测试连接/);
   assert.match(html, /设为备用模型/);
-  assert.match(html, /自动切换/);
+  assert.match(html, /主模型出现网络、限流或服务错误时才切换/);
   assert.match(html, /清除已保存的 API Key/);
 });
 
