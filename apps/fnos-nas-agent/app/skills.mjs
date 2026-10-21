@@ -25,7 +25,8 @@ export function createSkillStore(dataDir) {
     queue = queue.then(async () => {
       await mkdir(dataDir, { recursive: true, mode: 0o700 });
       const tmp = file + ".tmp";
-      await writeFile(tmp, snapshot + "\n", { encoding: "utf8", mode: 0o600 });
+      await writeFile(tmp, snapshot + "
+", { encoding: "utf8", mode: 0o600 });
       await chmod(tmp, 0o600);
       await rename(tmp, file);
     });
@@ -81,6 +82,10 @@ export function createSkillStore(dataDir) {
       sourceLabel: typeof input.sourceLabel === "string" ? input.sourceLabel.slice(0, 100) : "",
       importedAt: new Date().toISOString(),
       archiveSha256: input.archiveSha256.toLowerCase(),
+      quarantineFile: typeof input.quarantineFile === "string" ? input.quarantineFile : "",
+      archiveSizeBytes: Number.isSafeInteger(input.archiveSizeBytes) ? input.archiveSizeBytes : null,
+      archiveEntryCount: Number.isSafeInteger(input.archiveEntryCount) ? input.archiveEntryCount : null,
+      declaredUncompressedBytes: Number.isSafeInteger(input.declaredUncompressedBytes) ? input.declaredUncompressedBytes : null,
       state: "pending_review",
       declaredCapabilities: caps,
       reviewNote: "",
@@ -91,7 +96,19 @@ export function createSkillStore(dataDir) {
     return { ...record, declaredCapabilities: [...record.declaredCapabilities] };
   }
 
-  async function importArchive(input, buffer) {\n    const archive = await saveQuarantinedArchive(dataDir, buffer);\n    const record = await register({\n      name: input.name, version: input.version, sourceLabel: input.sourceLabel,\n      archiveSha256: archive.sha256, quarantineFile: archive.quarantineFile,\n      archiveSizeBytes: archive.sizeBytes, archiveEntryCount: archive.entryCount,\n      declaredUncompressedBytes: archive.declaredUncompressedBytes,\n      declaredCapabilities: input.declaredCapabilities\n    });\n    return { ...record, archiveEntries: archive.entries };\n  }\n\n  async function transition(id, input) {
+  async function importArchive(input, buffer) {
+    const archive = await saveQuarantinedArchive(dataDir, buffer);
+    const record = await register({
+      name: input.name, version: input.version, sourceLabel: input.sourceLabel,
+      archiveSha256: archive.sha256, quarantineFile: archive.quarantineFile,
+      archiveSizeBytes: archive.sizeBytes, archiveEntryCount: archive.entryCount,
+      declaredUncompressedBytes: archive.declaredUncompressedBytes,
+      declaredCapabilities: input.declaredCapabilities
+    });
+    return { ...record, archiveEntries: archive.entries };
+  }
+
+  async function transition(id, input) {
     const item = records.find(record => record.id === id);
     if (!item) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
     const target = input?.state;
