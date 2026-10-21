@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: fpk-{github.ref}
+  group: fpk-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -43,6 +43,7 @@ jobs:
           chmod 755 "$app/app/bin/node"
           python3 scripts/generate-fpk-icons.py "$app"
 
+          chmod 755 "$app/cmd/main" "$app/cmd/install_callback" "$app/cmd/uninstall_callback"
           test -x "$app/cmd/main"
           test -x "$app/cmd/install_callback"
           test -x "$app/cmd/uninstall_callback"
@@ -71,12 +72,12 @@ jobs:
           "$RUNNER_TEMP/fnpack" build
           shopt -s nullglob
           packages=(./*.fpk)
-          if [ "${"#"}" -eq 0 ]; then
+          if [ "${#packages[@]}" -eq 0 ]; then
             echo "fnpack did not produce an FPK file" >&2
             exit 1
           fi
           mkdir -p ../../dist
-          cp "${"{packages[0]}" }" ../../dist/fnos-nas-agent-test.fpk
+          cp "${packages[0]}" ../../dist/fnos-nas-agent-test.fpk
 
       - name: Inspect package and checksum
         shell: bash
