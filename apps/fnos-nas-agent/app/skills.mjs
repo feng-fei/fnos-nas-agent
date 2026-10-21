@@ -25,8 +25,7 @@ export function createSkillStore(dataDir) {
     queue = queue.then(async () => {
       await mkdir(dataDir, { recursive: true, mode: 0o700 });
       const tmp = file + ".tmp";
-      await writeFile(tmp, snapshot + "
-", { encoding: "utf8", mode: 0o600 });
+      await writeFile(tmp, snapshot + "\n", { encoding: "utf8", mode: 0o600 });
       await chmod(tmp, 0o600);
       await rename(tmp, file);
     });
