@@ -18,6 +18,7 @@ on:
       - "phase-14/**"
       - "phase-15/**"
       - "phase-16/**"
+      - "phase-17/**"
       - "fix/**"
       - "test/**"
     paths:
