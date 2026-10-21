@@ -164,7 +164,7 @@ test("remote Skill import remains authenticated, rate-limited, and quarantine-on
   assert.match(html, /id="skill-remote-import-form"/);
   assert.match(html, /id="skill-remote-url" type="url" maxlength="2048"/);
   assert.match(html, /api\("\/api\/skills\/import-remote"/);
-  assert.match(html, /result\.commitSha\?." commit /);
+  assert.ok(html.includes('result.commitSha?" · commit "+result.commitSha.slice(0,12)'));
   assert.match(html, /尚未解压或执行/);
 });
 
@@ -258,7 +258,7 @@ test("source provenance records the immutable SHA and UI displays the abbreviate
   assert.match(route, /archive\.commitSha/);
   assert.match(route, /commitSha: archive\.commitSha/);
   assert.match(route, /sourcePrefix\.slice/);
-  assert.match(route, /\+"#"\+archive\.commitSha/);
+  assert.match(route, /archive\.commitSha \? "#" \+ archive\.commitSha/);
   assert.match(html, /result\.commitSha\.slice\(0,12\)/);
 });
 
