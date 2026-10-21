@@ -89,6 +89,16 @@ export function inspectZipArchive(buffer) {
       invalid("ZIP contains an unsupported special file type");
     if (localOffset + 30 > centralOffset || buffer.readUInt32LE(localOffset) !== 0x04034b50)
       invalid("ZIP local file header is invalid");
+    const localFlags = buffer.readUInt16LE(localOffset + 6);
+    const localMethod = buffer.readUInt16LE(localOffset + 8);
+    const localCrc = buffer.readUInt32LE(localOffset + 14);
+    const localCompressedSize = buffer.readUInt32LE(localOffset + 18);
+    const localUncompressedSize = buffer.readUInt32LE(localOffset + 22);
+    if (localFlags !== flags || localMethod !== method)
+      invalid("ZIP local and central flags or compression methods do not match");
+    if (!(flags & 0x0008) && (localCrc !== buffer.readUInt32LE(cursor + 16) ||
+        localCompressedSize !== compressedSize || localUncompressedSize !== uncompressedSize))
+      invalid("ZIP local and central size or checksum fields do not match");
     const localNameLength = buffer.readUInt16LE(localOffset + 26);
     const localExtraLength = buffer.readUInt16LE(localOffset + 28);
     const dataStart = localOffset + 30 + localNameLength + localExtraLength;
