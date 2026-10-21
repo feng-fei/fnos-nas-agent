@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { saveQuarantinedArchive } from "./skill-archives.mjs";
 import { inspectSkillManifest } from "./skill-manifest.mjs";
-import { mkdir, readFile, writeFile, rename, chmod, unlink } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, chmod, unlink, lstat } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { join } from "node:path";
 
@@ -144,8 +144,17 @@ export function createSkillStore(dataDir) {
       throw Object.assign(new Error("Unable to save Skill inventory securely"), { statusCode: 500 });
     }
     if (archivePath && !records.some(record => record.archiveSha256 === item.archiveSha256)) {
-      try { await unlink(archivePath); }
-      catch (error) { if (error.code !== "ENOENT") return { removed: true, archiveRemoved: false, warning: "Metadata removed; quarantined archive cleanup failed." }; }
+      try {
+        const quarantineInfo = await lstat(quarantineRoot);
+        const archiveInfo = await lstat(archivePath);
+        if (quarantineInfo.isSymbolicLink() || !quarantineInfo.isDirectory() ||
+            archiveInfo.isSymbolicLink() || !archiveInfo.isFile()) {
+          return { removed: true, archiveRemoved: false, warning: "Metadata removed; archive was not deleted because its filesystem type was unsafe." };
+        }
+        await unlink(archivePath);
+      } catch (error) {
+        if (error.code !== "ENOENT") return { removed: true, archiveRemoved: false, warning: "Metadata removed; quarantined archive cleanup failed." };
+      }
       return { removed: true, archiveRemoved: true };
     }
     return { removed: true, archiveRemoved: false };
