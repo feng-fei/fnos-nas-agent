@@ -120,7 +120,7 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
       if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
       return fileManager.operate({ action: "move", path: args.path, destination: args.destination });
     }
-    if (id === "files.delete") {
+    if (id === "files.create-text") {\n      if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });\n      return fileManager.createText(args.path, args.name, args.content);\n    }\n    if (id === "files.delete") {
       if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
       return fileManager.operate({ action: "delete", path: args.path, confirm: true });
     }
