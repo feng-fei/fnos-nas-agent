@@ -47,10 +47,125 @@
 const setupCard=document.querySelector("#setup-card"),loginCard=document.querySelector("#login-card"),statusCard=document.querySelector("#status-card"),errorEl=document.querySelector("#login-error"),tokenEl=document.querySelector("#token"),newTokenEl=document.querySelector("#new-token");
 async function api(path,options={}){return fetch(path,{cache:"no-store",credentials:"same-origin",...options});}
 async function refresh(){const s=document.querySelector("#status"),d=document.querySelector("#detail"),out=document.querySelector("#diagnostics");try{const r=await api("/api/health");if(!r.ok)throw Error();const h=await r.json();s.textContent=h.ok?"运行正常":"状态异常";d.textContent="版本 "+h.version+"；任意系统命令执行："+(h.executionEnabled?"已启用":"关闭")+"；已登记的常规文件工具可用。";const dr=await api("/api/diagnostics");if(!dr.ok)throw Error("诊断读取失败（HTTP "+dr.status+"）");const x=await dr.json();const gib=n=>(n/1024**3).toFixed(2)+" GiB";out.textContent=["系统："+x.system.platform+" "+x.system.release+" / "+x.system.arch,"Node.js："+x.system.nodeVersion+"；运行时间："+Math.floor(x.system.uptimeSeconds/3600)+" 小时","CPU："+x.cpu.model+"（逻辑核心 "+x.cpu.logicalCores+"）；负载 "+x.cpu.loadAverage.map(n=>n.toFixed(2)).join(" / "),"内存：已用 "+gib(x.memory.usedBytes)+" / "+gib(x.memory.totalBytes)+"（可用 "+gib(x.memory.freeBytes)+"）","网络："+(x.network.flatMap(n=>n.addresses.map(a=>n.name+" "+a.address)).join("；")||"未发现非回环地址"),"存储："+x.storage.map(v=>v.available?v.label+" 已用 "+gib(v.usedBytes)+" / "+gib(v.totalBytes)+"（可用 "+gib(v.freeBytes)+"）":v.label+" 无法读取").join("；")].join("\n");}catch(e){out.textContent=e.message||"诊断信息暂不可用";if(!s.textContent)s.textContent="无法连接服务";}}
-async function init(){try{const r=await api("/api/session");const x=await r.json();if(x.authenticated){loginCard.classList.add("hidden");setupCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#files-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();await refreshPendingActions();}else if(x.setupRequired){loginCard.classList.add("hidden");setupCard.classList.remove("hidden");}}catch{}}
+async function init(){try{const r=await api("/api/session");const x=await r.json();if(x.authenticated){loginCard.classList.add("hidden");setupCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#models-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#files-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshModels();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();await refreshPendingActions();}else if(x.setupRequired){loginCard.classList.add("hidden");setupCard.classList.remove("hidden");}}catch{}}
 
 document.querySelector("#setup-form").addEventListener("submit",async e=>{e.preventDefault();document.querySelector("#setup-error").textContent="";try{const token=newTokenEl.value;const r=await api("/api/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:token})});const x=await r.json();if(!r.ok)throw Error(x.error||"设置失败");tokenEl.value=token;setupCard.classList.add("hidden");loginCard.classList.remove("hidden");document.querySelector("#login-help").textContent="密码已设置，请登录。";newTokenEl.value="";tokenEl.focus();}catch(e){document.querySelector("#setup-error").textContent=e.message||"设置失败";}});
-document.querySelector("#login-form").addEventListener("submit",async e=>{e.preventDefault();errorEl.textContent="";try{const r=await api("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:tokenEl.value,remember:document.querySelector("#remember").checked})});const x=await r.json();if(!r.ok)throw Error(x.error||"登录失败");tokenEl.value="";loginCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#files-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();}catch(e){errorEl.textContent=e.message||"登录失败";}});
+document.querySelector("#login-form").addEventListener("submit",async e=>{e.preventDefault();errorEl.textContent="";try{const r=await api("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:tokenEl.value,remember:document.querySelector("#remember").checked})});const x=await r.json();if(!r.ok)throw Error(x.error||"登录失败");tokenEl.value="";loginCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#models-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#files-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshModels();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();}catch(e){errorEl.textContent=e.message||"登录失败";}});
+function clearModelProviderForm(){
+ const form=document.querySelector("#model-provider-form");
+ form.reset();
+ document.querySelector("#model-provider-id").value="";
+ document.querySelector("#model-provider-key").value="";
+ document.querySelector("#model-provider-enabled").checked=true;
+ document.querySelector("#model-provider-clear-key").checked=false;
+ document.querySelector("#model-provider-save").textContent="添加模型服务商";
+}
+async function refreshModels(){
+ const host=document.querySelector("#model-provider-list"),status=document.querySelector("#model-provider-status"),error=document.querySelector("#model-provider-error");
+ host.replaceChildren();error.textContent="";
+ try{
+  const r=await api("/api/models"),data=await r.json();
+  if(!r.ok)throw Error(data.error||"读取模型配置失败");
+  const active=data.providers.find(item=>item.id===data.activeProviderId);
+  status.textContent=active
+   ?"当前默认模型："+active.name+" / "+active.model
+   :data.modelStatus?.enabled
+    ?"当前使用服务端环境变量配置的模型："+(data.modelStatus.model||"未命名")
+    :"当前没有启用的大模型；规则匹配功能仍可使用。";
+  if(!data.providers.length){
+   const p=document.createElement("p");p.className="muted";p.textContent="尚未添加模型服务商。填写上方表单即可添加。";host.append(p);return;
+  }
+  for(const item of data.providers){
+   const card=document.createElement("div");card.className="card";
+   const heading=document.createElement("strong");heading.textContent=item.name+" · "+(item.isDefault?"当前默认":item.enabled?"已启用":"已停用");card.append(heading);
+   const meta=document.createElement("p");meta.className="muted";meta.textContent="模型："+item.model+"；API Key："+(item.hasApiKey?"已加密保存":"未配置")+"；Endpoint："+item.endpoint;card.append(meta);
+   if(item.lastTest){
+    const last=document.createElement("p");last.className=item.lastTest.ok?"muted":"error";
+    last.textContent=(item.lastTest.ok?"最近连接测试成功：":"最近连接测试失败：")+item.lastTest.message+(item.lastTest.at?"（"+item.lastTest.at+"）":"");card.append(last);
+   }else{
+    const last=document.createElement("p");last.className="muted";last.textContent="尚未测试连接。";card.append(last);
+   }
+   const actions=document.createElement("div");
+   const edit=document.createElement("button");edit.type="button";edit.textContent="编辑";
+   edit.addEventListener("click",()=>{
+    document.querySelector("#model-provider-id").value=item.id;
+    document.querySelector("#model-provider-name").value=item.name;
+    document.querySelector("#model-provider-endpoint").value=item.endpoint;
+    document.querySelector("#model-provider-model").value=item.model;
+    document.querySelector("#model-provider-key").value="";
+    document.querySelector("#model-provider-key").placeholder=item.hasApiKey?"留空保留已保存的 API Key":"请输入 API Key";
+    document.querySelector("#model-provider-enabled").checked=item.enabled;
+    document.querySelector("#model-provider-clear-key").checked=false;
+    document.querySelector("#model-provider-save").textContent="保存修改";
+    document.querySelector("#model-provider-error").textContent="";
+    document.querySelector("#model-provider-name").focus();
+   });
+   const testButton=document.createElement("button");testButton.type="button";testButton.textContent="测试连接";testButton.disabled=!item.hasApiKey;
+   testButton.addEventListener("click",async()=>{
+    testButton.disabled=true;testButton.textContent="测试中…";
+    try{
+     const result=await api("/api/models/"+encodeURIComponent(item.id)+"/test",{method:"POST"});
+     const payload=await result.json();if(!result.ok)throw Error(payload.error||"连接测试失败");
+     document.querySelector("#model-provider-error").textContent=(payload.test?.ok?"连接测试成功：":"连接测试失败：")+(payload.test?.message||"未知结果");
+     await refreshModels();await refreshAgentStatus();
+    }catch(error){document.querySelector("#model-provider-error").textContent=error.message||"连接测试失败";}
+    finally{testButton.disabled=false;testButton.textContent="测试连接";}
+   });
+   const makeDefault=document.createElement("button");makeDefault.type="button";makeDefault.textContent="设为默认";makeDefault.disabled=item.isDefault||!item.enabled||!item.hasApiKey;
+   makeDefault.addEventListener("click",async()=>{
+    makeDefault.disabled=true;
+    try{const response=await api("/api/models/"+encodeURIComponent(item.id)+"/default",{method:"POST"});const payload=await response.json();if(!response.ok)throw Error(payload.error||"设置默认模型失败");await refreshModels();await refreshAgentStatus();}
+    catch(error){error.textContent="";document.querySelector("#model-provider-error").textContent=error.message||"设置默认模型失败";makeDefault.disabled=false;}
+   });
+   const toggle=document.createElement("button");toggle.type="button";toggle.textContent=item.enabled?"停用":"启用";
+   toggle.disabled=!item.hasApiKey&&!item.enabled;
+   toggle.addEventListener("click",async()=>{
+    toggle.disabled=true;
+    try{
+     const response=await api("/api/models/"+encodeURIComponent(item.id),{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({name:item.name,endpoint:item.endpoint,model:item.model,enabled:!item.enabled})});
+     const payload=await response.json();if(!response.ok)throw Error(payload.error||"更新模型状态失败");
+     await refreshModels();await refreshAgentStatus();
+    }catch(error){document.querySelector("#model-provider-error").textContent=error.message||"更新模型状态失败";toggle.disabled=false;}
+   });
+   const remove=document.createElement("button");remove.type="button";remove.textContent="删除";
+   remove.addEventListener("click",async()=>{
+    if(!confirm("确定删除模型服务商“"+item.name+"”？加密保存的 API Key 也会被移除。"))return;
+    remove.disabled=true;
+    try{const response=await api("/api/models/"+encodeURIComponent(item.id),{method:"DELETE"});const payload=await response.json();if(!response.ok)throw Error(payload.error||"删除模型失败");if(document.querySelector("#model-provider-id").value===item.id)clearModelProviderForm();await refreshModels();await refreshAgentStatus();}
+    catch(error){document.querySelector("#model-provider-error").textContent=error.message||"删除模型失败";remove.disabled=false;}
+   });
+   actions.append(edit,testButton,makeDefault,toggle,remove);card.append(actions);host.append(card);
+  }
+ }catch(error){
+  status.textContent="无法读取大模型配置。";
+  const p=document.createElement("p");p.className="error";p.textContent=error.message||"检查 Agent 私有数据目录配置。";host.append(p);
+ }
+}
+document.querySelector("#model-provider-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const error=document.querySelector("#model-provider-error"),save=document.querySelector("#model-provider-save");
+ error.textContent="";save.disabled=true;
+ try{
+  const id=document.querySelector("#model-provider-id").value;
+  const apiKey=document.querySelector("#model-provider-key").value;
+  const clearApiKey=document.querySelector("#model-provider-clear-key").checked;
+  const body={
+   name:document.querySelector("#model-provider-name").value,
+   endpoint:document.querySelector("#model-provider-endpoint").value,
+   model:document.querySelector("#model-provider-model").value,
+   enabled:document.querySelector("#model-provider-enabled").checked
+  };
+  if(apiKey)body.apiKey=apiKey;
+  if(clearApiKey)body.clearApiKey=true;
+  const response=await api(id?"/api/models/"+encodeURIComponent(id):"/api/models",{method:id?"PUT":"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+  const payload=await response.json();if(!response.ok)throw Error(payload.error||"保存模型配置失败");
+  clearModelProviderForm();await refreshModels();await refreshAgentStatus();
+  error.textContent="模型配置已安全保存。";
+ }catch(error){document.querySelector("#model-provider-error").textContent=error.message||"保存模型配置失败";}
+ finally{save.disabled=false;}
+});
+document.querySelector("#model-provider-reset").addEventListener("click",clearModelProviderForm);
+document.querySelector("#model-provider-refresh").addEventListener("click",refreshModels);
 let generatedTrimCliCommand = "";
 const trimHostInput=document.querySelector("#trim-cli-host"),trimPortInput=document.querySelector("#trim-cli-port"),trimSchemeInput=document.querySelector("#trim-cli-scheme");
 let trimPortEdited=false;
