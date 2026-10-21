@@ -792,7 +792,11 @@ const server = createServer(async (req, res) => {
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
       const result = taskManager.cancel(cancelMatch[1]);
       if (!result) return reply(res, 404, { error: "Task not found" });
-      if (!result.cancelled) return reply(res, 409, { error: "Only queued tasks can be cancelled", task: result.task });
+      if (result.cancelRequested) return reply(res, 202, {
+        ...result,
+        note: "Cancellation requested. The current tool will finish; no follow-up tool steps will be started."
+      });
+      if (!result.cancelled) return reply(res, 409, { error: "Task is already terminal or cannot be cancelled.", task: result.task });
       return reply(res, 200, result);
     }
     const taskMatch = url.pathname.match(new RegExp("^/api/tasks/([a-f0-9-]{8,64})$", "i"));
