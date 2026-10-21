@@ -129,7 +129,7 @@ async function refreshModels(){
    const meta=document.createElement("p");meta.className="muted";meta.textContent="模型："+item.model+"；API Key："+(item.hasApiKey?"已加密保存":"未配置")+"；Endpoint："+item.endpoint;card.append(meta);
    if(item.lastTest){
     const last=document.createElement("p");last.className=item.lastTest.ok?"muted":"error";
-    last.textContent=(item.lastTest.ok?"最近连接测试成功：":"最近连接测试失败：")+item.lastTest.message+(item.lastTest.at?"（"+item.lastTest.at+"）":"");card.append(last);
+    last.textContent=(item.lastTest.ok?"最近连接测试成功：":"最近连接测试失败：")+item.lastTest.message+(item.lastTest.at?"（"+item.lastTest.at+"）":"")+(Number.isSafeInteger(item.lastTest.durationMs)?" · 耗时 "+item.lastTest.durationMs+" ms":"")+(Number.isInteger(item.lastTest.statusCode)?" · HTTP "+item.lastTest.statusCode:"");card.append(last);
    }else{
     const last=document.createElement("p");last.className="muted";last.textContent="尚未测试连接。";card.append(last);
    }
@@ -284,14 +284,14 @@ async function runModelProviderBatchTest(){
     const result=await api("/api/models/"+encodeURIComponent(item.id)+"/test",{method:"POST"});
     const payload=await result.json();
     if(!result.ok)throw Error(payload.error||"连接测试请求失败");
-    results.push({name:item.name,ok:payload.test?.ok===true,message:payload.test?.message||"未返回测试结果"});
+    results.push({name:item.name,ok:payload.test?.ok===true,message:payload.test?.message||"未返回测试结果",durationMs:Number.isSafeInteger(payload.test?.durationMs)?payload.test.durationMs:null});
    }catch(error){results.push({name:item.name,ok:false,message:error.message||"连接测试请求失败"});}
   }
   modelBatchTestOffset=start+batch.length>=enabled.length?0:start+batch.length;
   await refreshModels();
   const passed=results.filter(item=>item.ok).length;
   const failed=results.length-passed;
-  const details=results.map(item=>(item.ok?"✓ ":"✗ ")+item.name+"："+item.message).join("；");
+  const details=results.map(item=>(item.ok?"✓ ":"✗ ")+item.name+"："+item.message+(Number.isSafeInteger(item.durationMs)?"（"+item.durationMs+" ms）":"")).join("；");
   const remaining=enabled.length-(start+batch.length);
   status.textContent="本批完成：成功 "+passed+"，失败 "+failed+"。"+(remaining>0?"还有 "+remaining+" 个未测试，继续点击测试下一批。":"已覆盖当前所有启用模型。")+(details?" "+details:"");
  }catch(error){status.textContent=error.message||"批量连接测试失败。";}
