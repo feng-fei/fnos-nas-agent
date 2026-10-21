@@ -82,8 +82,8 @@ assert.match(taskPersistenceTests, /never auto-replayed/);
 assert.match(taskPersistenceTests, /rejects corrupt state/);
 assert.match(skills, /inspectSkillManifest\(buffer\)/);
 assert.match(skills, /manifestReview: normalizeManifestReview\(input\.manifestReview\)/);
-assert.match(archives, /MAX_ARCHIVE_BYTES = 5 \* 1024 \* 1024/);
-assert.match(archives, /MAX_DECLARED_UNCOMPRESSED_BYTES = 20 \* 1024 \* 1024/);
+assert.match(archives, /MAX_ARCHIVE_BYTES = 25 \* 1024 \* 1024/);
+assert.match(archives, /MAX_DECLARED_UNCOMPRESSED_BYTES = 64 \* 1024 \* 1024/);
 assert.match(manifest, /MAX_MANIFEST_BYTES = MANIFEST_LIMIT/);
 assert.match(ui, /textContent="静态清单："/);
 

@@ -2,9 +2,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, writeFile, rename, chmod, lstat, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
-export const MAX_ARCHIVE_BYTES = 5 * 1024 * 1024;
+export const MAX_ARCHIVE_BYTES = 25 * 1024 * 1024;
 export const MAX_ARCHIVE_ENTRIES = 500;
-export const MAX_DECLARED_UNCOMPRESSED_BYTES = 20 * 1024 * 1024;
+export const MAX_DECLARED_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
 const MAX_NAME_BYTES = 1024;
 const MAX_CENTRAL_DIRECTORY_BYTES = 1024 * 1024;
 
@@ -26,7 +26,7 @@ function safeEntryName(name) {
  */
 export function inspectZipArchive(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 22) invalid("ZIP archive is too small or invalid");
-  if (buffer.length > MAX_ARCHIVE_BYTES) throw Object.assign(new Error("ZIP archive exceeds 5 MiB limit"), { statusCode: 413 });
+  if (buffer.length > MAX_ARCHIVE_BYTES) throw Object.assign(new Error("ZIP archive exceeds 25 MiB limit"), { statusCode: 413 });
 
   const min = Math.max(0, buffer.length - 22 - 0xffff);
   let eocd = -1;
@@ -110,7 +110,7 @@ export function inspectZipArchive(buffer) {
     if (!localName.equals(nameBytes)) invalid("ZIP local and central entry names do not match");
     declaredBytes += uncompressedSize;
     if (declaredBytes > MAX_DECLARED_UNCOMPRESSED_BYTES)
-      invalid("ZIP declared uncompressed size exceeds 20 MiB limit");
+      invalid("ZIP declared uncompressed size exceeds 64 MiB limit");
     entries.push({ name, compressedSize, uncompressedSize, method });
     cursor = end;
   }
