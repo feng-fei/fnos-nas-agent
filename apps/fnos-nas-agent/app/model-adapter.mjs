@@ -1,5 +1,27 @@
 const MAX_RESPONSE_BYTES = 64 * 1024;
 
+async function readBoundedText(response, limit) {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) {
+        await reader.cancel().catch(() => {});
+        throw Object.assign(new Error("Model response exceeded limit"), { code: "MODEL_RESPONSE_TOO_LARGE" });
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, size).toString("utf8");
+}
+
 function safeEndpoint(value) {
   if (!value) return null;
   let url;
@@ -54,8 +76,7 @@ export function createModelAdapter({ config = modelConfiguration(), fetchImpl = 
         signal: AbortSignal.timeout(config.timeoutMs)
       });
       if (!response.ok) throw Object.assign(new Error("Model provider request failed"), { code: "MODEL_PROVIDER_ERROR" });
-      const raw = await response.text();
-      if (Buffer.byteLength(raw, "utf8") > MAX_RESPONSE_BYTES) throw Object.assign(new Error("Model response exceeded limit"), { code: "MODEL_RESPONSE_TOO_LARGE" });
+      const raw = await readBoundedText(response, MAX_RESPONSE_BYTES);
       let envelope;
       try { envelope = JSON.parse(raw); } catch { throw Object.assign(new Error("Invalid model provider response"), { code: "MODEL_INVALID_RESPONSE" }); }
       const content = envelope?.choices?.[0]?.message?.content;
