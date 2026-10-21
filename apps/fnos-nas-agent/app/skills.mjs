@@ -40,10 +40,11 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
   const file = join(dataDir, "skills.json");
   let records = [];
   const enqueueWrite = createSerialWriteQueue();
+  const enqueueMutation = createSerialWriteQueue();
 
   async function persist() {
-    const snapshot = JSON.stringify(records);
     return enqueueWrite(async () => {
+      const snapshot = JSON.stringify(records);
       await storageFs.mkdir(dataDir, { recursive: true, mode: 0o700 });
       const tmp = file + "." + randomBytes(8).toString("hex") + ".tmp";
       try {
@@ -100,6 +101,7 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
   }
 
   async function register(input) {
+    return enqueueMutation(async () => {
     if (records.length >= MAX_RECORDS) throw Object.assign(new Error("Skill inventory limit reached"), { statusCode: 409 });
     if (!input || typeof input.name !== "string" || !input.name.trim() || input.name.trim().length > MAX_NAME)
       throw Object.assign(new Error("name must contain 1 to 100 characters"), { statusCode: 400 });
@@ -131,6 +133,7 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
     records.push(record);
     try { await persist(); } catch { records = records.filter(item => item.id !== record.id); throw Object.assign(new Error("Unable to save Skill metadata securely"), { statusCode: 500 }); }
     return { ...record, declaredCapabilities: [...record.declaredCapabilities] };
+    });
   }
 
   function skillById(id) {
@@ -234,6 +237,7 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
   }
 
   async function remove(id) {
+    return enqueueMutation(async () => {
     const index = records.findIndex(record => record.id === id);
     if (index < 0) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
     const item = records[index];
@@ -264,9 +268,11 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
       return { removed: true, archiveRemoved: true };
     }
     return { removed: true, archiveRemoved: false };
+    });
   }
 
   async function transition(id, input) {
+    return enqueueMutation(async () => {
     const item = records.find(record => record.id === id);
     if (!item) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
     const target = input?.state;
@@ -281,6 +287,7 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
       throw Object.assign(new Error("Unable to save Skill state securely"), { statusCode: 500 });
     }
     return { ...item, declaredCapabilities: [...item.declaredCapabilities] };
+    });
   }
 
   return { load, list, register, importArchive, listSourceFiles, previewSourceFile, transition, remove };
