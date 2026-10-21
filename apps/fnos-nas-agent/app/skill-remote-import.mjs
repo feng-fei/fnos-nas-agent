@@ -19,16 +19,18 @@ export function validateGitHubArchiveUrl(value) {
   if (!github && !codeload) throw invalid("Only github.com archive URLs are allowed.");
   let match;
   if (github) {
-    match = url.pathname.match(/^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/archive\/refs\/(?:heads|tags)\/[A-Za-z0-9._/-]+\.zip$/);
+    match = url.pathname.match(/^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/archive\/refs\/(heads|tags)\/([A-Za-z0-9._/-]+)\.zip$/);
     if (!match) throw invalid("Use a GitHub branch or tag ZIP URL ending in /archive/refs/heads/BRANCH.zip or /archive/refs/tags/TAG.zip.");
   } else {
-    match = url.pathname.match(/^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/(?:legacy\.zip\/refs\/(?:heads|tags)\/[A-Za-z0-9._/-]+|zip\/refs\/(?:heads|tags)\/[A-Za-z0-9._/-]+)\/?$/);
+    match = url.pathname.match(/^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/(?:legacy\.zip\/refs\/(heads|tags)\/([A-Za-z0-9._/-]+)|zip\/refs\/(heads|tags)\/([A-Za-z0-9._/-]+))\/?$/);
     if (!match) throw invalid("GitHub archive redirect URL is not an accepted ZIP path.", 400, "SKILL_REMOTE_REDIRECT_INVALID");
   }
   if (url.pathname.includes("..") || url.pathname.includes("\\") || /%2f|%5c/i.test(url.pathname)) {
     throw invalid("GitHub archive path contains invalid path segments.");
   }
-  return { url: url.toString(), repository: match[1] + "/" + match[2] };
+  const refType = github ? match[3] : (match[3] || match[5]);
+  const ref = github ? match[4] : (match[4] || match[6]);
+  return { url: url.toString(), repository: match[1] + "/" + match[2], refType, ref };
 }
 
 
@@ -115,7 +117,7 @@ async function resolveRepositoryArchive(repositoryUrl, repository, fetchImpl, ti
     });
   const [owner, repo] = repository.split("/");
   const archiveUrl = "https://github.com/" + owner + "/" + repo + "/archive/refs/heads/" + defaultBranch + ".zip";
-  return { archive: validateGitHubArchiveUrl(archiveUrl), branch: defaultBranch, sourceUrl: repositoryUrl, resolvedFromRepository: true };
+  return { archive: validateGitHubArchiveUrl(archiveUrl), branch: defaultBranch, refType: "heads", sourceUrl: repositoryUrl, resolvedFromRepository: true };
 }
 
 export async function fetchGitHubSkillArchive(value, {
@@ -131,10 +133,13 @@ export async function fetchGitHubSkillArchive(value, {
   let sourceUrl = value;
   let current;
   let branch = null;
+  let refType = null;
   let resolvedFromRepository = false;
   try {
     current = validateGitHubArchiveUrl(value);
     sourceUrl = current.url;
+    branch = current.ref;
+    refType = current.refType;
   } catch (archiveError) {
     let repositoryInput;
     try { repositoryInput = validateGitHubRepositoryUrl(value); }
@@ -143,6 +148,7 @@ export async function fetchGitHubSkillArchive(value, {
     current = resolved.archive;
     sourceUrl = resolved.sourceUrl;
     branch = resolved.branch;
+    refType = resolved.refType || "heads";
     resolvedFromRepository = resolved.resolvedFromRepository;
   }
   let redirects = 0;
@@ -215,6 +221,6 @@ export async function fetchGitHubSkillArchive(value, {
     if (!size) throw Object.assign(new Error("GitHub returned an empty ZIP archive."), {
       statusCode: 502, code: "SKILL_REMOTE_EMPTY"
     });
-    return { buffer: Buffer.concat(chunks, size), sourceUrl, repository: current.repository, branch, resolvedFromRepository, bytes: size, redirects };
+    return { buffer: Buffer.concat(chunks, size), sourceUrl, repository: current.repository, branch, refType, resolvedFromRepository, bytes: size, redirects };
   }
 }
