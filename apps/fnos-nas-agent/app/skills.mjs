@@ -27,7 +27,10 @@ function normalizeManifestReview(value) {
     name: typeof value.name === "string" ? value.name.slice(0, 100) : null,
     description: typeof value.description === "string" ? value.description.slice(0, 1000) : null,
     findings: Array.isArray(value.findings) ? value.findings.filter(x => typeof x === "string").slice(0, 20).map(x => x.slice(0, 100)) : [],
-    archiveEntryCount: Number.isSafeInteger(value.archiveEntryCount) ? value.archiveEntryCount : null
+    archiveEntryCount: Number.isSafeInteger(value.archiveEntryCount) ? value.archiveEntryCount : null,
+    sourceFilesScanned: Number.isSafeInteger(value.sourceFilesScanned) ? value.sourceFilesScanned : 0,
+    sourceBytesScanned: Number.isSafeInteger(value.sourceBytesScanned) ? value.sourceBytesScanned : 0,
+    sourceReviewIncomplete: value.sourceReviewIncomplete === true
   };
 }
 

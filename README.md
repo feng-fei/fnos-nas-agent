@@ -13,6 +13,7 @@ Core development is active. The repository currently includes:
 - Provider presets for OpenAI, DeepSeek, SiliconFlow, Alibaba DashScope, Moonshot, Zhipu, OpenRouter, Google Gemini, Groq, and local Ollama.
 - Quarantined ZIP Skill import, bounded static manifest review, lifecycle transitions, bulk review, and reviewed installation of the official fnOS CLI.
 - GitHub branch/tag ZIP imports are validated, bounded, and stored in quarantine before static review.
+- Imported Skill archives receive bounded source-code heuristics for risky shell execution, dynamic evaluation, privilege escalation, destructive commands, and sensitive-file access before human review.
 - GitHub Skill source labels retain the repository and branch/tag ref when importing a specific archive.
 - Privacy-conscious audit records that omit prompts, task inputs, credentials, and raw exceptions.
 
@@ -117,6 +118,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 100 — Skill Source Provenance](docs/phase-100-skill-source-provenance.md)
 - [Phase 101 — Expanded Official fnOS Read-only Operations](docs/phase-101-official-readonly-tools.md)
 - [Phase 102 — Immutable GitHub Skill Commit Pinning](docs/phase-102-pin-skill-commit.md)
+- [Phase 103 — Bounded Skill Source Static Review](docs/phase-103-skill-source-static-review.md)
 
 ### Foundations
 - [Architecture](docs/architecture.md)
