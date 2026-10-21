@@ -8,7 +8,10 @@ const DIRECT_INTENTS = [
   { pattern: /^(?:查看|查询|统计)?\s*(?:系统)?进程(?:数量|数目|概况)?\s*[。！!？?]?$/i, tool: "system.process-summary", message: "正在读取进程数量（不读取进程详情）。" },
   { pattern: /^(?:查看|列出|浏览)(?:一下)?(?:文件|文件夹|目录)(?:列表)?\s*[。！!？?]?$/i, tool: "files.list", message: "正在读取允许存储卷中的文件目录。" },
   { pattern: /^(?:查看|列出|浏览)(?:一下)?(?:相册文件夹|照片文件夹)\s*[。！!？?]?$/i, tool: "fnos.photos.folders", message: "正在读取相册文件夹。" },
-  { pattern: /^(?:搜索|查找|搜一下)(?:相册|照片|图片)(?:中|里)?[：:\s]*(.{1,200})$/i, tool: "fnos.photos.search", args: match => ({ keyword: match[1].trim(), limit: 20 }), message: "正在搜索相册内容。" }
+  { pattern: /^(?:搜索|查找|搜一下)(?:相册|照片|图片)(?:中|里)?[：:\s]*(.{1,200})$/i, tool: "fnos.photos.search", args: match => ({ keyword: match[1].trim(), limit: 20 }), message: "正在搜索相册内容。" },
+  { pattern: /^创建文件夹\s+(.{1,255}?)\s+于\s+(.{1,2048})$/i, tool: "files.create-folder", args: match => ({ name: match[1].trim(), path: match[2].trim() }), message: "正在创建文件夹。" },
+  { pattern: /^重命名\s+(.{1,2048}?)\s+为\s+(.{1,255})$/i, tool: "files.rename", args: match => ({ path: match[1].trim(), name: match[2].trim() }), message: "正在重命名文件或文件夹。" },
+  { pattern: /^移动\s+(.{1,2048}?)\s+到\s+(.{1,2048})$/i, tool: "files.move", args: match => ({ path: match[1].trim(), destination: match[2].trim() }), message: "正在移动文件或文件夹。" }
 ];
 
 function argsMatchSchema(args, schema) {

@@ -50,6 +50,18 @@ const definitions = [
   {
     id: "files.preview", title: "预览文本文件", description: "读取允许存储卷中不超过 1 MiB 的 UTF-8 文本文件。", risk: "read-only",
     inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path"], additionalProperties: false }
+  },
+  {
+    id: "files.create-folder", title: "创建文件夹", description: "在允许的存储卷内创建一个新文件夹；不覆盖已有内容。", risk: "write",
+    inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, name: { type: "string", minLength: 1, maxLength: 255 } }, required: ["path", "name"], additionalProperties: false }
+  },
+  {
+    id: "files.rename", title: "重命名文件或文件夹", description: "在同一目录中重命名文件或文件夹；不覆盖已有目标。", risk: "write",
+    inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, name: { type: "string", minLength: 1, maxLength: 255 } }, required: ["path", "name"], additionalProperties: false }
+  },
+  {
+    id: "files.move", title: "移动文件或文件夹", description: "将文件或文件夹移动到允许的存储卷内目标目录；不覆盖已有目标。", risk: "write",
+    inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, destination: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path", "destination"], additionalProperties: false }
   }
 ];
 
@@ -91,6 +103,18 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     if (id === "files.preview") {
       if (!fileManager) throw Object.assign(new Error("File preview is unavailable"), { statusCode: 503 });
       return fileManager.preview(args.path);
+    }
+    if (id === "files.create-folder") {
+      if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
+      return fileManager.operate({ action: "mkdir", path: args.path, name: args.name });
+    }
+    if (id === "files.rename") {
+      if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
+      return fileManager.operate({ action: "rename", path: args.path, name: args.name });
+    }
+    if (id === "files.move") {
+      if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
+      return fileManager.operate({ action: "move", path: args.path, destination: args.destination });
     }
     const snapshot = await getDiagnostics();
     switch (id) {

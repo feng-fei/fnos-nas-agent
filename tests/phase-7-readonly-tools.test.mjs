@@ -15,8 +15,10 @@ const snapshot = {
 test("registry exposes explicit read-only tools with closed input schemas", () => {
   const registry = createReadOnlyToolRegistry({ getDiagnostics: async () => snapshot, fileBrowser: { list: async () => ({ entries: [] }) }, fileManager: { preview: async path => ({ name: path }) } });
   const tools = registry.list();
-  assert.deepEqual(tools.map(tool => tool.id), ["fnos.system.info", "fnos.file.ls", "fnos.file.ls-dir", "fnos.file.usage", "fnos.app.list", "fnos.docker.image-list", "fnos.download.list", "fnos.monitor.cpu", "fnos.storage.pools", "fnos.user.info", "fnos.monitor.beep-supported", "fnos.photos.folders", "fnos.photos.search", "system.status", "storage.summary", "system.process-summary", "network.interfaces", "files.list", "files.preview"]);
-  assert.ok(tools.every(tool => tool.risk === "read-only"));
+  assert.deepEqual(tools.map(tool => tool.id), ["fnos.system.info", "fnos.file.ls", "fnos.file.ls-dir", "fnos.file.usage", "fnos.app.list", "fnos.docker.image-list", "fnos.download.list", "fnos.monitor.cpu", "fnos.storage.pools", "fnos.user.info", "fnos.monitor.beep-supported", "fnos.photos.folders", "fnos.photos.search", "system.status", "storage.summary", "system.process-summary", "network.interfaces", "files.list", "files.preview", "files.create-folder", "files.rename", "files.move"]);
+  assert.ok(tools.filter(tool => tool.risk === "read-only").length > 0);
+  assert.deepEqual(tools.filter(tool => tool.risk === "write").map(tool => tool.id), ["files.create-folder", "files.rename", "files.move"]);
+  assert.ok(tools.every(tool => ["read-only", "write"].includes(tool.risk)));
   assert.ok(tools.every(tool => tool.inputSchema.additionalProperties === false));
 });
 

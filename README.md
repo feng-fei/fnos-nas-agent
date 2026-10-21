@@ -2,7 +2,7 @@
 
 A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mobile-friendly web interface, controlled NAS operations, and a reviewable Skill manager.
 
-> **Status: Practical NAS functionality in progress.** Phases 2–26 are integrated on `main`; task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, allowlisted read-only tools, rules-first Agent routing, an optional server-configured model adapter, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Require Node.js 24/26 CI and Node.js 26 FPK packaging before merge.
+> **Status: Practical NAS functionality in progress.** Phases 2–32 are integrated on `main`; Phase 33 adds allowlisted routine file writes on this feature branch. Task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, allowlisted read-only tools, rules-first Agent routing, an optional server-configured model adapter, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Require Node.js 24/26 CI and Node.js 26 FPK packaging before merge.
 
 ## Goals
 
@@ -71,6 +71,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 28 practical read-only file browser](docs/phase-28-practical-file-browser.md)
 - [Phase 31 practical fnOS photo tools](docs/phase-31-fnos-photo-tools.md)
 - [Phase 32 confirm-first action policy](docs/phase-32-confirm-first-action-policy.md)
+- [Phase 33 practical routine file write tools](docs/phase-33-practical-file-write-tools.md)
 - [Phase 30 fnOS CLI path traversal guard](docs/phase-30-trim-cli-path-traversal-guard.md)
 - [Phase 29 mobile fnOS read-only tool usability](docs/phase-29-mobile-fnos-tools.md)
 - [Practical file management](docs/practical-file-management.md)
@@ -96,4 +97,4 @@ No license has been selected yet. Until one is added, do not assume this reposit
 
 ## Current safety boundary
 
-Phase 11 reads only a bounded `SKILL.md` manifest from a validated archive for static review. It does not extract or execute imported content. Manifest findings are advisory, and write/destructive execution remains disabled.
+Phase 11 reads only a bounded `SKILL.md` manifest from a validated archive for static review. It does not extract or execute imported content. Manifest findings are advisory. Routine file writes are limited to the registered create-folder, rename, and move tools; destructive actions and arbitrary shell execution remain unavailable until their confirmation/execution paths are integrated.
