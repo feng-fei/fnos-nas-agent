@@ -56,6 +56,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 11 static Skill manifest review](docs/phase-11-static-skill-manifest-review.md)
 - [Phase 12 one-time approval ledger](docs/phase-12-one-time-approval-ledger.md)
 - [Phase 13 mobile operations workbench](docs/phase-13-mobile-operations-workbench.md)
+- [Phase 14 authentication security hardening](docs/phase-14-auth-security-hardening.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
 
