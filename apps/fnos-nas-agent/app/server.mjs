@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { createReadStream } from "node:fs";
 import os from "node:os";
 import { statfs } from "node:fs/promises";
-import { readFile, writeFile, mkdir, rename, chmod, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename, chmod, readdir, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, timingSafeEqual, createHash, scryptSync } from "node:crypto";
@@ -129,12 +129,12 @@ async function persistModelSettings() {
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const temp = modelSettingsFile + "." + randomBytes(8).toString("hex") + ".tmp";
   try {
-    await writeFile(temp, JSON.stringify(modelAdapter.getConfiguration()) + "\\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
+    await writeFile(temp, JSON.stringify(modelAdapter.getConfiguration()) + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
     await chmod(temp, 0o600);
     await rename(temp, modelSettingsFile);
     await chmod(modelSettingsFile, 0o600);
   } catch (error) {
-    await import("node:fs/promises").then(fs => fs.rm(temp, { force: true })).catch(() => {});
+    await rm(temp, { force: true }).catch(() => {});
     throw error;
   }
 }
