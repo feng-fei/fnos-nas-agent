@@ -388,6 +388,7 @@ let taskRefreshTimer=null,taskHistoryOffset=0;
     const stage=document.createElement("p");stage.className="muted";stage.textContent=(task.stage||"已完成")+" · 100%";card.append(stage);
    }
    if(task.result?.message){const message=document.createElement("p");message.textContent=task.result.message;card.append(message);}
+   if(task.result?.truncated){const note=document.createElement("p");note.className="muted";note.textContent="任务结果过大，已在服务端限制保留内容。";card.append(note);}
    if(Array.isArray(task.result?.results)&&task.result.results.length){
     const details=document.createElement("details");const summary=document.createElement("summary");summary.textContent="查看执行结果（"+task.result.results.length+" 项）";details.append(summary);
     const pre=document.createElement("pre");let serialized="";
