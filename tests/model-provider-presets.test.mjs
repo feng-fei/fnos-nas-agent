@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { listModelProviderPresets } from "../apps/fnos-nas-agent/app/model-provider-presets.mjs";
 
-test("model provider presets contain verified HTTPS endpoints and a loopback-only local model endpoint", () => {
+test("model provider presets contain verified OpenAI-compatible HTTPS Chat Completions endpoints", () => {
   const presets = listModelProviderPresets();
   const byId = Object.fromEntries(presets.map(item => [item.id, item]));
   assert.equal(presets.length >= 5, true);
