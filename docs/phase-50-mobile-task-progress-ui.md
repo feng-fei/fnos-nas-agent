@@ -6,4 +6,4 @@ The mobile workbench now renders task progress using the existing task API:
 - Completion displays 100%; task errors use the existing text-only rendering path.
 - Task IDs, status, timestamps, and cancellation remain available.
 
-This phase changes only the UI presentation. It does not change execution permissions, task scheduling, persistence, or server routes.
+Agent execution now reports real stages through the existing task-manager callback: request parsing, rules match or model planning, plan validation, tool execution, and per-tool completion. The task manager still clamps progress monotonically and reserves 100% for task completion. This does not change execution permissions or persistence.
