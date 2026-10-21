@@ -87,6 +87,9 @@ jobs:
       - name: Run core tests
         run: npm test
 
+      - name: Check release safety invariants
+        run: npm run check:release
+
       - name: Validate app scripts and entry syntax
         shell: bash
         run: |
