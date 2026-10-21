@@ -35,7 +35,6 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
   }
   return Object.freeze({
     submit(input) {
-      if (tasks.size >= historyLimit && ![...tasks.values()].some(task => TERMINAL.has(task.status))) throw Object.assign(new Error("Task capacity reached"), { statusCode: 503 });
       if (queue.length >= queueLimit) throw Object.assign(new Error("Task queue is full"), { statusCode: 429 });
       const task = { taskId: id(), createdAt: now(), startedAt: null, completedAt: null, status: "queued", input, result: null, error: null };
       tasks.set(task.taskId, task);
