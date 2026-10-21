@@ -102,6 +102,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 14 — Authentication security hardening](docs/phase-14-auth-security-hardening.md)
 - [Phase 20 — Audit trail](docs/phase-20-audit-trail.md)
 - [Phase 21 — Task persistence and crash recovery](docs/phase-21-task-persistence-recovery.md)
+- [Phase 27 build provenance attestation](docs/phase-27-build-provenance-attestation.md)
 - [Phase 39 — Official Skill archive compatibility](docs/phase-39-official-skill-archive-compatibility.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [FPK test plan](docs/fpk-test-plan.md)
