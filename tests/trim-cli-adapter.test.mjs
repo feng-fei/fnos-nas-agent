@@ -12,6 +12,7 @@ test("trim-cli adapter invokes only fixed argv arrays without a shell", async ()
   let call;
   const cli = createTrimCliAdapter({
     binaryPath: "/opt/trim-cli",
+    accessImpl: async () => {},
     profile: "home",
     execFileImpl: async (...args) => { call = args; return { stdout: '{"ok":true}', stderr: "" }; }
   });
@@ -38,6 +39,7 @@ test("trim-cli adapter rejects arbitrary commands and invalid arguments before e
 test("trim-cli adapter suppresses stderr and bounds timeout failures", async () => {
   const cli = createTrimCliAdapter({
     binaryPath: "/opt/trim-cli",
+    accessImpl: async () => {},
     execFileImpl: async () => { const error = new Error("secret token leaked in stderr"); error.stderr = "refresh_token=secret"; error.code = "ETIMEDOUT"; throw error; }
   });
   await assert.rejects(cli.runReadOnly("system.info"), error => {
