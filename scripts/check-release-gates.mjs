@@ -35,7 +35,7 @@ assert.match(skills, /manifestReview: normalizeManifestReview\(input\.manifestRe
 assert.match(archives, /MAX_ARCHIVE_BYTES = 5 \* 1024 \* 1024/);
 assert.match(archives, /MAX_DECLARED_UNCOMPRESSED_BYTES = 20 \* 1024 \* 1024/);
 assert.match(manifest, /MAX_MANIFEST_BYTES = MANIFEST_LIMIT/);
-assert.match(ui, /textContent = "静态清单："/);
+assert.match(ui, /textContent="静态清单："/);
 
 const policy = createPermissionPolicy();
 assert.equal(policy.evaluate({ risk: "read-only" }).allowed, true);
