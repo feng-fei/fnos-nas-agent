@@ -17,6 +17,7 @@ import { createAuditLogger } from "./audit-log.mjs";
 import { createFileBrowser } from "./file-browser.mjs";
 import { createFileManager } from "./file-manager.mjs";
 import { createTrimCliAdapter } from "./trim-cli-adapter.mjs";
+import { createActionApprovalService } from "./action-approval-service.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -172,7 +173,8 @@ const fileBrowser = createFileBrowser();
 const fileManager = createFileManager();
 const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics, fileBrowser, fileManager });
 const modelAdapter = createModelAdapter();
-const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter });
+const actionApprovals = createActionApprovalService({ tools: readOnlyTools });
+const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter, requestApproval: action => actionApprovals.request(action) });
 const taskManager = createTaskManager({ execute: input => agentCore.run(input), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "" });
 
 function auditRoute(pathname, method) {
@@ -193,6 +195,8 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/tasks") return "tasks.list";
   if (/^\/api\/tasks\/[a-f0-9-]{8,64}\/cancel$/i.test(pathname)) return "tasks.cancel";
   if (/^\/api\/tasks\/[a-f0-9-]{8,64}$/i.test(pathname)) return "tasks.get";
+  if (pathname === "/api/actions/pending") return "actions.pending";
+  if (/^\/api\/actions\/[a-f0-9-]{8,64}\/(?:confirm|deny)$/i.test(pathname)) return "actions.confirm";
   if (pathname === "/api/tools") return "tools.list";
   if (/^\/api\/tools\/[a-z][a-z0-9.-]{0,63}\/run$/.test(pathname)) return "tools.run";
   return "other_api";
@@ -438,6 +442,30 @@ const server = createServer(async (req, res) => {
       const task = taskManager.get(taskMatch[1]);
       return task ? reply(res, 200, { task }) : reply(res, 404, { error: "Task not found" });
     }
+    if (url.pathname === "/api/actions/pending") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, { actions: actionApprovals.list() });
+    }
+    const actionDecisionMatch = url.pathname.match(/^\/api\/actions\/([a-f0-9-]{8,64})\/(confirm|deny)$/i);
+    if (actionDecisionMatch) {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      await jsonBody(req);
+      const [, actionId, decision] = actionDecisionMatch;
+      if (decision === "deny") {
+        if (!actionApprovals.deny(actionId)) return reply(res, 404, { error: "Pending action not found or expired" });
+        return reply(res, 200, { denied: true, actionId });
+      }
+      try { return reply(res, 200, { confirmed: true, ...await actionApprovals.confirm(actionId) }); }
+      catch (error) {
+        const status = [404, 409, 429].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 500 ? "Unable to execute confirmed action" : error.message });
+      }
+    }
     if (url.pathname === "/api/tools") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (req.method === "GET") return reply(res, 200, {
@@ -456,6 +484,9 @@ const server = createServer(async (req, res) => {
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
       const args = await jsonBody(req);
+      const tool = readOnlyTools.list().find(item => item.id === toolRunMatch[1]);
+      if (!tool) return reply(res, 404, { error: "Unknown tool" });
+      if (tool.risk === "destructive") return reply(res, 409, { error: "Destructive tools must be requested through the Agent and explicitly confirmed." });
       return reply(res, 200, { tool: toolRunMatch[1], result: await readOnlyTools.invoke(toolRunMatch[1], args) });
     }
     return reply(res, 404, { error: "Not found" });
