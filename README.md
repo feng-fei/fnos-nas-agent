@@ -3,6 +3,7 @@
 A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mobile-friendly web interface, controlled NAS operations, and a reviewable Skill manager.
 
 > **Status: Practical NAS functionality in progress.** Phases 2–49 are integrated on `main`; Phase 51 adds the authenticated batch file operations API on this feature branch. The Agent generates a terminal command but never runs the OAuth login or receives the one-time code. Task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, registered read-only and routine-write tools, one-time destructive-action confirmation, rules-first Agent routing, an optional server-configured model adapter, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Development CI currently uses Node.js 26 core tests and syntax checks only; FPK build, checksum, artifact upload, and provenance jobs are temporarily paused while core capabilities stabilize.
+> **Status: Practical NAS functionality in progress.** Phases 2–49 are integrated on `main`; Phase 50 adds live task progress in the mobile UI on this feature branch. The Agent generates a terminal command but never runs the OAuth login or receives the one-time code. Task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, registered read-only and routine-write tools, one-time destructive-action confirmation, rules-first Agent routing, an optional server-configured model adapter, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Development CI currently uses Node.js 26 core tests and syntax checks only; FPK build, checksum, artifact upload, and provenance jobs are temporarily paused while core capabilities stabilize.
 
 ## Goals
 
@@ -39,6 +40,7 @@ The official fnOS Skill is the first capability pack. Its reviewed archive can p
 
 ## Design documents\n\n- [Phase 49 — Bounded Batch File Operations](docs/phase-49-batch-file-operations.md)
 - [Phase 51 — Authenticated Batch File Operations API](docs/phase-51-batch-files-api.md)
+- [Phase 50 — Mobile Task Progress UI](docs/phase-50-mobile-task-progress-ui.md)
 
 - [Phase 48 — Bounded Task Progress](docs/phase-48-task-progress.md)
 
