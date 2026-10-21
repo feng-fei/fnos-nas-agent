@@ -6,33 +6,44 @@ function invalid(message, statusCode = 400, code = "SKILL_REMOTE_URL_INVALID") {
 }
 
 export function validateGitHubArchiveUrl(value) {
-  if (typeof value !== "string" || value.length > 2048) {
+  if (typeof value !== "string" || value.length > 2048)
     throw invalid("Provide a valid GitHub ZIP archive URL.");
-  }
   let url;
   try { url = new URL(value); } catch { throw invalid("Provide a valid GitHub ZIP archive URL."); }
-  if (url.protocol !== "https:" || url.username || url.password || url.port || url.search || url.hash) {
+  if (url.protocol !== "https:" || url.username || url.password || url.port || url.search || url.hash)
     throw invalid("Only HTTPS GitHub archive URLs without credentials, ports, queries, or fragments are allowed.");
-  }
   const github = url.hostname === "github.com";
   const codeload = url.hostname === "codeload.github.com";
   if (!github && !codeload) throw invalid("Only github.com archive URLs are allowed.");
-  let match;
-  if (github) {
-    match = url.pathname.match(/^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/archive\/refs\/(heads|tags)\/([A-Za-z0-9._/-]+)\.zip$/);
-    if (!match) throw invalid("Use a GitHub branch or tag ZIP URL ending in /archive/refs/heads/BRANCH.zip or /archive/refs/tags/TAG.zip.");
-  } else {
-    match = url.pathname.match(/^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/(?:legacy\.zip\/refs\/(heads|tags)\/([A-Za-z0-9._/-]+)|zip\/refs\/(heads|tags)\/([A-Za-z0-9._/-]+))\/?$/);
-    if (!match) throw invalid("GitHub archive redirect URL is not an accepted ZIP path.", 400, "SKILL_REMOTE_REDIRECT_INVALID");
-  }
-  if (url.pathname.includes("..") || url.pathname.includes("\\") || /%2f|%5c/i.test(url.pathname)) {
+  if (url.pathname.includes("..") || url.pathname.includes("\\") || /%2f|%5c/i.test(url.pathname))
     throw invalid("GitHub archive path contains invalid path segments.");
-  }
-  const refType = github ? match[3] : (match[3] || match[5]);
-  const ref = github ? match[4] : (match[4] || match[6]);
-  return { url: url.toString(), repository: match[1] + "/" + match[2], refType, ref };
-}
 
+  let owner = "", repo = "", refType = "", ref = "";
+  if (github) {
+    let match = url.pathname.match(/^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/archive\/refs\/(heads|tags)\/([A-Za-z0-9._/-]+)\.zip$/);
+    if (match) {
+      [, owner, repo, refType, ref] = match;
+    } else {
+      match = url.pathname.match(/^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/archive\/([0-9a-fA-F]{40})\.zip$/);
+      if (!match) throw invalid("Use a GitHub branch/tag ZIP URL or a 40-character commit archive URL.");
+      [, owner, repo, ref] = match;
+      refType = "commit";
+      ref = ref.toLowerCase();
+    }
+  } else {
+    let match = url.pathname.match(/^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/(?:legacy\.zip\/refs\/(heads|tags)\/([A-Za-z0-9._/-]+)|zip\/refs\/(heads|tags)\/([A-Za-z0-9._/-]+))\/?$/);
+    if (match) {
+      owner = match[1]; repo = match[2]; refType = match[3] || match[5]; ref = match[4] || match[6];
+    } else {
+      match = url.pathname.match(/^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/(?:legacy\.zip|zip)\/([0-9a-fA-F]{40})\/?$/);
+      if (!match) throw invalid("GitHub archive redirect URL is not an accepted ZIP path.", 400, "SKILL_REMOTE_REDIRECT_INVALID");
+      owner = match[1]; repo = match[2]; refType = "commit"; ref = match[3].toLowerCase();
+    }
+  }
+  if (!ref || ref.includes("..") || ref.startsWith("/") || ref.endsWith("/") || ref.includes("//"))
+    throw invalid("GitHub archive ref contains invalid path segments.");
+  return { url: url.toString(), repository: owner + "/" + repo, refType, ref };
+}
 
 export function validateGitHubRepositoryUrl(value) {
   if (typeof value !== "string" || value.length > 2048)
@@ -79,6 +90,45 @@ async function readBoundedBody(response, maxBytes, code, message) {
   return Buffer.concat(chunks, size);
 }
 
+async function resolveGitHubRefCommit(repository, ref, fetchImpl, timeoutMs) {
+  const apiUrl = "https://api.github.com/repos/" + repository + "/commits/" + encodeURIComponent(ref);
+  let response;
+  try {
+    response = await fetchImpl(apiUrl, {
+      method: "GET",
+      redirect: "error",
+      headers: { accept: "application/vnd.github+json", "user-agent": "fnos-nas-agent" },
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+  } catch {
+    throw Object.assign(new Error("Unable to resolve the GitHub ref to a commit (network error or timeout)."), {
+      statusCode: 502, code: "SKILL_REMOTE_COMMIT_LOOKUP_FAILED"
+    });
+  }
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    throw Object.assign(new Error("GitHub ref-to-commit lookup failed with HTTP " + response.status + "."), {
+      statusCode: 502, code: "SKILL_REMOTE_COMMIT_LOOKUP_FAILED"
+    });
+  }
+  let payload;
+  try {
+    const bytes = await readBoundedBody(response, 16 * 1024, "SKILL_REMOTE_COMMIT_TOO_LARGE", "GitHub commit metadata was invalid or too large.");
+    payload = JSON.parse(bytes.toString("utf8"));
+  } catch (error) {
+    if (error?.code?.startsWith("SKILL_REMOTE_")) throw error;
+    throw Object.assign(new Error("GitHub commit metadata was invalid or too large."), {
+      statusCode: 502, code: "SKILL_REMOTE_COMMIT_INVALID"
+    });
+  }
+  const sha = payload?.sha;
+  if (typeof sha !== "string" || !/^[0-9a-fA-F]{40}$/.test(sha))
+    throw Object.assign(new Error("GitHub returned an invalid commit SHA for this ref."), {
+      statusCode: 502, code: "SKILL_REMOTE_COMMIT_INVALID"
+    });
+  return sha.toLowerCase();
+}
+
 async function resolveRepositoryArchive(repositoryUrl, repository, fetchImpl, timeoutMs) {
   const apiUrl = "https://api.github.com/repos/" + repository;
   let response;
@@ -115,9 +165,13 @@ async function resolveRepositoryArchive(repositoryUrl, repository, fetchImpl, ti
     throw Object.assign(new Error("GitHub repository returned an unsupported default branch name."), {
       statusCode: 502, code: "SKILL_REMOTE_BRANCH_INVALID"
     });
+  const commitSha = await resolveGitHubRefCommit(repository, defaultBranch, fetchImpl, timeoutMs);
   const [owner, repo] = repository.split("/");
-  const archiveUrl = "https://github.com/" + owner + "/" + repo + "/archive/refs/heads/" + defaultBranch + ".zip";
-  return { archive: validateGitHubArchiveUrl(archiveUrl), branch: defaultBranch, refType: "heads", sourceUrl: repositoryUrl, resolvedFromRepository: true };
+  const archiveUrl = "https://github.com/" + owner + "/" + repo + "/archive/" + commitSha + ".zip";
+  return {
+    archive: validateGitHubArchiveUrl(archiveUrl), branch: defaultBranch, refType: "heads",
+    commitSha, sourceUrl: repositoryUrl, resolvedFromRepository: true
+  };
 }
 
 export async function fetchGitHubSkillArchive(value, {
@@ -134,12 +188,21 @@ export async function fetchGitHubSkillArchive(value, {
   let current;
   let branch = null;
   let refType = null;
+  let commitSha = null;
   let resolvedFromRepository = false;
   try {
     current = validateGitHubArchiveUrl(value);
     sourceUrl = current.url;
-    branch = current.ref;
-    refType = current.refType;
+    if (current.refType === "commit") {
+      refType = "commit";
+      commitSha = current.ref;
+    } else {
+      branch = current.ref;
+      refType = current.refType;
+      commitSha = await resolveGitHubRefCommit(current.repository, current.ref, fetchImpl, timeoutMs);
+      const [owner, repo] = current.repository.split("/");
+      current = validateGitHubArchiveUrl("https://github.com/" + owner + "/" + repo + "/archive/" + commitSha + ".zip");
+    }
   } catch (archiveError) {
     let repositoryInput;
     try { repositoryInput = validateGitHubRepositoryUrl(value); }
@@ -149,6 +212,7 @@ export async function fetchGitHubSkillArchive(value, {
     sourceUrl = resolved.sourceUrl;
     branch = resolved.branch;
     refType = resolved.refType || "heads";
+    commitSha = resolved.commitSha;
     resolvedFromRepository = resolved.resolvedFromRepository;
   }
   let redirects = 0;
@@ -221,6 +285,6 @@ export async function fetchGitHubSkillArchive(value, {
     if (!size) throw Object.assign(new Error("GitHub returned an empty ZIP archive."), {
       statusCode: 502, code: "SKILL_REMOTE_EMPTY"
     });
-    return { buffer: Buffer.concat(chunks, size), sourceUrl, repository: current.repository, branch, refType, resolvedFromRepository, bytes: size, redirects };
+    return { buffer: Buffer.concat(chunks, size), sourceUrl, repository: current.repository, branch, refType, commitSha, resolvedFromRepository, bytes: size, redirects };
   }
 }
