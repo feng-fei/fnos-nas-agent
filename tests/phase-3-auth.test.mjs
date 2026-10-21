@@ -82,14 +82,29 @@ test("first-run setup persists a private token and protects session endpoints", 
   const login = await fetch(baseUrl + "/api/session", {
     method: "POST",
     headers: { origin: baseUrl, "content-type": "application/json" },
-    body: JSON.stringify({ token })
+    body: JSON.stringify({ token, remember: true })
   });
   assert.equal(login.status, 200);
-  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const setCookie = login.headers.get("set-cookie");
+  assert.match(setCookie, /Max-Age=2592000/);
+  const cookie = setCookie.split(";")[0];
+  const sessionPath = join(dataDir, "sessions.json");
+  assert.equal((await stat(sessionPath)).mode & 0o777, 0o600);
+  const storedSessions = JSON.parse(await readFile(sessionPath, "utf8"));
+  assert.equal(storedSessions.length, 1);
+  assert.equal(storedSessions[0][1].expiresAt - storedSessions[0][1].createdAt, 30 * 24 * 60 * 60 * 1000);
 
   const noSession = await fetch(baseUrl + "/api/tools");
   assert.equal(noSession.status, 401);
   const tools = await fetch(baseUrl + "/api/tools", { headers: { cookie } });
   assert.equal(tools.status, 200);
   assert.deepEqual(await tools.json(), { tools: [], executionEnabled: false });
+
+  const logout = await fetch(baseUrl + "/api/logout", {
+    method: "POST", headers: { origin: baseUrl, cookie }
+  });
+  assert.equal(logout.status, 200);
+  assert.equal(JSON.parse(await readFile(sessionPath, "utf8")).length, 0);
+  const revoked = await fetch(baseUrl + "/api/tools", { headers: { cookie } });
+  assert.equal(revoked.status, 401);
 });
