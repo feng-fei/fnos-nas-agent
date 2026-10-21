@@ -5,6 +5,7 @@ import { readFile, writeFile, mkdir, rename, chmod } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, timingSafeEqual, createHash, scryptSync } from "node:crypto";
+import { createSkillStore, skillStates } from "./skills.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -14,6 +15,7 @@ const passwordFile = dataDir ? join(dataDir, "password.json") : "";
 let passwordRecord = null;
 const sessions = new Map();
 const attempts = new Map();
+const skillStore = dataDir ? createSkillStore(dataDir) : null;
 const SESSION_TTL = 8 * 60 * 60 * 1000;
 const REMEMBER_TTL = 30 * 24 * 60 * 60 * 1000;
 const MAX_BODY = 4096;
@@ -208,6 +210,37 @@ const server = createServer(async (req, res) => {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       return reply(res, 200, await readOnlyDiagnostics());
     }
+    if (url.pathname === "/api/skills") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!skillStore) return reply(res, 503, { error: "App data directory is not configured" });
+      if (req.method === "GET") {
+        const rawLimit = Number(url.searchParams.get("limit") || 50);
+        const rawOffset = Number(url.searchParams.get("offset") || 0);
+        const limit = Number.isInteger(rawLimit) ? Math.max(1, Math.min(100, rawLimit)) : 50;
+        const offset = Number.isInteger(rawOffset) ? Math.max(0, rawOffset) : 0;
+        const state = url.searchParams.get("state") || undefined;
+        if (state && !skillStates.includes(state)) return reply(res, 400, { error: "Invalid Skill state" });
+        return reply(res, 200, skillStore.list({ limit, offset, state }));
+      }
+      if (req.method === "POST") {
+        if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+        if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+          return reply(res, 415, { error: "Expected application/json" });
+        const record = await skillStore.register(await jsonBody(req));
+        return reply(res, 201, { skill: record, note: "Metadata only; archive upload and execution are not implemented." });
+      }
+      return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, POST" });
+    }
+    const transitionMatch = url.pathname.match(/^\\/api\\/skills\\/([a-f0-9]{24})\\/transition$/);
+    if (transitionMatch) {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!skillStore) return reply(res, 503, { error: "App data directory is not configured" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      return reply(res, 200, { skill: await skillStore.transition(transitionMatch[1], await jsonBody(req)) });
+    }
     if (req.method === "GET" && url.pathname === "/api/tools") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       return reply(res, 200, { tools: [], executionEnabled: false });
@@ -219,6 +252,7 @@ const server = createServer(async (req, res) => {
 });
 await loadPassword();
 await loadSessions();
+if (skillStore) await skillStore.load();
 // First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
 server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; execution disabled`));
 function shutdown() { server.close(() => process.exit(0)); }
