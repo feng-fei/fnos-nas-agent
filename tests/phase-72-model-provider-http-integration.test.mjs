@@ -81,6 +81,7 @@ test("model provider CRUD and presets work over authenticated HTTP without expos
   const persisted = await readFile(storePath, "utf8");
   assert.equal(persisted.includes(secret), false);
   assert.equal((await stat(storePath)).mode & 0o777, 0o600);
+  assert.equal((await stat(join(dataDir, "model-provider.key"))).mode & 0o777, 0o600);
 
   const updated = await request("/api/models/" + provider.id, {
     method: "PUT",
