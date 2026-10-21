@@ -64,6 +64,10 @@ const definitions = [
     inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, destination: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path", "destination"], additionalProperties: false }
   },
   {
+    id: "files.upload", title: "上传文件", description: "将 Base64 编码文件写入允许的存储卷；最大 1 MiB，不覆盖已有文件。", risk: "write",
+    inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, name: { type: "string", minLength: 1, maxLength: 255 }, contentBase64: { type: "string", maxLength: 1398104 } }, required: ["path", "name", "contentBase64"], additionalProperties: false }
+  },
+  {
     id: "files.delete", title: "删除文件或空文件夹", description: "删除一个文件或空文件夹；不可通过此工具删除存储卷根目录。需要用户对具体目标二次确认。", risk: "destructive",
     inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path"], additionalProperties: false }
   }
@@ -119,6 +123,14 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     if (id === "files.move") {
       if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
       return fileManager.operate({ action: "move", path: args.path, destination: args.destination });
+    }
+    if (id === "files.upload") {
+      if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
+      const encoded = args.contentBase64;
+      if (typeof encoded !== "string" || encoded.length > 1398104 || encoded.length % 4 !== 0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) throw Object.assign(new Error("Invalid Base64 upload content"), { statusCode: 400 });
+      const buffer = Buffer.from(encoded, "base64");
+      if (buffer.length > 1024 * 1024 || buffer.toString("base64") !== encoded) throw Object.assign(new Error("Agent uploads are limited to 1 MiB"), { statusCode: 413 });
+      return fileManager.upload(args.path, args.name, buffer);
     }
     if (id === "files.create-text") {
       if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
