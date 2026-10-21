@@ -23,9 +23,9 @@ is_running() {
   kill -0 "$pid" 2>/dev/null || return 1
   [ -n "$NODE_BIN" ] && [ -n "$ENTRY" ] || return 1
   [ -r "/proc/$pid/cmdline" ] || return 1
-  process_command="$(tr '\\000' '\\n' < "/proc/$pid/cmdline" 2>/dev/null || true)"
-  printf '%s\\n' "$process_command" | grep -Fqx -- "$NODE_BIN" || return 1
-  printf '%s\\n' "$process_command" | grep -Fqx -- "$ENTRY"
+  process_command="$(tr '\000' '\n' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+  printf '%s\n' "$process_command" | grep -Fqx -- "$NODE_BIN" || return 1
+  printf '%s\n' "$process_command" | grep -Fqx -- "$ENTRY"
 }
 case "${1:-}" in
   start)
