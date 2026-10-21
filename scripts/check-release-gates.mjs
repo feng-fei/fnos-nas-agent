@@ -6,7 +6,7 @@ import { createPermissionPolicy } from "../apps/fnos-nas-agent/app/permission-po
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = path => readFile(join(root, path), "utf8");
-const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs] = await Promise.all([
+const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs, releaseVerifier, releaseVerifierTests, releaseVerifierDocs] = await Promise.all([
   read("package.json"),
   read(".github/workflows/build-fpk.yml"),
   read("apps/fnos-nas-agent/app/server.mjs"),
@@ -20,7 +20,10 @@ const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, audit
   read("README.md"),
   read("scripts/create-release-manifest.mjs"),
   read("tests/phase-25-release-manifest.test.mjs"),
-  read("docs/phase-25-release-manifest-and-provenance.md")
+  read("docs/phase-25-release-manifest-and-provenance.md"),
+  read("scripts/verify-release-artifact.mjs"),
+  read("tests/phase-26-release-artifact-verification.test.mjs"),
+  read("docs/phase-26-release-artifact-verification.md")
 ].map(async promise => promise));
 const packageJson = JSON.parse(pkg);
 
@@ -40,6 +43,13 @@ assert.match(releaseManifestScript, /signature: "not-provided"/);
 assert.match(releaseManifestTests, /records artifact checksum/);
 assert.match(releaseManifestTests, /refuses to overwrite/);
 assert.match(releaseManifestDocs, /not a signed attestation/);
+assert.match(packageJson.scripts?.["verify:release-artifact"] || "", /verify-release-artifact\.mjs/);
+assert.match(workflow, /verify-release-artifact\.mjs/);
+assert.match(releaseVerifier, /manifest SHA-256 does not match/);
+assert.match(releaseVerifier, /checksum filename does not match/);
+assert.match(releaseVerifierTests, /rejects an artifact changed/);
+assert.match(releaseVerifierTests, /rejects a manifest with an incorrect size/);
+assert.match(releaseVerifierDocs, /does not verify publisher identity/);
 assert.doesNotMatch(readme, /\\\\n- \[Phase 21/);
 assert.match(readme, /\[Phase 21 task persistence and crash recovery\]\(docs\/phase-21-task-persistence-recovery\.md\)/);
 assert.match(readme, /\[Phase 22 release-candidate acceptance\]\(docs\/phase-22-release-candidate-acceptance\.md\)/);
