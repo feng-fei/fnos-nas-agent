@@ -32,6 +32,10 @@ test("trim-cli adapter rejects arbitrary commands and invalid arguments before e
   await assert.rejects(cli.runReadOnly("file.ls", { path: " /vol1" }), { statusCode: 400 });
   await assert.rejects(cli.runReadOnly("file.ls", { path: "/etc" }), { statusCode: 400 });
   await assert.rejects(cli.runReadOnly("file.ls", { path: "/vol1", extra: "x" }), { statusCode: 400 });
+  await assert.rejects(cli.runReadOnly("file.ls", { path: "/vol1/../etc" }), { statusCode: 400 });
+  await assert.rejects(cli.runReadOnly("file.ls", { path: "/vol1/./secret" }), { statusCode: 400 });
+  await assert.rejects(cli.runReadOnly("file.ls", { path: "/vol1\\\\..\\\\etc" }), { statusCode: 400 });
+  await assert.rejects(cli.runReadOnly("file.ls", { path: "/vol1\\n/etc" }), { statusCode: 400 });
   await assert.rejects(cli.runReadOnly("file.usage", { volumeId: 0 }), { statusCode: 400 });
   assert.equal(calls, 0);
 });

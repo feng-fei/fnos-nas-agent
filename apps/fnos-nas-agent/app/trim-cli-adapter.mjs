@@ -35,8 +35,10 @@ function validateInput(id, input) {
     if (Object.keys(input).some(key => !keys.includes(key))) throw Object.assign(new Error("Unknown trim-cli tool argument"), { statusCode: 400 });
     if (id === "file.usage") {
       if (!Number.isSafeInteger(input.volumeId) || input.volumeId < 1 || input.volumeId > 10000) throw Object.assign(new Error("volumeId must be an integer from 1 to 10000"), { statusCode: 400 });
-    } else if (typeof input.path !== "string" || input.path.length < 1 || input.path.length > 2048 || !/^\/vol\d+(?:\/|$)/.test(input.path) || input.path.includes("\0")) {
-      throw Object.assign(new Error("path must be inside an allowed /volN storage root and at most 2048 characters"), { statusCode: 400 });
+    } else if (typeof input.path !== "string" || input.path.length < 1 || input.path.length > 2048 ||
+      !/^\/vol\d+(?:\/|$)/.test(input.path) || input.path.includes("\0") || input.path.includes("\\") ||
+      /(^|\/)\.{1,2}(\/|$)/.test(input.path) || /[\x01-\x1f\x7f]/.test(input.path)) {
+      throw Object.assign(new Error("path must stay inside an allowed /volN storage root, contain no traversal segments, and be at most 2048 characters"), { statusCode: 400 });
     }
   }
 }
