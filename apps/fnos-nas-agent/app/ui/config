@@ -1,0 +1,11 @@
+{
+  ".url": {
+    "fnos-nas-agent.main": {
+      "title": "fnOS NAS Agent",
+      "icon": "images/icon_{0}.png",
+      "type": "url",
+      "protocol": "http",
+      "port": "18787"
+    }
+  }
+}
