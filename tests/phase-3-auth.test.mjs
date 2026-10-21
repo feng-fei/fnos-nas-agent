@@ -106,7 +106,7 @@ test("first-run setup stores only a salted password hash and protects session en
   const toolCatalogue = await tools.json();
   assert.equal(toolCatalogue.executionEnabled, false);
   assert.equal(toolCatalogue.readOnlyExecutionEnabled, true);
-  assert.deepEqual(toolCatalogue.tools.map(tool => tool.id), ["fnos.system.info", "fnos.file.ls", "fnos.file.ls-dir", "fnos.file.usage", "fnos.app.list", "fnos.docker.image-list", "fnos.download.list", "fnos.monitor.cpu", "fnos.storage.pools", "fnos.user.info", "fnos.monitor.beep-supported", "fnos.photos.folders", "fnos.photos.search", "system.status", "storage.summary", "system.process-summary", "network.interfaces", "files.list", "files.preview", "files.create-folder", "files.rename", "files.move", "files.upload", "files.create-text", "files.delete"]);
+  assert.deepEqual(toolCatalogue.tools.map(tool => tool.id), ["fnos.system.info", "fnos.file.ls", "fnos.file.ls-dir", "fnos.file.usage", "fnos.app.list", "fnos.docker.image-list", "fnos.download.list", "fnos.monitor.cpu", "fnos.storage.pools", "fnos.user.info", "fnos.monitor.beep-supported", "fnos.photos.folders", "fnos.photos.search", "system.status", "storage.summary", "system.process-summary", "network.interfaces", "files.list", "files.preview", "files.search", "files.create-folder", "files.rename", "files.move", "files.upload", "files.create-text", "files.delete"]);
   assert.ok(toolCatalogue.tools.every(tool => ["read-only", "write", "destructive"].includes(tool.risk) && tool.inputSchema.additionalProperties === false));
   assert.equal(toolCatalogue.routineWriteExecutionEnabled, true);
   assert.equal(toolCatalogue.destructiveActionConfirmationEnabled, true);
