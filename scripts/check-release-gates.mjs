@@ -6,14 +6,17 @@ import { createPermissionPolicy } from "../apps/fnos-nas-agent/app/permission-po
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = path => readFile(join(root, path), "utf8");
-const [pkg, workflow, server, skills, archives, manifest, ui] = await Promise.all([
+const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests] = await Promise.all([
   read("package.json"),
   read(".github/workflows/build-fpk.yml"),
   read("apps/fnos-nas-agent/app/server.mjs"),
   read("apps/fnos-nas-agent/app/skills.mjs"),
   read("apps/fnos-nas-agent/app/skill-archives.mjs"),
   read("apps/fnos-nas-agent/app/skill-manifest.mjs"),
-  read("apps/fnos-nas-agent/app/ui/index.html")
+  read("apps/fnos-nas-agent/app/ui/index.html"),
+  read("apps/fnos-nas-agent/app/task-manager.mjs"),
+  read("apps/fnos-nas-agent/app/audit-log.mjs"),
+  read("tests/phase-21-task-persistence.test.mjs")
 ].map(async promise => promise));
 const packageJson = JSON.parse(pkg);
 
@@ -30,6 +33,16 @@ assert.doesNotMatch(server, /from\s+["']node:child_process["']/);
 assert.doesNotMatch(server, /from\s+["']child_process["']/);
 assert.doesNotMatch(server, /approval-ledger\.mjs/);
 assert.match(server, /taskManager\.cancel\(/);
+assert.match(server, /storageFile: dataDir \? join\(dataDir, "tasks\.json"\)/);
+assert.match(server, /await taskManager\.ready/);
+assert.match(server, /taskManager\.flush\(\)/);
+assert.match(taskManager, /Never persist task inputs, prompts, results, or raw exception text/);
+assert.match(taskManager, /服务重启导致任务中断/);
+assert.match(taskManager, /rename\(temp, storageFile\)/);
+assert.match(taskManager, /await chmod\(storageFile, 0o600\)/);
+assert.match(auditLog, /maxBytes = 1_048_576/);
+assert.match(taskPersistenceTests, /never auto-replayed/);
+assert.match(taskPersistenceTests, /rejects corrupt state/);
 assert.match(skills, /inspectSkillManifest\(buffer\)/);
 assert.match(skills, /manifestReview: normalizeManifestReview\(input\.manifestReview\)/);
 assert.match(archives, /MAX_ARCHIVE_BYTES = 5 \* 1024 \* 1024/);
