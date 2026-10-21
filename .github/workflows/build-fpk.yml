@@ -17,6 +17,22 @@ on:
       - "src/**"
       - "tests/**"
       - ".github/workflows/build-fpk.yml"
+  pull_request:
+    branches:
+      - phase-2/fpk-packaging
+      - "phase-2/**"
+      - "phase-3/**"
+      - "phase-5/**"
+      - "phase-6/**"
+      - "fix/**"
+      - "test/**"
+    paths:
+      - "apps/fnos-nas-agent/**"
+      - "scripts/generate-fpk-icons.py"
+      - "package.json"
+      - "src/**"
+      - "tests/**"
+      - ".github/workflows/build-fpk.yml"
   workflow_dispatch:
 
 permissions:
