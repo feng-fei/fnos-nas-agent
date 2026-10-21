@@ -139,3 +139,8 @@ assert.match(fileManagerSource, /async function createText/);
 assert.match(fileManagerTests, /creates UTF-8 text files atomically without overwriting/);
 assert.match(await read("apps/fnos-nas-agent/app/agent-core.mjs"), /argsMatchSchema/);
 assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /task-stats/);
+
+assert.match(fileManagerSource, /content\.includes\("\\0"\)/);
+assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\.upload/);
+const agentWriteToolTests = await read("tests/phase-33-practical-file-write-tools.test.mjs");
+assert.match(agentWriteToolTests, /Agent upload tool is a bounded routine write/);
