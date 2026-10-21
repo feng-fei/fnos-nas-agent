@@ -248,7 +248,8 @@ const server = createServer(async (req, res) => {
       if (sessions.size >= MAX_SESSIONS) return reply(res, 503, { error: "Session capacity is full; try again later." });
       const id = randomBytes(32).toString("base64url");
       const key = sessionKey(id);
-      sessions.set(key, { createdAt: Date.now(), expiresAt: Date.now() + ttl });
+      const createdAt = Date.now();
+      sessions.set(key, { createdAt, expiresAt: createdAt + ttl });
       try { await persistSessions(); }
       catch {
         sessions.delete(key);
@@ -442,7 +443,8 @@ const server = createServer(async (req, res) => {
       if (req.method === "GET") return reply(res, 200, {
         tools: readOnlyTools.list(),
         executionEnabled: false,
-        readOnlyExecutionEnabled: true
+        readOnlyExecutionEnabled: true,
+        routineWriteExecutionEnabled: true
       });
       return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
     }
