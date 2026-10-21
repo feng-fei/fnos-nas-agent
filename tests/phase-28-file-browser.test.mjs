@@ -77,3 +77,42 @@ test("file browser searches names with bounded traversal and ignores symlinks", 
     assert.equal(limited.truncated, true);
   } finally { await rm(temp, { recursive: true, force: true }); }
 });
+
+test("file browser paginates sorted entries with bounded offsets", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "fnos-browser-pages-"));
+  try {
+    const root = join(temp, "vol1");
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(join(root, "z.txt"), "z");
+    await writeFile(join(root, "a.txt"), "a");
+    const browser = createFileBrowser({ roots: [root] });
+    const first = await browser.list(root, 2, 0);
+    const second = await browser.list(root, 2, 2);
+    assert.equal(first.totalEntries, 3);
+    assert.equal(first.offset, 0);
+    assert.deepEqual(first.entries.map(item => item.name), ["docs", "a.txt"]);
+    assert.equal(second.offset, 2);
+    assert.deepEqual(second.entries.map(item => item.name), ["z.txt"]);
+    assert.equal((await browser.list(root, 2, 999999)).entries.length, 0);
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+test("file browser applies name/type filters and sort before slicing pages", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "fnos-browser-filter-pages-"));
+  try {
+    const root = join(temp, "vol1");
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(join(root, "z.txt"), "z");
+    await writeFile(join(root, "a.txt"), "a");
+    const browser = createFileBrowser({ roots: [root] });
+    const first = await browser.list(root, 1, 0, "name-asc");
+    const second = await browser.list(root, 1, 1, "name-asc");
+    assert.equal(first.entries[0].name, "a.txt");
+    assert.equal(second.entries[0].name, "docs");
+    const search = await browser.list(root, 10, 0, "name-asc", "z", "file");
+    assert.equal(search.totalDirectoryEntries, 3);
+    assert.equal(search.totalEntries, 1);
+    assert.equal(search.entries[0].name, "z.txt");
+    await assert.rejects(browser.list(root, 10, 0, "invalid"), { statusCode: 400 });
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
