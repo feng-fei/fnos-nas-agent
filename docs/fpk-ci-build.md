@@ -2,43 +2,37 @@
 
 The repository builds the native x86 FPK on GitHub Actions; no build tools are installed on the NAS.
 
+## Runtime policy
+
+- **Node.js 26.x is the default packaged runtime** because the user has confirmed it runs normally on the target fnOS NAS.
+- The workflow follows the latest patch release within the Node.js 26.x line automatically.
+- Node.js 24.x remains a test-only regression line for core tests and source/shell syntax checks. It does not produce an FPK artifact.
+- When a newer Node.js major becomes the preferred runtime, update the CI matrix and packaging condition in a reviewed PR, run all checks, then test the generated FPK on fnOS before switching the default.
+
+This policy means "use the latest Node.js" within a tested release line, not silently package an untested major version. CI does not prove that Node 26 is faster or uses less memory than Node 24.
+
 ## Trigger
 
-- Push changes affecting the app or build script to the FPK packaging, `fix/**`, or `test/**` branches.
+- Push changes affecting the app or build script to the FPK packaging, `phase-2/**`, `fix/**`, or `test/**` branches.
 - Or use **Actions → Build fnOS FPK → Run workflow**.
-
-## Node.js compatibility matrix
-
-The workflow tests two runtime lines in separate jobs:
-
-- **Node.js 24.x LTS** — supported compatibility baseline.
-- **Node.js 26.x** — preferred runtime candidate after the user confirmed that a Node.js 26 build runs normally on the target fnOS device.
-
-The workflow's latest matrix run passed for both versions, including core tests, syntax checks, FPK packaging, package inspection, and SHA-256 generation. Each job prints the exact resolved Node.js version and produces a separately named 14-day artifact:
-
-- `fnos-nas-agent-test-fpk-node-24.x`
-- `fnos-nas-agent-test-fpk-node-26.x`
-
-The Node.js 26 device smoke test and green CI make 26 a reasonable candidate for the next test FPK. This does **not** prove that 26 is faster or uses less memory than 24, nor does a successful smoke test prove every app-center lifecycle path. Keep the 24.x matrix job as a compatibility regression check.
 
 ## What the workflow does
 
-1. Sets up the matrix Node.js version on a GitHub-hosted Ubuntu x86_64 runner and bundles that executable in the app payload.
-2. Generates valid PNG icons with a Python standard-library script and validates the required `config/privilege` and `config/resource` JSON plus `wizard/` directory.
-3. Checks shell syntax and the Node.js entry point.
-4. Downloads official `fnpack 1.2.3` and verifies its SHA-256 before executing it.
-5. Builds the FPK, inspects its contents, and uploads the package plus checksum.
+Both Node.js lines run the core test suite and validate the application entry point and lifecycle shell scripts. Only Node.js 26.x performs the full FPK pipeline:
 
-## Download the artifacts
+1. Bundle the resolved Node.js executable into the app payload.
+2. Generate PNG icons and validate the required package metadata and wizard directory.
+3. Download official `fnpack 1.2.3` and verify its SHA-256 before executing it.
+4. Build the x86 FPK, inspect its contents, generate a SHA-256 checksum, and upload the test artifact for 14 days.
 
-Open the successful workflow run in the repository's **Actions** tab and download the artifact corresponding to the Node.js version you want to inspect. For the next fnOS test package, use the **Node 26.x** artifact; keep the Node 24.x artifact available as a fallback comparison.
+The artifact is named `fnos-nas-agent-test-fpk-node-26.x`. Open the successful workflow run in the repository's **Actions** tab to download it.
 
 ## Network and safety boundary
 
 The current test app is status-page-only and binds to `0.0.0.0` so computers and phones on the LAN can reach it. The only HTTP routes are the status page and `GET /api/health`; NAS command execution, Skill execution, and model calls remain disabled.
 
-**Security note:** this status-only build has no client authentication. Binding to `0.0.0.0` listens on all network interfaces; it does not itself restrict access to the LAN. Use only on a trusted private LAN, do not configure router port forwarding, and do not expose port 18787 to the public internet. Before adding any NAS management or execution features, implement and test authentication, authorization, CSRF protections where applicable, and explicit confirmation for risky actions. A LAN-accessible status page is not a security boundary by itself.
+**Security note:** this status-only build has no client authentication. Binding to `0.0.0.0` listens on all network interfaces; it does not itself restrict access to the LAN. Use only on a trusted private LAN, do not configure router port forwarding, and do not expose port 18787 to the public internet. Before adding any NAS management or execution features, implement and test authentication, authorization, CSRF protections where applicable, and explicit confirmation for risky actions.
 
 ## Follow-up real-device validation
 
-Before treating an FPK as production-ready, validate install, start, status, stop, restart, and uninstall through the app center. Also confirm that the service listens on the intended interfaces and that `/api/health` returns HTTP 200 from a LAN client. A green CI build and a successful startup smoke test do not replace full lifecycle testing on the target fnOS version.
+The next fnOS test remains a manual, user-controlled step. Validate install, start, status, stop, restart, and uninstall through the app center, and confirm that `/api/health` returns HTTP 200 from a LAN client. CI does not install or change anything on the NAS and does not replace lifecycle testing on the target fnOS version.
