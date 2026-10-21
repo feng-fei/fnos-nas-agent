@@ -15,7 +15,7 @@ import { createTaskManager } from "./task-manager.mjs";
 import { createFixedWindowLimiter } from "./request-limiter.mjs";
 import { createAuditLogger } from "./audit-log.mjs";
 import { createFileBrowser } from "./file-browser.mjs";
-import { createFileManager } from "./file-manager.mjs";
+import { createFileManager } from "./file-manager.mjs";\nimport { createTrimCliAdapter } from "./trim-cli-adapter.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -386,7 +386,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/api/agent/status") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
-      return reply(res, 200, agentCore.status());
+      return reply(res, 200, { ...agentCore.status(), trimCli: await trimCli.status() });
     }
     if (url.pathname === "/api/agent/message") {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
