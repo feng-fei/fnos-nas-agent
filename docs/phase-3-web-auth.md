@@ -41,3 +41,10 @@ The login page offers an optional “在此设备保持登录 30 天” checkbox
 - These are expiry limits, not a full device-management UI: there is not yet a list of devices or remote revoke-all control. Restarting the service does not revoke remembered sessions; deleting the session store does.
 
 The current service uses HTTP and binds to the LAN, so a person able to observe traffic on the network may steal a session cookie. Use only on a trusted LAN; do not port-forward it. HTTPS and explicit device revocation should be completed before use outside a trusted LAN.
+
+
+## Password login
+
+The first-run page now asks for a management password (10–128 characters); subsequent login uses that password. The server stores a random-salt scrypt hash in `password.json` with mode 0600, never the plaintext password. Login still creates a server-side session; the optional remember-device choice lasts 30 days, otherwise 8 hours. Logout revokes the current session.
+
+The access-token setup described in the earlier sections is superseded by this password-based flow. Existing deployments that already created an `access-token` file need a planned migration/reset step; do not delete files or reinstall blindly. This change has not been deployed to the NAS. HTTP remains unencrypted and must stay on a trusted LAN.
