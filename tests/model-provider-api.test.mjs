@@ -99,7 +99,7 @@ test("model management API enforces session/origin, persists provider settings, 
   assert.equal(one.isDefault, true);
   assert.equal(JSON.stringify(oneBody).includes(secret), false);
 
-  const twoResponse = await create("Provider Two", "model-two");
+  const twoResponse = await create("Provider Two", "model-two", true);
   assert.equal(twoResponse.status, 201, "second provider creation should succeed");
   const two = (await twoResponse.json()).provider;
   assert.equal(two.isDefault, false);
