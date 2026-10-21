@@ -4,24 +4,34 @@ The repository builds the native x86 FPK on GitHub Actions; no build tools are i
 
 ## Trigger
 
-- Push changes affecting the app or build script to the FPK packaging branch.
+- Push changes affecting the app or build script to the FPK packaging, `fix/**`, or `test/**` branches.
 - Or use **Actions → Build fnOS FPK → Run workflow**.
+
+## Node.js compatibility matrix
+
+The workflow tests two runtime lines in separate jobs:
+
+- **Node.js 24.x LTS** — the stable baseline and preferred default until another version proves suitable.
+- **Node.js 26.x Current** — a compatibility candidate; do not assume it is faster or more suitable just because it is newer.
+
+Each job prints the exact resolved Node.js version and independently runs the core tests, syntax checks, FPK packaging, package inspection, and SHA-256 generation. Each produces a separately named 14-day artifact:
+
+- `fnos-nas-agent-test-fpk-node-24.x`
+- `fnos-nas-agent-test-fpk-node-26.x`
+
+A green result means the current test suite and packaging checks pass for that runtime. It does **not** establish comparative runtime performance, nor prove installation and lifecycle behavior on a real fnOS device. The FPK embeds the Node.js executable resolved by that matrix job.
 
 ## What the workflow does
 
-1. Uses the latest patched Node.js 24.x LTS release on the GitHub-hosted Ubuntu x86_64 runner and bundles that executable in the app payload. The workflow prints the resolved Node.js version so each build is traceable.
+1. Sets up the matrix Node.js version on a GitHub-hosted Ubuntu x86_64 runner and bundles that executable in the app payload.
 2. Generates valid PNG icons with a Python standard-library script and validates the required `config/privilege` and `config/resource` JSON plus `wizard/` directory.
 3. Checks shell syntax and the Node.js entry point.
 4. Downloads official `fnpack 1.2.3` and verifies its SHA-256 before executing it.
-5. Builds the FPK and uploads the package plus a SHA-256 checksum as a 14-day Actions artifact.
+5. Builds the FPK, inspects its contents, and uploads the package plus checksum.
 
-Node.js is pinned to the maintained 24.x LTS major line rather than an old fixed patch version, so GitHub Actions resolves the latest available security-patched 24.x release when the workflow runs. The exact resolved version is printed in the build log.
+## Download the artifacts
 
-The artifact is a **test build**, not a production release. The package uses `run-as: package` with no additional groups or shared resources. A successful CI build proves packaging and static checks only; it does not prove installation or lifecycle behavior on a real fnOS device.
-
-## Download the artifact
-
-Open the workflow run in the repository's **Actions** tab, open the successful run, and download `fnos-nas-agent-test-fpk`.
+Open the successful workflow run in the repository's **Actions** tab and download the artifact corresponding to the Node.js version you want to inspect.
 
 ## Network and safety boundary
 
