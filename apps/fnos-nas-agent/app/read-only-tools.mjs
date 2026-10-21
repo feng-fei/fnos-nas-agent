@@ -62,6 +62,10 @@ const definitions = [
   {
     id: "files.move", title: "移动文件或文件夹", description: "将文件或文件夹移动到允许的存储卷内目标目录；不覆盖已有目标。", risk: "write",
     inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, destination: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path", "destination"], additionalProperties: false }
+  },
+  {
+    id: "files.delete", title: "删除文件或空文件夹", description: "删除一个文件或空文件夹；不可通过此工具删除存储卷根目录。需要用户对具体目标二次确认。", risk: "destructive",
+    inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path"], additionalProperties: false }
   }
 ];
 
@@ -115,6 +119,10 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     if (id === "files.move") {
       if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
       return fileManager.operate({ action: "move", path: args.path, destination: args.destination });
+    }
+    if (id === "files.delete") {
+      if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
+      return fileManager.operate({ action: "delete", path: args.path, confirm: true });
     }
     const snapshot = await getDiagnostics();
     switch (id) {
