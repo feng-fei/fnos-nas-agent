@@ -48,10 +48,12 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 3 Skill Manager contract](docs/phase-3-skill-manager.md)
 - [Phase 3 web authentication](docs/phase-3-web-auth.md)
 - [Phase 5 Skill manager](docs/phase-5-skill-manager-api.md)
-- [Phase 6 safe Skill ZIP import](docs/phase-6-skill-archive-import.md)\n- [Phase 7 read-only tool registry](docs/phase-7-read-only-tool-registry.md)
+- [Phase 6 safe Skill ZIP import](docs/phase-6-skill-archive-import.md)
+- [Phase 7 read-only tool registry](docs/phase-7-read-only-tool-registry.md)
 - [Phase 8 Agent core and model routing](docs/phase-8-agent-core-model-routing.md)
 - [Phase 9 operations task engine](docs/phase-9-operations-task-engine.md)
-- [Phase 10 permission policy foundation](docs/phase-10-permission-policy-foundation.md)\n- [Phase 11 static Skill manifest review](docs/phase-11-static-skill-manifest-review.md)
+- [Phase 10 permission policy foundation](docs/phase-10-permission-policy-foundation.md)
+- [Phase 11 static Skill manifest review](docs/phase-11-static-skill-manifest-review.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
 
@@ -67,4 +69,8 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 ## License
 
 No license has been selected yet. Until one is added, do not assume this repository grants permission to redistribute or reuse its code.
-\n\n## Current safety boundary\n\nPhase 11 reads only a bounded `SKILL.md` manifest from a validated archive for static review. It does not extract or execute imported content. Manifest findings are advisory, and write/destructive execution remains disabled.\n
+
+
+## Current safety boundary
+
+Phase 11 reads only a bounded `SKILL.md` manifest from a validated archive for static review. It does not extract or execute imported content. Manifest findings are advisory, and write/destructive execution remains disabled.
