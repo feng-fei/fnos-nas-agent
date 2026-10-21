@@ -78,3 +78,38 @@ test("Agent routes delete intent to pending approval without invoking the destru
   assert.deepEqual(pendingRequests, [{ toolId: "files.delete", args: { path: "/vol1/old-backup.zip" }, taskId: result.taskId }]);
   assert.equal(registry.calls.length, 0);
 });
+
+
+test("unknown risk classifications fail closed before any tool invocation", async () => {
+  const calls = [];
+  const registry = {
+    list: () => [{ id: "mystery.action", risk: "unknown", inputSchema: { type: "object", properties: {}, additionalProperties: false } }],
+    invoke: async (...args) => { calls.push(args); return {}; }
+  };
+  const agent = createAgentCore({
+    tools: registry,
+    model: { status: () => ({ enabled: true }), plan: async () => ({ message: "run", toolCalls: [{ id: "mystery.action", args: {} }] }) }
+  });
+  const result = await agent.run({ text: "执行未知操作" });
+  assert.equal(result.status, "failed");
+  assert.equal(calls.length, 0);
+});
+
+test("mixed plans containing a destructive action are rejected before routine writes run", async () => {
+  const calls = [];
+  const renameTool = { id: "files.rename", risk: "write", inputSchema: { type: "object", properties: { path: { type: "string" }, name: { type: "string" } }, required: ["path", "name"], additionalProperties: false } };
+  const registry = {
+    list: () => [renameTool, deleteTool],
+    invoke: async (...args) => { calls.push(args); return {}; }
+  };
+  let requested = false;
+  const agent = createAgentCore({
+    tools: registry,
+    model: { status: () => ({ enabled: true }), plan: async () => ({ message: "rename then delete", toolCalls: [{ id: "files.rename", args: { path: "/vol1/a", name: "b" } }, { id: "files.delete", args: { path: "/vol1/c" } }] }) },
+    requestApproval: async () => { requested = true; return {}; }
+  });
+  const result = await agent.run({ text: "重命名后删除" });
+  assert.equal(result.status, "failed");
+  assert.equal(requested, false);
+  assert.equal(calls.length, 0);
+});
