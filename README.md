@@ -153,6 +153,8 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 117 — Recoverable Session Persistence](docs/phase-117-session-persistence-retry.md)
 - [Phase 115 — Immutable GitHub Actions References](docs/phase-115-github-actions-pinning.md)
 - [Phase 116 — Post-signing Attestation Verification](docs/phase-116-attestation-verification.md)
+- [Phase 117 — FPK Lifecycle Smoke Verification](docs/phase-117-fpk-lifecycle-smoke.md)
+- [Phase 119 — Expired Session Cleanup Error Handling](docs/phase-119-expired-session-cleanup.md)
 - [Phase 28 practical read-only file browser](docs/phase-28-practical-file-browser.md)
 - [Phase 43 guided OAuth setup](docs/phase-43-guided-oauth-setup.md)
 - [Phase 44 — CLI Health and Read-only Closure](docs/phase-44-cli-health-and-readonly-closure.md)
