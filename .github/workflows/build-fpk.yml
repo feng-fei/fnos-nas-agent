@@ -55,6 +55,7 @@ on:
       - "docs/phase-27-build-provenance-attestation.md"
       - "docs/phase-114-build-provenance-attestation.md"
       - "docs/phase-116-attestation-verification.md"
+      - "docs/phase-123-fpk-bundled-runtime-smoke.md"
       - ".github/workflows/build-fpk.yml"
   pull_request:
     branches:
@@ -100,6 +101,7 @@ on:
       - "docs/phase-27-build-provenance-attestation.md"
       - "docs/phase-114-build-provenance-attestation.md"
       - "docs/phase-116-attestation-verification.md"
+      - "docs/phase-123-fpk-bundled-runtime-smoke.md"
       - ".github/workflows/build-fpk.yml"
   workflow_dispatch:
 
@@ -174,6 +176,40 @@ jobs:
           test -s "$stage/ICON.PNG"
           test -s "$stage/ICON_256.PNG"
           python3 -c 'import json, pathlib, sys; p=pathlib.Path(sys.argv[1]); json.loads((p/"config/privilege").read_text()); json.loads((p/"config/resource").read_text()); assert (p/"app"/"ui"/"config").is_file(); assert (p/"wizard").is_dir()' "$stage"
+
+      - name: Smoke test bundled runtime and FPK lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/fnos-nas-agent-fpk"
+          data="$RUNNER_TEMP/fnos-nas-agent-lifecycle-smoke"
+          error_log="$RUNNER_TEMP/fnos-nas-agent-lifecycle-error.log"
+          rm -rf "$data"
+          mkdir -p "$data"
+          run_lifecycle() {
+            TRIM_APPDEST="$stage/app" \
+            TRIM_PKGVAR="$data" \
+            TRIM_SERVICE_PORT=0 \
+            TRIM_TEMP_LOGFILE="$error_log" \
+            bash "$stage/cmd/main" "$1"
+          }
+          cleanup() {
+            run_lifecycle stop >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          run_lifecycle start
+          pid="$(cat "$data/agent.pid")"
+          test -n "$pid"
+          run_lifecycle status
+          run_lifecycle start
+          test "$(cat "$data/agent.pid")" = "$pid"
+          run_lifecycle stop
+          test ! -e "$data/agent.pid"
+          set +e
+          run_lifecycle status
+          status=$?
+          set -e
+          test "$status" -eq 3
 
       - name: Install verified fnpack
         shell: bash

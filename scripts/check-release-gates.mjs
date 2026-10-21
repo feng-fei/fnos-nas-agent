@@ -6,7 +6,7 @@ import { createPermissionPolicy } from "../apps/fnos-nas-agent/app/permission-po
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = path => readFile(join(root, path), "utf8");
-const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs, releaseVerifier, releaseVerifierTests, releaseVerifierDocs, provenanceDocs, phase116Docs, phase117Docs, lifecycleSmokeTests, fpkTestPlan, sessionCleanupTest, sessionCleanupDocs] = await Promise.all([
+const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs, releaseVerifier, releaseVerifierTests, releaseVerifierDocs, provenanceDocs, phase116Docs, phase117Docs, lifecycleSmokeTests, fpkTestPlan, sessionCleanupTest, sessionCleanupDocs, phase123Docs, phase123WorkflowTest] = await Promise.all([
   read("package.json"),
   read(".github/workflows/build-fpk.yml"),
   read("apps/fnos-nas-agent/app/server.mjs"),
@@ -30,7 +30,9 @@ const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, audit
   read("tests/phase-117-fpk-lifecycle-smoke.test.mjs"),
   read("docs/fpk-test-plan.md"),
   read("tests/phase-119-expired-session-cleanup.test.mjs"),
-  read("docs/phase-119-expired-session-cleanup.md")
+  read("docs/phase-119-expired-session-cleanup.md"),
+  read("docs/phase-123-fpk-bundled-runtime-smoke.md"),
+  read("tests/phase-123-fpk-bundled-runtime-smoke.test.mjs")
 ].map(async promise => promise));
 const packageJson = JSON.parse(pkg);
 
@@ -38,6 +40,9 @@ assert.match(packageJson.engines?.node || "", />=\s*26/);
 assert.equal(packageJson.dependencies, undefined, "runtime must remain dependency-free");
 assert.match(workflow, /node-version:\s*\["26\.x"\]/);
 assert.match(workflow, /^\s*- name: Build FPK$/m);
+assert.match(workflow, /- name: Smoke test bundled runtime and FPK lifecycle/);
+assert.ok(workflow.indexOf("- name: Stage native FPK") < workflow.indexOf("- name: Smoke test bundled runtime and FPK lifecycle"));
+assert.ok(workflow.indexOf("- name: Smoke test bundled runtime and FPK lifecycle") < workflow.indexOf("- name: Install verified fnpack"));
 assert.match(workflow, /^\s*- name: Inspect package and checksum$/m);
 assert.match(workflow, /fnpack-1\.2\.3-linux-amd64/);
 assert.match(workflow, /fnpack_sha256="54b97fa7b70968c4d05c79840f5daeff508957d0bb2062fdb0376d00d9615c93"/);
@@ -84,6 +89,9 @@ assert.match(provenanceDocs, /does not prove that the source code is safe/);
 assert.match(phase116Docs, /--signer-workflow/);
 assert.match(phase116Docs, /--source-ref refs\/heads\/main/);
 assert.match(phase117Docs, /start, status, and stop commands/);
+assert.match(phase123Docs, /exact Node binary intended for the FPK/);
+assert.match(phase123WorkflowTest, /staged bundled Node runtime before packaging/);
+assert.match(readme, /\[Phase 123 — Bundled Runtime FPK Lifecycle Smoke\]\(docs\/phase-123-fpk-bundled-runtime-smoke\.md\)/);
 assert.match(lifecycleSmokeTests, /start must be idempotent/);
 assert.match(lifecycleSmokeTests, /stop must terminate the process/);
 assert.match(fpkTestPlan, /launcher binds to `0\.0\.0\.0`/);
