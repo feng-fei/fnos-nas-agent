@@ -48,7 +48,8 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
   if (!tools || typeof tools.list !== "function" || typeof tools.invoke !== "function") throw new TypeError("A tool registry is required");
   if (!model || typeof model.plan !== "function" || typeof model.status !== "function") throw new TypeError("A model adapter is required");
 
-  async function executePlan(plan, approvalTaskId = id()) {
+  async function executePlan(plan, approvalTaskId = id(), reportProgress = () => {}) {
+    reportProgress(25, "校验工具计划");
     const catalogue = new Map(tools.list().map(tool => [tool.id, tool]));
     // Validate the complete plan before the first tool invocation.
     for (const call of plan.toolCalls) {
@@ -65,9 +66,13 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       return { pendingApproval: await requestApproval({ toolId: destructive[0].id, args: destructive[0].args, taskId: approvalTaskId }) };
     }
     const results = [];
+    reportProgress(55, "执行工具");
+    let completed = 0;
     for (const call of plan.toolCalls) {
       const result = await tools.invoke(call.id, call.args);
       results.push({ tool: call.id, result });
+      completed++;
+      reportProgress(55 + Math.floor(completed / plan.toolCalls.length * 40), "已完成工具 " + completed + "/" + plan.toolCalls.length);
     }
     return results;
   }
@@ -76,7 +81,9 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
     status() {
       return { rulesFirst: true, model: model.status(), availableTools: tools.list().length, arbitraryExecutionEnabled: false };
     },
-    async run(input) {
+    async run(input, context = {}) {
+      const reportProgress = typeof context?.reportProgress === "function" ? context.reportProgress : () => {};
+      reportProgress(5, "解析请求");
       if (!input || typeof input !== "object" || Array.isArray(input) || typeof input.text !== "string")
         throw Object.assign(new Error("A text field is required"), { statusCode: 400 });
       const text = input.text.trim();
@@ -86,7 +93,8 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       const createdAt = now();
       const direct = DIRECT_INTENTS.map(item => ({ item, match: item.pattern.exec(text) })).find(entry => entry.match);
       if (direct) {
-        const results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] }, taskId);
+        reportProgress(15, "已识别请求");
+        const results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] }, taskId, reportProgress);
         if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "rules", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "rules", message: direct.item.message, results };
       }
@@ -100,13 +108,15 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       }
 
       let plan;
+      reportProgress(15, "准备模型计划");
       try { plan = await model.plan(text, tools.list(), history); }
       catch {
         return { taskId, createdAt, completedAt: now(), status: "failed", mode: "model", message: "模型请求失败或返回格式不符合要求。为安全起见，没有执行任何工具；请检查服务端模型配置与网络连通性。", results: [] };
       }
       if (!plan) return { taskId, createdAt, completedAt: now(), status: "failed", mode: "model", message: "模型未生成有效计划，未执行工具。", results: [] };
+      reportProgress(45, "模型计划已生成");
       try {
-        const results = await executePlan(plan, taskId);
+        const results = await executePlan(plan, taskId, reportProgress);
         if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "model", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "model", message: safeMessage(plan.message, "已完成请求。"), results };
       } catch (error) {
