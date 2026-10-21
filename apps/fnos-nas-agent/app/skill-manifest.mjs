@@ -74,7 +74,7 @@ export function inspectSkillManifest(buffer) {
   const sourceReview = inspectSkillSource(buffer, archive);
   const reviewResult = value => {
     const findings = [...(value.findings || []), ...sourceReview.findings].slice(0, 20);
-    return reviewResult({
+    return Object.freeze({
       ...value,
       status: findings.length ? "needs_review" : value.status,
       findings,
