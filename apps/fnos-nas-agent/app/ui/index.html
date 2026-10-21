@@ -312,7 +312,8 @@ function renderAgentTurn(label, body){
  const title=document.createElement("strong");title.textContent=label;card.append(title);
  const content=document.createElement("pre");content.textContent=body;card.append(content);host.append(card);
 }
-async function refreshRecentTasks(){
+let taskRefreshTimer=null;
+ async function refreshRecentTasks(){
  const stats=document.querySelector("#task-stats");
  try{const sr=await api("/api/tasks/status"),sd=await sr.json();if(!sr.ok)throw Error();stats.textContent="运行中 "+sd.running+" · 排队 "+sd.queued+" · 保留历史 "+sd.retained+" · 并发上限 "+sd.concurrency;}catch{stats.textContent="队列状态暂不可用";}
  const host=document.querySelector("#agent-recent-tasks");
@@ -320,15 +321,25 @@ async function refreshRecentTasks(){
   const r=await api("/api/tasks?limit=10"),data=await r.json();if(!r.ok)throw Error(data.error||"读取失败");
   host.replaceChildren();
   if(!data.tasks.length){const p=document.createElement("p");p.className="muted";p.textContent="暂无任务记录。";host.append(p);return;}
+  let hasActive=false;
   for(const task of data.tasks){
    const card=document.createElement("div");card.className="card";
    const title=document.createElement("strong");title.textContent=task.taskId+" · "+task.status;card.append(title);
    const info=document.createElement("p");info.className="muted";info.textContent="创建："+task.createdAt+(task.completedAt?"；完成："+task.completedAt:"");card.append(info);
+   if(task.status==="queued"||task.status==="running"){
+    hasActive=true;
+    const stage=document.createElement("p");stage.className="muted";stage.textContent=(task.stage||(task.status==="queued"?"排队中":"执行中"))+" · "+Math.max(0,Math.min(100,Number(task.progress)||0))+"%";card.append(stage);
+    const bar=document.createElement("progress");bar.max=100;bar.value=Math.max(0,Math.min(100,Number(task.progress)||0));bar.setAttribute("aria-label","任务进度");bar.style.width="100%";bar.style.height="12px";card.append(bar);
+   }else if(task.status==="completed"){
+    const stage=document.createElement("p");stage.className="muted";stage.textContent=(task.stage||"已完成")+" · 100%";card.append(stage);
+   }
    if(task.result?.message){const message=document.createElement("p");message.textContent=task.result.message;card.append(message);}
    if(task.status==="queued"){const cancel=document.createElement("button");cancel.type="button";cancel.textContent="取消排队任务";cancel.addEventListener("click",async()=>{cancel.disabled=true;try{const cr=await api("/api/tasks/"+encodeURIComponent(task.taskId)+"/cancel",{method:"POST"});const cb=await cr.json();if(!cr.ok)throw Error(cb.error||"取消失败");await refreshRecentTasks();}catch(error){cancel.disabled=false;alert(error.message||"取消失败");}});card.append(cancel);}
-   if(task.error){const error=document.createElement("p");error.textContent=task.error;card.append(error);}
+   if(task.error){const error=document.createElement("p");error.className="error";error.textContent=task.error;card.append(error);}
    host.append(card);
   }
+  if(hasActive){if(taskRefreshTimer)clearTimeout(taskRefreshTimer);taskRefreshTimer=setTimeout(refreshRecentTasks,1200);}
+  else if(taskRefreshTimer){clearTimeout(taskRefreshTimer);taskRefreshTimer=null;}
  }catch{host.textContent="任务历史暂不可用。";}
 }
 async function refreshPendingActions(){
