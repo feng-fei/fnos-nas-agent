@@ -33,6 +33,8 @@ on:
       - "phase-24-*"
       - "phase-25/**"
       - "phase-25-*"
+      - "phase-26/**"
+      - "phase-26-*"
       - "fix/**"
       - "test/**"
     paths:
@@ -146,6 +148,7 @@ jobs:
           node --check "$app/app/approval-ledger.mjs"
           node --check scripts/verify-fpk-artifact.mjs
           node --check scripts/create-release-manifest.mjs
+          node --check scripts/verify-release-artifact.mjs
 
       - name: Prepare app payload and icons
         if: matrix.node-version == '26.x'
@@ -215,6 +218,7 @@ jobs:
           file dist/fnos-nas-agent-test.fpk
           node scripts/verify-fpk-artifact.mjs dist/fnos-nas-agent-test.fpk
           node scripts/create-release-manifest.mjs dist/fnos-nas-agent-test.fpk dist/release-manifest.json
+          node scripts/verify-release-artifact.mjs dist/fnos-nas-agent-test.fpk dist/fnos-nas-agent-test.fpk.sha256 dist/release-manifest.json
           tar -tzf dist/fnos-nas-agent-test.fpk > dist/fpk-contents.txt
           ls -lh dist/fnos-nas-agent-test.fpk*
 
