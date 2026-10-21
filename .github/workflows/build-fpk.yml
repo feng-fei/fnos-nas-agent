@@ -148,7 +148,7 @@ jobs:
           node --check "$app/app/server.mjs"
           node --check "$app/app/skills.mjs"
           node --check "$app/app/skill-archives.mjs"
-          node --check "$app/app/read-only-tools.mjs"
+          node --check "$app/app/read-only-tools.mjs"\n          node --check "$app/app/trim-cli-adapter.mjs"
           node --check "$app/app/model-adapter.mjs"
           node --check "$app/app/agent-core.mjs"
           node --check "$app/app/task-manager.mjs"
