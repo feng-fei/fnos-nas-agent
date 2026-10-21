@@ -556,6 +556,7 @@ document.querySelector("#file-upload-button").addEventListener("click",async()=>
  const button=document.querySelector("#file-upload-button"),cancel=document.querySelector("#file-upload-cancel"),progress=document.querySelector("#file-upload-progress"),status=document.querySelector("#file-upload-status");
  err.textContent="";status.textContent="";
  if(!files.length){err.textContent="请先选择文件";return;}
+ if(files.length>20){err.textContent="每批最多上传 20 个文件，请分批选择";return;}
  const oversized=files.find(file=>file.size>25*1024*1024);if(oversized){err.textContent="文件“"+oversized.name+"”超过 25 MiB，未开始上传";return;}
  button.disabled=true;cancel.disabled=false;progress.classList.remove("hidden");progress.value=0;let completed=0;
  try{
