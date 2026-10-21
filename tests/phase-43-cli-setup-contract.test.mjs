@@ -101,6 +101,12 @@ test("CLI OAuth command route uses private profile context and closes the read-o
   assert.deepEqual(probePayload.data, { system: "fnOS-test" });
   await access(sentinel);
 
+  const toolsResponse = await request("/api/tools", { headers: { cookie } });
+  assert.equal(toolsResponse.status, 200);
+  const toolsPayload = await toolsResponse.json();
+  assert.equal(toolsPayload.trimCliProviderAvailable, true);
+  assert.ok(toolsPayload.tools.filter(tool => tool.id.startsWith("fnos.")).every(tool => tool.providerAvailable === true));
+
   const status = await request("/api/agent/status", { headers: { cookie } });
   const statusPayload = await status.json();
   assert.equal(statusPayload.trimCli.connectionStatus, "connected", "status endpoint must preserve the latest successful probe");
