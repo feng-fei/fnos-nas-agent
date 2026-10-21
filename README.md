@@ -12,6 +12,7 @@ Core development is active. The repository currently includes:
 - Encrypted multi-provider model configuration, catalog discovery, connection tests, fallback routing, bounded retries, and in-memory metrics.
 - Provider presets for OpenAI, DeepSeek, SiliconFlow, Alibaba DashScope, Moonshot, Zhipu, OpenRouter, Google Gemini, Groq, and local Ollama.
 - Quarantined ZIP Skill import, bounded static manifest review, lifecycle transitions, bulk review, and reviewed installation of the official fnOS CLI.
+- GitHub branch/tag ZIP imports are validated, bounded, and stored in quarantine before static review.
 - Privacy-conscious audit records that omit prompts, task inputs, credentials, and raw exceptions.
 
 **Runtime and validation:** Node.js 26.x is the supported development and CI runtime. CI success does not mean the app has been installed or validated on a real fnOS NAS. FPK build, checksum, artifact upload, and provenance jobs remain paused while core capabilities stabilize. No real NAS is contacted by the automated tests.
@@ -110,6 +111,8 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 95 — Searchable Model Catalog Picker](docs/phase-95-model-catalog-search.md)
 - [Phase 96 — Task History Search](docs/phase-96-task-history-search.md)
 - [Phase 97 — GitHub Skill Archive Import](docs/phase-97-github-skill-archive-import.md)
+- [Phase 98 — Direct Natural-Language fnOS Queries](docs/phase-98-fnos-query-intents.md)
+- [Phase 99 — GitHub Repository URL Shortcut](docs/phase-99-github-repo-shortcut.md)
 
 ### Foundations
 - [Architecture](docs/architecture.md)
