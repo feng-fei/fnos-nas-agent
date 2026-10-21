@@ -78,6 +78,12 @@ test("HTTP auth contract: setup, session, origin checks and logout", async t => 
   const cookie = (login.headers.get("set-cookie") || "").split(";")[0];
   assert.match(cookie, /^nas_agent_session=/);
 
+  const agentStatus = await request("/api/agent/status", { headers: { cookie } });
+  assert.equal(agentStatus.status, 200);
+  const agentStatusPayload = await agentStatus.json();
+  assert.equal(agentStatusPayload.trimCli.configured, false);
+  assert.match(agentStatusPayload.trimCli.reason, /TRIM_CLI_PATH is not configured/);
+
   const toolsAfterLogin = await request("/api/tools", { headers: { cookie } });
   assert.equal(toolsAfterLogin.status, 200);
   const toolsPayload = await toolsAfterLogin.json();
