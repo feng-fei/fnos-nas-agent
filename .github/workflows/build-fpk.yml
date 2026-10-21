@@ -108,6 +108,7 @@ jobs:
           node --check /tmp/fnos-agent-ui-check.mjs
           node --check "$app/app/permission-policy.mjs"
           node --check "$app/app/skill-manifest.mjs"
+          node --check "$app/app/request-limiter.mjs"
           node --check "$app/app/approval-ledger.mjs"
 
       - name: Prepare app payload and icons
