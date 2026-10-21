@@ -56,6 +56,10 @@ test("model catalog discovery uses an inline accessible picker and never saves w
   assert.match(html, /使用所选模型/);
   assert.match(html, /取消/);
   assert.match(html, /option\.textContent=model\.id/);
+  assert.match(html, /搜索模型 ID 或提供方/);
+  assert.match(html, /choices\.slice\(0,100\)\.filter/);
+  assert.match(html, /显示 "\+filtered\.length\+" \/ "\+Math\.min\(choices\.length,100\)/);
+  assert.match(html, /apply\.disabled=filtered\.length===0/);
   assert.match(html, /已选择模型 .*尚未保存/);
   assert.doesNotMatch(html, /prompt\("发现 "/);
 });
