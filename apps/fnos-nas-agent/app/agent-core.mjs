@@ -4,7 +4,8 @@ const MAX_USER_TEXT = 2000;
 const DIRECT_INTENTS = [
   { pattern: /^(?:查看|查询|显示|检查|看看)?\s*(?:系统状态|系统情况|nas状态|服务器状态)\s*[。！!？?]?$/i, tool: "system.status", message: "正在读取 NAS 系统状态。" },
   { pattern: /^(?:查看|查询|显示|检查|看看)?\s*(?:存储|磁盘|硬盘|磁盘空间|存储空间)(?:情况|状态|使用情况|容量)?\s*[。！!？?]?$/i, tool: "storage.summary", message: "正在读取存储容量信息。" },
-  { pattern: /^(?:查看|查询|显示|检查|看看)?\s*(?:网络|网卡|网络接口|ip地址)(?:情况|状态|信息)?\s*[。！!？?]?$/i, tool: "network.interfaces", message: "正在读取网络接口信息。" }
+  { pattern: /^(?:查看|查询|显示|检查|看看)?\s*(?:网络|网卡|网络接口|ip地址)(?:情况|状态|信息)?\s*[。！!？?]?$/i, tool: "network.interfaces", message: "正在读取网络接口信息。" },
+  { pattern: /^(?:查看|查询|统计)?\s*(?:系统)?进程(?:数量|数目|概况)?\s*[。！!？?]?$/i, tool: "system.process-summary", message: "正在读取进程数量（不读取进程详情）。" }
 ];
 
 function safeMessage(value, fallback) {
@@ -52,7 +53,7 @@ export function createAgentCore({ tools, model, now = () => new Date().toISOStri
       if (!model.status().enabled) {
         return {
           taskId, createdAt, completedAt: now(), status: "completed", mode: "rules",
-          message: "我暂时无法可靠地判断这个请求。可以直接问“系统状态”“存储空间”或“网络接口”。如需自然语言分析，请先在服务端安全配置模型 API；当前未调用模型，也未执行其他操作。",
+          message: "我暂时无法可靠地判断这个请求。可以直接问“系统状态”“存储空间”“网络接口”或“进程数量”。如需自然语言分析，请先在服务端安全配置模型 API；当前未调用模型，也未执行其他操作。",
           results: []
         };
       }

@@ -106,7 +106,7 @@ test("first-run setup stores only a salted password hash and protects session en
   const toolCatalogue = await tools.json();
   assert.equal(toolCatalogue.executionEnabled, false);
   assert.equal(toolCatalogue.readOnlyExecutionEnabled, true);
-  assert.deepEqual(toolCatalogue.tools.map(tool => tool.id), ["system.status", "storage.summary", "network.interfaces"]);
+  assert.deepEqual(toolCatalogue.tools.map(tool => tool.id), ["system.status", "storage.summary", "system.process-summary", "network.interfaces"]);
   assert.ok(toolCatalogue.tools.every(tool => tool.risk === "read-only" && tool.inputSchema.additionalProperties === false));
 
   const hiddenToolRun = await fetch(baseUrl + "/api/tools/system.status/run", {
@@ -149,11 +149,29 @@ test("first-run setup stores only a salted password hash and protects session en
   const directAgent = await fetch(baseUrl + "/api/agent/message", {
     method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: JSON.stringify({ text: "查看系统状态" })
   });
-  assert.equal(directAgent.status, 200);
-  const directAgentBody = await directAgent.json();
-  assert.equal(directAgentBody.mode, "rules");
-  assert.equal(directAgentBody.status, "completed");
-  assert.equal(directAgentBody.results[0].tool, "system.status");
+  assert.equal(directAgent.status, 202);
+  const acceptedTask = (await directAgent.json()).task;
+  assert.ok(acceptedTask.taskId);
+  assert.ok(["queued", "running"].includes(acceptedTask.status));
+  const hiddenTaskList = await fetch(baseUrl + "/api/tasks");
+  assert.equal(hiddenTaskList.status, 401);
+  const taskStatus = await fetch(baseUrl + "/api/tasks/status", { headers: { cookie } });
+  assert.equal(taskStatus.status, 200);
+  assert.ok((await taskStatus.json()).retained >= 1);
+  let completedTask;
+  for (let i = 0; i < 40; i++) {
+    const taskResponse = await fetch(baseUrl + "/api/tasks/" + acceptedTask.taskId, { headers: { cookie } });
+    assert.equal(taskResponse.status, 200);
+    completedTask = (await taskResponse.json()).task;
+    if (completedTask.status === "completed" || completedTask.status === "failed") break;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.equal(completedTask.status, "completed");
+  assert.equal(completedTask.result.mode, "rules");
+  assert.equal(completedTask.result.results[0].tool, "system.status");
+  const taskList = await fetch(baseUrl + "/api/tasks?limit=10", { headers: { cookie } });
+  assert.equal(taskList.status, 200);
+  assert.ok((await taskList.json()).tasks.some(task => task.taskId === acceptedTask.taskId));
   const diagnosticResponse = await fetch(baseUrl + "/api/diagnostics", { headers: { cookie } });
   assert.equal(diagnosticResponse.status, 200);
   const diagnostics = await diagnosticResponse.json();

@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import os from "node:os";
 import { statfs } from "node:fs/promises";
-import { readFile, writeFile, mkdir, rename, chmod } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename, chmod, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, timingSafeEqual, createHash, scryptSync } from "node:crypto";
@@ -10,6 +10,7 @@ import { MAX_ARCHIVE_BYTES } from "./skill-archives.mjs";
 import { createReadOnlyToolRegistry } from "./read-only-tools.mjs";
 import { createModelAdapter } from "./model-adapter.mjs";
 import { createAgentCore } from "./agent-core.mjs";
+import { createTaskManager } from "./task-manager.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -136,6 +137,11 @@ async function diskUsage(path, label) {
 }
 async function readOnlyDiagnostics() {
   const cpus = os.cpus();
+  let processes = { available: false };
+  try {
+    const entries = await readdir("/proc", { withFileTypes: true });
+    processes = { available: true, count: entries.filter(entry => entry.isDirectory() && /^[0-9]+$/.test(entry.name)).length };
+  } catch { /* Non-Linux environments simply report process count unavailable. */ }
   const interfaces = Object.entries(os.networkInterfaces()).map(([name, entries]) => ({
     name,
     addresses: (entries || []).filter(entry => !entry.internal).map(entry => ({ address: entry.address, family: entry.family, cidr: entry.cidr }))
@@ -148,12 +154,14 @@ async function readOnlyDiagnostics() {
     cpu: { logicalCores: cpus.length, model: cpus[0]?.model || "unknown", loadAverage: os.loadavg() },
     memory: { totalBytes: os.totalmem(), freeBytes: os.freemem(), usedBytes: os.totalmem() - os.freemem() },
     network: interfaces,
+    processes,
     storage
   };
 }
 const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics });
 const modelAdapter = createModelAdapter();
 const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter });
+const taskManager = createTaskManager({ execute: input => agentCore.run(input), concurrency: 2, historyLimit: 50, queueLimit: 20 });
 function limited(req) {
   const key = req.socket.remoteAddress || "unknown", now = Date.now();
   let item = attempts.get(key);
@@ -287,7 +295,29 @@ const server = createServer(async (req, res) => {
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
-      return reply(res, 200, await agentCore.run(await jsonBody(req)));
+      const input = await jsonBody(req);
+      if (!input || typeof input !== "object" || Array.isArray(input) || typeof input.text !== "string" || !input.text.trim() || input.text.trim().length > 2000)
+        return reply(res, 400, { error: "Message must contain 1 to 2000 characters" });
+      const task = taskManager.submit({ text: input.text.trim() });
+      return reply(res, 202, { task });
+    }
+    if (url.pathname === "/api/tasks/status") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, taskManager.stats());
+    }
+    if (url.pathname === "/api/tasks") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const requested = Number(url.searchParams.get("limit") || 20);
+      return reply(res, 200, { tasks: taskManager.list({ limit: Number.isFinite(requested) ? Math.trunc(requested) : 20 }) });
+    }
+    const taskMatch = url.pathname.match(new RegExp("^/api/tasks/([a-f0-9-]{8,64})$", "i"));
+    if (taskMatch) {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const task = taskManager.get(taskMatch[1]);
+      return task ? reply(res, 200, { task }) : reply(res, 404, { error: "Task not found" });
     }
     if (url.pathname === "/api/tools") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
