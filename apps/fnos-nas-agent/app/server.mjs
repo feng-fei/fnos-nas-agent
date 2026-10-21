@@ -310,9 +310,16 @@ const server = createServer(async (req, res) => {
       try {
         const rawLimit = Number(url.searchParams.get("limit") || 100);
         const rawOffset = Number(url.searchParams.get("offset") || 0);
+        const sort = url.searchParams.get("sort") || "directories-first";
+        const query = url.searchParams.get("q") || "";
+        const type = url.searchParams.get("type") || "all";
         if (!Number.isInteger(rawOffset) || rawOffset < 0 || rawOffset > 100_000)
           return reply(res, 400, { error: "Invalid directory pagination offset" });
-        const result = await fileBrowser.list(url.searchParams.get("path") || "", rawLimit, rawOffset);
+        if (!["directories-first", "name-asc", "name-desc", "size-desc", "modified-desc"].includes(sort))
+          return reply(res, 400, { error: "Invalid directory sort mode" });
+        if (query.length > 160) return reply(res, 400, { error: "Directory search query is too long" });
+        if (!["all", "directory", "file"].includes(type)) return reply(res, 400, { error: "Invalid directory type filter" });
+        const result = await fileBrowser.list(url.searchParams.get("path") || "", rawLimit, rawOffset, sort, query, type);
         return reply(res, 200, result);
       } catch (error) {
         const status = [400, 403, 404].includes(error?.statusCode) ? error.statusCode : 500;
