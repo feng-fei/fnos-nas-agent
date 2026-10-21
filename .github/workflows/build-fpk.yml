@@ -142,21 +142,7 @@ jobs:
             test -f "$script"
             bash -n "$script"
           done
-          node --check "$app/app/server.mjs"
-          node --check "$app/app/skills.mjs"
-          node --check "$app/app/skill-archives.mjs"
-          node --check "$app/app/read-only-tools.mjs"
-          node --check "$app/app/trim-cli-adapter.mjs"
-          node --check "$app/app/model-adapter.mjs"
-          node --check "$app/app/agent-core.mjs"
-          node --check "$app/app/task-manager.mjs"
-          node --check "$app/app/audit-log.mjs"
+          while IFS= read -r -d '' file; do node --check "$file"; done < <(find "$app/app" -type f -name '*.mjs' -print0)
+          while IFS= read -r -d '' file; do node --check "$file"; done < <(find scripts -type f -name '*.mjs' -print0)
           python3 -c 'import re, pathlib; s=pathlib.Path("apps/fnos-nas-agent/app/ui/index.html").read_text(); m=re.search(r"<script>(.*?)</script>", s, re.S); assert m, "inline UI script not found"; pathlib.Path("/tmp/fnos-agent-ui-check.mjs").write_text(m.group(1))'
           node --check /tmp/fnos-agent-ui-check.mjs
-          node --check "$app/app/permission-policy.mjs"
-          node --check "$app/app/skill-manifest.mjs"
-          node --check "$app/app/request-limiter.mjs"
-          node --check "$app/app/approval-ledger.mjs"
-          node --check scripts/verify-fpk-artifact.mjs
-          node --check scripts/create-release-manifest.mjs
-          node --check scripts/verify-release-artifact.mjs
