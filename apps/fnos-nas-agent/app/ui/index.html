@@ -44,7 +44,7 @@
 <button id="trim-cli-copy" type="button" disabled>复制命令</button>
 <ol><li>先审核并安装官方 fnOS Skill 中的 CLI，并启用该 Skill。</li><li>通过 fnOS 终端或可信 SSH 登录 NAS，再粘贴执行生成的命令。命令会切换到 Agent 的运行账户，并把 OAuth profile 放在 Agent 私有数据目录中，确保 Agent 后续能读取它。</li><li>CLI 输出授权链接后，在你自己的浏览器中登录并确认授权，再将一次性 code 直接粘贴到 CLI 的交互提示符。</li><li>CLI 显示登录成功后，回到本页面点击“检测官方 CLI 连接”。</li></ol>
 <p class="warning">本页面只生成命令，不会执行登录，不会接收验证码或令牌。切勿把验证码、access token、refresh token 或完整调试输出发送给助手。命令使用 sudo 切换运行账户；若 NAS 没有 sudo，请先切换至 Agent 服务账户，再删除命令开头的 <code>sudo -u … --</code> 前缀，不能改用其他账户保存 profile。</p>
-</details><form id="agent-form"><label for="agent-input">你想了解什么？</label><input id="agent-input" maxlength="2000" autocomplete="off" placeholder="例如：查看系统状态 / 帮我分析 NAS 当前情况" required><button id="agent-send" type="submit">发送</button></form><p id="agent-error" class="error" role="status"></p><div id="agent-history" aria-live="polite"><p class="muted">登录后可开始查询。</p></div><h3>任务队列</h3><p id="task-stats" class="muted">正在读取队列状态…</p><h3>待确认的危险操作</h3><p class="muted">确认只对下面显示的具体目标有效，60 秒内有效且只能执行一次。</p><button id="refresh-pending-actions" type="button">刷新待确认操作</button><div id="pending-actions"><p class="muted">没有待确认操作。</p></div><h3>最近任务</h3><button id="agent-refresh-tasks" type="button">刷新任务历史</button><div id="agent-recent-tasks"><p class="muted">暂无任务记录。</p></div></section>
+</details><p id="agent-context-status" class="muted">对话上下文只保存在当前页面内存中，不写入 NAS 任务历史。</p><button id="agent-clear-context" type="button">清空对话上下文</button><form id="agent-form"><label for="agent-input">你想了解什么？</label><input id="agent-input" maxlength="2000" autocomplete="off" placeholder="例如：查看系统状态 / 然后打开刚才的目录" required><button id="agent-send" type="submit">发送</button></form><p id="agent-error" class="error" role="status"></p><div id="agent-history" aria-live="polite"><p class="muted">登录后可开始查询。</p></div><h3>任务队列</h3><p id="task-stats" class="muted">正在读取队列状态…</p><h3>待确认的危险操作</h3><p class="muted">确认只对下面显示的具体目标有效，60 秒内有效且只能执行一次。</p><button id="refresh-pending-actions" type="button">刷新待确认操作</button><div id="pending-actions"><p class="muted">没有待确认操作。</p></div><h3>最近任务</h3><button id="agent-refresh-tasks" type="button">刷新任务历史</button><div id="agent-recent-tasks"><p class="muted">暂无任务记录。</p></div></section>
 <section class="card hidden" id="skills-card"><h2>Skill 管理</h2><p class="warning">ZIP 上传后只会检查结构并存入隔离目录，不会解压或执行。每个 ZIP 最大 25 MiB（解压声明总量不超过 64 MiB）；导入后只存入隔离区并进行静态审核，不会解压或执行。</p><form id="skill-import-form"><label for="import-skill-name">Skill 名称</label><input id="import-skill-name" maxlength="100" required><label for="import-skill-version">版本（可选）</label><input id="import-skill-version" maxlength="40"><label for="import-skill-source">来源备注（可选）</label><input id="import-skill-source" maxlength="100"><label for="skill-archive">Skill ZIP 文件</label><input id="skill-archive" type="file" accept=".zip,application/zip" required><button type="submit">上传并隔离待审核</button></form><details><summary>手动登记已有归档摘要（仅元数据）</summary><form id="skill-form"><label for="skill-name">Skill 名称</label><input id="skill-name" maxlength="100" required><label for="skill-version">版本（可选）</label><input id="skill-version" maxlength="40"><label for="skill-hash">归档 SHA-256</label><input id="skill-hash" minlength="64" maxlength="64" pattern="[a-fA-F0-9]{64}" required><label for="skill-source">来源备注（可选）</label><input id="skill-source" maxlength="100"><button type="submit">登记元数据</button></form></details><p id="skill-error" class="error" role="status"></p><div id="skill-list"><p class="muted">尚未加载</p></div></section>
 <section class="card"><h2>安全说明</h2><p class="muted">任意系统命令和导入 Skill 执行默认关闭。已登记的常规文件操作需通过有效会话及参数校验。HTTP 不加密传输内容，因此仅限可信局域网，不要暴露到公网。</p></section>
 <script>
@@ -298,6 +298,15 @@ async function refreshAgentStatus(){
   document.querySelector("#trim-cli-connection-detail").textContent="无法获取连接状态；请刷新页面后重试。";
  }
 }
+let conversationContext = [];
+function refreshConversationContextStatus(){
+ const label=document.querySelector("#agent-context-status");
+ if(label)label.textContent="对话上下文："+conversationContext.length+" 条消息（最多 8 条），仅在当前页面内存中保留；不会写入 NAS 任务历史。";
+}
+document.querySelector("#agent-clear-context").addEventListener("click",()=>{
+ conversationContext=[];
+ refreshConversationContextStatus();
+});
 function renderAgentTurn(label, body){
  const host=document.querySelector("#agent-history");const card=document.createElement("div");card.className="card";
  const title=document.createElement("strong");title.textContent=label;card.append(title);
@@ -347,7 +356,7 @@ document.querySelector("#agent-form").addEventListener("submit",async e=>{
  e.preventDefault();const field=document.querySelector("#agent-input"),send=document.querySelector("#agent-send"),err=document.querySelector("#agent-error");
  const text=field.value.trim();if(!text)return;err.textContent="";renderAgentTurn("你",text);field.value="";send.disabled=true;send.textContent="已提交…";
  try{
-  const r=await api("/api/agent/message",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text})});
+  const r=await api("/api/agent/message",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text,history:conversationContext})});
   const accepted=await r.json();if(!r.ok)throw Error(accepted.error||"请求失败");
   const taskId=accepted.task.taskId;
   let task=accepted.task;
@@ -361,6 +370,12 @@ document.querySelector("#agent-form").addEventListener("submit",async e=>{
    const result=task.result,details=[result.message,"任务："+taskId+"；模式："+result.mode+"；状态："+result.status];
    for(const item of result.results||[])details.push("工具 "+item.tool+"：\n"+JSON.stringify(item.result,null,2));
    renderAgentTurn("NAS Agent",details.join("\n\n"));
+   if(result.status==="completed"){
+    const contextParts=[result.message||"已完成请求。"];
+    for(const item of result.results||[])contextParts.push("工具 "+item.tool+"："+JSON.stringify(item.result).slice(0,320));
+    conversationContext=[...conversationContext,{role:"user",content:text},{role:"assistant",content:contextParts.join("\n").slice(0,1200)}].slice(-8);
+    refreshConversationContextStatus();
+   }
   }else if(task.status==="failed")renderAgentTurn("NAS Agent","任务失败："+(task.error||"未知错误")+"\n任务 ID："+taskId);
   else if(task.status==="cancelled")renderAgentTurn("NAS Agent","任务已取消。任务 ID："+taskId);
   else renderAgentTurn("NAS Agent","任务仍在执行。任务 ID："+taskId+"。可在“最近任务”中刷新查看。");

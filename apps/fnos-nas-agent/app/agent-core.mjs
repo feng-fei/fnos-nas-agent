@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { normalizeConversationHistory } from "./conversation-context.mjs";
 
 const MAX_USER_TEXT = 2000;
 const DIRECT_INTENTS = [
@@ -80,6 +81,7 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
         throw Object.assign(new Error("A text field is required"), { statusCode: 400 });
       const text = input.text.trim();
       if (!text || text.length > MAX_USER_TEXT) throw Object.assign(new Error("Message must contain 1 to 2000 characters"), { statusCode: 400 });
+      const history = normalizeConversationHistory(input.history);
       const taskId = id();
       const createdAt = now();
       const direct = DIRECT_INTENTS.map(item => ({ item, match: item.pattern.exec(text) })).find(entry => entry.match);
@@ -98,7 +100,7 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       }
 
       let plan;
-      try { plan = await model.plan(text, tools.list()); }
+      try { plan = await model.plan(text, tools.list(), history); }
       catch {
         return { taskId, createdAt, completedAt: now(), status: "failed", mode: "model", message: "模型请求失败或返回格式不符合要求。为安全起见，没有执行任何工具；请检查服务端模型配置与网络连通性。", results: [] };
       }
