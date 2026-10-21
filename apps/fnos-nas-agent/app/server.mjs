@@ -229,7 +229,7 @@ const server = createServer(async (req, res) => {
       const active = sessionFor(req);
       if (active) { sessions.delete(active.key); await persistSessions(); }
       return reply(res, 200, { authenticated: false }, "application/json; charset=utf-8", {
-        "set-cookie": "nas_agent_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"
+        "set-cookie": `nas_agent_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${req.socket.encrypted ? "; Secure" : ""}`
       });
     }
     if (req.method === "GET" && url.pathname === "/api/diagnostics") {
