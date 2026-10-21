@@ -3,6 +3,10 @@ import { normalizeConversationHistory } from "./conversation-context.mjs";
 
 const MAX_USER_TEXT = 2000;
 const DIRECT_INTENTS = [
+  { pattern: /^(?:查看|查询|显示|检查|看看)?\\s*(?:fnOS\\s*)?(?:系统信息|设备信息|NAS详细信息)\\s*[。！!？?]?$/i, tool: "fnos.system.info", message: "正在读取 fnOS 系统信息。" },
+  { pattern: /^(?:查看|查询|显示|检查)?\\s*(?:fnOS\\s*)?(?:存储卷|卷)(?:容量|空间|使用情况)?\\s*(?:ID\\s*)?(\\d{1,5})\\s*(?:容量|空间|使用情况)?\\s*[。！!？?]?$/i, tool: "fnos.file.usage", args: match => ({ volumeId: Number(match[1]) }), message: "正在读取指定存储卷的容量统计。" },
+  { pattern: /^(?:列出|查看|浏览)(?:一下)?\\s*(?:fnOS\\s*)?目录分段\\s+(.{1,2048})$/i, tool: "fnos.file.ls-dir", args: match => ({ path: match[1].trim() }), message: "正在读取目录分段信息。" },
+  { pattern: /^(?:检查|查看|查询|是否支持)?\\s*(?:fnOS\\s*)?蜂鸣器(?:监控)?(?:支持|支持情况|能力)?\\s*[。！!？?]?$/i, tool: "fnos.monitor.beep-supported", message: "正在检查蜂鸣器监控能力是否受支持；不会触发蜂鸣。" },
   { pattern: /^(?:查看|查询|显示|检查|看看)?\s*(?:系统状态|系统情况|nas状态|服务器状态)\s*[。！!？?]?$/i, tool: "system.status", message: "正在读取 NAS 系统状态。" },
   { pattern: /^(?:查看|查询|显示|检查|看看)?\s*(?:存储|磁盘|硬盘|磁盘空间|存储空间)(?:情况|状态|使用情况|容量)?\s*[。！!？?]?$/i, tool: "storage.summary", message: "正在读取存储容量信息。" },
   { pattern: /^(?:查看|查询|显示|检查|看看)?\s*(?:网络|网卡|网络接口|ip地址)(?:情况|状态|信息)?\s*[。！!？?]?$/i, tool: "network.interfaces", message: "正在读取网络接口信息。" },
