@@ -10,11 +10,11 @@ test("FPK provenance attestation is limited to verified main-branch builds", asy
   assert.match(workflow, /\n  push:\n    branches:\n      - main\n/);
   assert.match(attestJob, /if: github\.ref == 'refs\/heads\/main' && github\.event_name != 'pull_request'/);
   assert.match(attestJob, /needs: build/);
-  assert.match(attestJob, /uses: actions\/download-artifact@v4/);
+  assert.match(attestJob, /uses: actions\/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4\.3\.0/);
   assert.match(attestJob, /name: fnos-nas-agent-test-fpk-node-26\.x/);
   assert.match(attestJob, /Verify artifact bundle before attestation/);
   assert.match(attestJob, /node scripts\/verify-release-artifact\.mjs/);
-  assert.match(attestJob, /uses: actions\/attest@v4/);
+  assert.match(attestJob, /uses: actions\/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4\.2\.2/);
   assert.match(attestJob, /subject-path: artifact\/fnos-nas-agent-test-node-26\.fpk/);
 
   for (const permission of ["id-token: write", "attestations: write", "artifact-metadata: write"]) {
@@ -23,7 +23,7 @@ test("FPK provenance attestation is limited to verified main-branch builds", asy
   }
 
   const verificationIndex = attestJob.indexOf("Verify artifact bundle before attestation");
-  const attestationIndex = attestJob.indexOf("uses: actions/attest@v4");
+  const attestationIndex = attestJob.indexOf("uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6");
   assert.ok(verificationIndex >= 0 && attestationIndex > verificationIndex,
     "artifact consistency must be re-verified before attestation");
 });

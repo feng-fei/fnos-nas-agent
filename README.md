@@ -149,6 +149,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 27 build provenance attestation](docs/phase-27-build-provenance-attestation.md)
 - [Phase 113 — FPK Lifecycle Process Identity](docs/phase-113-fpk-process-identity.md)
 - [Phase 114 — FPK Build Provenance Attestation](docs/phase-114-build-provenance-attestation.md)
+- [Phase 115 — Immutable GitHub Actions References](docs/phase-115-github-actions-pinning.md)
 - [Phase 28 practical read-only file browser](docs/phase-28-practical-file-browser.md)
 - [Phase 43 guided OAuth setup](docs/phase-43-guided-oauth-setup.md)
 - [Phase 44 — CLI Health and Read-only Closure](docs/phase-44-cli-health-and-readonly-closure.md)
