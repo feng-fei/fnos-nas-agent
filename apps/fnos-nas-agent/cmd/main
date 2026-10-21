@@ -1,7 +1,6 @@
 #!/bin/bash
 set -eu
 
-APP_NAME="fnos-nas-agent"
 APP_PORT="${TRIM_SERVICE_PORT:-18787}"
 APP_ROOT="${TRIM_APPDEST:-}"
 APP_VAR="${TRIM_PKGVAR:-}"
@@ -15,14 +14,12 @@ fail() {
   printf '%s\n' "$message" > "$APP_LOG"
   exit 1
 }
-
 is_running() {
   [ -f "$PID_FILE" ] || return 1
   pid="$(cat "$PID_FILE" 2>/dev/null || true)"
   case "$pid" in ''|*[!0-9]*) return 1 ;; esac
   kill -0 "$pid" 2>/dev/null
 }
-
 case "${1:-}" in
   start)
     [ -n "$APP_ROOT" ] || fail "TRIM_APPDEST 未设置，无法定位应用文件。"
@@ -32,7 +29,7 @@ case "${1:-}" in
     mkdir -p "$APP_VAR"
     if is_running; then exit 0; fi
     rm -f "$PID_FILE"
-    HOST=0.0.0.0 PORT="$APP_PORT" "$NODE_BIN" "$ENTRY" >> "$APP_VAR/agent.log" 2>&1 &
+    HOST=127.0.0.1 PORT="$APP_PORT" "$NODE_BIN" "$ENTRY" >> "$APP_VAR/agent.log" 2>&1 &
     pid=$!
     printf '%s\n' "$pid" > "$PID_FILE"
     sleep 1
@@ -49,9 +46,7 @@ case "${1:-}" in
         sleep 1
         i=$((i + 1))
       done
-      if kill -0 "$pid" 2>/dev/null; then
-        kill -TERM "$pid" 2>/dev/null || true
-      fi
+      if kill -0 "$pid" 2>/dev/null; then kill -TERM "$pid" 2>/dev/null || true; fi
     fi
     rm -f "$PID_FILE"
     exit 0
