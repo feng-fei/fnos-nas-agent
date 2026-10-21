@@ -1,123 +1,111 @@
 # fnos-nas-agent
 
-A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mobile-friendly web interface, controlled NAS operations, and a reviewable Skill manager.
+A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS. The project prioritizes a mobile-friendly control panel, practical file operations, model-provider management, and a reviewable Skill lifecycle.
 
-> **Status: Practical NAS functionality in progress.** Phases 2–49 are integrated on `main`; Phase 51 adds the authenticated batch file operations API on this feature branch. The Agent generates a terminal command but never runs the OAuth login or receives the one-time code. Task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, registered read-only and routine-write tools, one-time destructive-action confirmation, rules-first Agent routing, an optional server-configured model adapter, encrypted multi-provider model management with compatible model catalog discovery, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Development CI currently uses Node.js 26 core tests and syntax checks only; FPK build, checksum, artifact upload, and provenance jobs are temporarily paused while core capabilities stabilize.
-> **Status: Practical NAS functionality in progress.** Phases 2–49 are integrated on `main`; Phase 50 adds live task progress in the mobile UI on this feature branch. The Agent generates a terminal command but never runs the OAuth login or receives the one-time code. Task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, registered read-only and routine-write tools, one-time destructive-action confirmation, rules-first Agent routing, an optional server-configured model adapter, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Development CI currently uses Node.js 26 core tests and syntax checks only; FPK build, checksum, artifact upload, and provenance jobs are temporarily paused while core capabilities stabilize.
+## Current status
 
-## Goals
+Core development is active. The repository currently includes:
 
-- Replace a heavier general-purpose Agent with a small Node.js-native service.
-- Prefer deterministic rules for common read-only requests; use a remote model API only when needed.
-- Import and inspect Skills without executing imported code during review.
-- Require explicit confirmation for risky operations; deny destructive actions by default.
-- Keep API keys, OAuth tokens, passwords, and sensitive output out of source control and logs.
-- Package as an fnOS FPK only after validating the official packaging requirements.
+- Password-based setup/login, sessions, read-only diagnostics, and metadata-only audit history.
+- Mobile file browsing, bounded text preview, upload, folder creation, rename/move, batch operations, and confirmation-protected deletion.
+- Rules-first Agent routing, allowlisted tool plans, bounded asynchronous tasks, progress reporting, task filtering/pagination, and queued-task cancellation.
+- Encrypted multi-provider model configuration, catalog discovery, connection tests, fallback routing, bounded retries, and in-memory metrics.
+- Provider presets for OpenAI, DeepSeek, SiliconFlow, Alibaba DashScope, Moonshot, Zhipu, OpenRouter, Google Gemini, Groq, and local Ollama.
+- Quarantined ZIP Skill import, bounded static manifest review, lifecycle transitions, bulk review, and reviewed installation of the official fnOS CLI.
+- Privacy-conscious audit records that omit prompts, task inputs, credentials, and raw exceptions.
 
-## Current skeleton
+**Runtime and validation:** Node.js 26.x is the supported development and CI runtime. CI success does not mean the app has been installed or validated on a real fnOS NAS. FPK build, checksum, artifact upload, and provenance jobs remain paused while core capabilities stabilize. No real NAS is contacted by the automated tests.
 
-- `src/server.mjs` — Node built-in HTTP server and health/tool endpoints.
-- `src/config.mjs` — configuration validation; loopback-only default.
-- `src/policy/registry.mjs` — empty, read-only-only tool registry.
-- `src/web/index.html` — mobile-friendly status page.
-- `tests/` — Node built-in test runner tests.
-- `docs/phase-2.md` — current implementation boundary and acceptance checks.
+## Safety boundaries
 
-No third-party runtime dependencies are required. **Node.js 26.x is the development and default packaged runtime** (latest patch in the 26.x line). Node.js 24 is no longer included in the development CI matrix. FPK packaging checks are temporarily paused; real fnOS validation remains a separate acceptance step.
+- Arbitrary shell execution remains disabled.
+- Imported Skill code is never executed as part of ZIP import or static review.
+- Risky file actions require a target-bound, one-time confirmation.
+- Model output can only request registered tools; the Agent validates tool IDs and arguments before invocation.
+- API keys are encrypted at rest by the model-provider store and are not returned to the UI.
+- Task inputs, prompts, result payloads, and raw exceptions are not persisted to task history.
+- HTTP is unencrypted. Keep the service on a trusted network; do not expose it directly to the public internet.
+
+Static manifest findings are advisory and are not a security certification. See [Security model](docs/security.md), [Architecture](docs/architecture.md), and [Security policy](SECURITY.md).
 
 ## Run locally
+
+Use Node.js 26.x and run:
 
 ```sh
 npm test
 npm start
 ```
 
-Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, set a management password (only a salted scrypt hash is stored), then log in. Authenticated users can view a read-only diagnostics snapshot and invoke three allowlisted read-only tools for system status, storage summary, and network interfaces. Arbitrary command execution, Skill execution, and model calls remain disabled. See [Phase 3 web authentication](docs/phase-3-web-auth.md) and [Phase 4 read-only diagnostics](docs/phase-4-read-only-diagnostics.md). HTTP is unencrypted; do not expose the service to untrusted networks or the public internet.
+Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, set a management password; only a salted scrypt hash is stored. Log in to access diagnostics and the mobile management UI.
 
-## Planned first capability
+The project aims to minimize runtime dependencies and primarily uses Node.js built-ins. Review `package.json` for the current scripts.
 
-The official fnOS Skill is the first capability pack. Its reviewed archive can provide a platform-matched trim-cli binary, which the Agent exposes only through an allowlisted read-only adapter. OAuth uses the official interactive Authorization Code + PKCE flow: the user signs in and pastes the one-time code directly into the CLI terminal. The Agent never collects credentials or executes arbitrary Skill instructions. See [Phase 40 reviewed CLI installation](docs/phase-40-reviewed-cli-install.md), [Phase 42 connection health](docs/phase-42-cli-connection-health.md), and [Phase 43 guided OAuth setup](docs/phase-43-guided-oauth-setup.md).
+## Official fnOS CLI setup
 
-## Design documents\n\n- [Phase 49 — Bounded Batch File Operations](docs/phase-49-batch-file-operations.md)
-- [Phase 51 — Authenticated Batch File Operations API](docs/phase-51-batch-files-api.md)
-- [Phase 50 — Mobile Task Progress UI](docs/phase-50-mobile-task-progress-ui.md)
+The reviewed official fnOS Skill archive can provide a platform-matched `trim-cli` binary. The Agent exposes only registered read-only CLI operations. OAuth uses the official interactive Authorization Code + PKCE flow: sign in through your own browser and paste the one-time code directly into the CLI terminal. The Agent does not collect passwords, authorization codes, or tokens.
 
-- [Phase 48 — Bounded Task Progress](docs/phase-48-task-progress.md)
+See [Phase 40 — Reviewed CLI installation](docs/phase-40-reviewed-cli-install.md), [Phase 42 — CLI connection health](docs/phase-42-cli-connection-health.md), and [Phase 43 — Guided OAuth setup](docs/phase-43-guided-oauth-setup.md).
 
+## Development and validation
+
+- Node.js 26.x core tests and syntax checks run in GitHub Actions.
+- Provider integrations use fake endpoints in automated tests; CI does not call real model services.
+- Skill ZIP tests validate structure and static review only; imported content is not executed.
+- FPK packaging and real fnOS lifecycle validation are separate release tasks and remain paused.
+
+Contributions should include focused tests, bounded inputs/outputs, sanitized errors, and documentation for new capabilities. Do not add secrets or run development tests against a production NAS.
+
+## Design documents
+
+### Current capabilities
+- [Practical file management](docs/practical-file-management.md)
+- [Skill lifecycle](docs/skill-lifecycle.md)
+- [Skill and task management UX](docs/skill-and-task-management-ux.md)
+- [fnOS tool mapping](docs/fnos-tool-mapping.md)
+- [Model provider management](docs/phase-45-model-provider-manager.md)
+- [Model provider reliability](docs/phase-46-model-reliability.md)
+- [Bounded conversation context](docs/phase-47-conversation-context.md)
+- [Bounded task progress](docs/phase-48-task-progress.md)
+- [Bounded batch file operations](docs/phase-49-batch-file-operations.md)
+- [Mobile task progress UI](docs/phase-50-mobile-task-progress-ui.md)
+- [Authenticated batch file operations API](docs/phase-51-batch-files-api.md)
+- [Model catalog discovery](docs/phase-53-model-catalog-discovery.md)
+- [Expanded provider presets](docs/phase-54-provider-presets-expansion.md)
+- [Mobile Skill search and filters](docs/phase-55-skill-search-filters.md)
+- [Local Ollama provider](docs/phase-56-local-ollama-provider.md)
+- [Inline model catalog picker](docs/phase-57-model-catalog-picker.md)
+- [Task history filters and pagination](docs/phase-58-task-history-filters.md)
+- [Bulk Skill review API](docs/phase-59-bulk-skill-review.md)
+- [Mobile bulk Skill review](docs/phase-60-bulk-skill-review-ui.md)
+- [Mobile task history controls](docs/phase-61-task-history-mobile-ui.md)
+- [Model retry resilience](docs/phase-62-model-adapter-error-resilience.md)
+- [Static Skill review hardening](docs/phase-63-skill-archive-review-hardening.md)
+- [Task history cleanup](docs/phase-64-clear-terminal-task-history.md)
+- [Filtered audit history](docs/phase-65-audit-history-mobile-ui.md)
+- [Task history cleanup control](docs/phase-66-task-history-cleanup-ui.md)
+- [Task result details](docs/phase-67-task-result-details.md)
+- [Gemini and Groq presets](docs/phase-68-gemini-groq-presets.md)
+- [Bounded task result retention](docs/phase-69-bounded-task-results.md)
+
+### Foundations
 - [Architecture](docs/architecture.md)
 - [Security model](docs/security.md)
-- [Skill lifecycle](docs/skill-lifecycle.md)
-- [fnOS tool mapping](docs/fnos-tool-mapping.md)
 - [Development plan](docs/development.md)
-- [Phase 2 skeleton boundaries](docs/phase-2.md)
-- [Phase 3 Skill Manager contract](docs/phase-3-skill-manager.md)
-- [Phase 3 web authentication](docs/phase-3-web-auth.md)
-- [Phase 5 Skill manager](docs/phase-5-skill-manager-api.md)
-- [Phase 6 safe Skill ZIP import](docs/phase-6-skill-archive-import.md)
-- [Phase 7 read-only tool registry](docs/phase-7-read-only-tool-registry.md)
-- [Phase 8 Agent core and model routing](docs/phase-8-agent-core-model-routing.md)
-- [Phase 9 operations task engine](docs/phase-9-operations-task-engine.md)
-- [Phase 10 permission policy foundation](docs/phase-10-permission-policy-foundation.md)
-- [Phase 11 static Skill manifest review](docs/phase-11-static-skill-manifest-review.md)
-- [Phase 12 one-time approval ledger](docs/phase-12-one-time-approval-ledger.md)
-- [Phase 13 mobile operations workbench](docs/phase-13-mobile-operations-workbench.md)
-- [Phase 14 authentication security hardening](docs/phase-14-auth-security-hardening.md)
-- [Phase 15 release readiness gates](docs/phase-15-release-readiness-gates.md)
-- [Phase 16 FPK integration smoke tests](docs/phase-16-integration-smoke-tests.md)
-- [Phase 17 HTTP authentication contract tests](docs/phase-17-http-auth-contract-tests.md)
-- [Phase 18 FPK artifact integrity](docs/phase-18-fpk-artifact-integrity.md)
-- [Phase 19 model adapter contract tests](docs/phase-19-model-adapter-contract-tests.md)
-- [Phase 20 audit trail and operation trace](docs/phase-20-audit-trail.md)
-- [Phase 21 task persistence and crash recovery](docs/phase-21-task-persistence-recovery.md)
-- [Phase 22 release-candidate acceptance](docs/phase-22-release-candidate-acceptance.md)
-- [Phase 24 release hygiene and fnOS smoke checks](docs/phase-24-release-hygiene-and-smoke-checks.md)
-- [Phase 25 release manifest and build provenance](docs/phase-25-release-manifest-and-provenance.md)
-- [Phase 26 release artifact verification](docs/phase-26-release-artifact-verification.md)
-- [Phase 28 practical read-only file browser](docs/phase-28-practical-file-browser.md)
-- [Phase 31 practical fnOS photo tools](docs/phase-31-fnos-photo-tools.md)
-- [Phase 32 confirm-first action policy](docs/phase-32-confirm-first-action-policy.md)
-- [Phase 33 practical routine file write tools](docs/phase-33-practical-file-write-tools.md)
-- [Phase 34 confirmed destructive file actions](docs/phase-34-confirmed-destructive-file-actions.md)
-- [Phase 35 Agent text-file creation](docs/phase-35-agent-text-file-creation.md)
-- [Phase 36 bounded Agent file upload](docs/phase-36-bounded-agent-file-upload.md)
-- [Phase 37 natural-language operations](docs/phase-37-natural-language-operations.md)
-- [Phase 38 core integration and fast feedback](docs/phase-38-core-integration-fast-feedback.md)
-- [Phase 39 official fnOS Skill archive compatibility](docs/phase-39-official-skill-archive-compatibility.md)
-- [Phase 40 reviewed official CLI installation](docs/phase-40-reviewed-cli-install.md)
-- [Phase 30 fnOS CLI path traversal guard](docs/phase-30-trim-cli-path-traversal-guard.md)
-- [Phase 29 mobile fnOS read-only tool usability](docs/phase-29-mobile-fnos-tools.md)
-- [Practical file management](docs/practical-file-management.md)
-- [Skill and task management UX](docs/skill-and-task-management-ux.md)
-- AI can browse allowed file metadata and preview bounded text files through validated read-only tools.
-- [Phase 27 build provenance attestation](docs/phase-27-build-provenance-attestation.md)
+- [Phase 2 — Skeleton boundaries](docs/phase-2.md)
+- [Phase 3 — Web authentication](docs/phase-3-web-auth.md)
+- [Phase 6 — Safe Skill ZIP import](docs/phase-6-skill-archive-import.md)
+- [Phase 8 — Agent core and model routing](docs/phase-8-agent-core-model-routing.md)
+- [Phase 10 — Permission policy foundation](docs/phase-10-permission-policy-foundation.md)
+- [Phase 11 — Static Skill manifest review](docs/phase-11-static-skill-manifest-review.md)
+- [Phase 12 — One-time approval ledger](docs/phase-12-one-time-approval-ledger.md)
+- [Phase 14 — Authentication security hardening](docs/phase-14-auth-security-hardening.md)
+- [Phase 20 — Audit trail](docs/phase-20-audit-trail.md)
+- [Phase 21 — Task persistence and crash recovery](docs/phase-21-task-persistence-recovery.md)
+- [Phase 39 — Official Skill archive compatibility](docs/phase-39-official-skill-archive-compatibility.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
-- [Security policy](SECURITY.md)
-
-## Roadmap
-
-1. **Specification** — architecture, risk tiers, Skill lifecycle, and tool contracts.
-2. **Core skeleton** — minimal Node.js HTTP service, mobile UI, configuration, and tests.
-3. **Skill manager** — inventory/review lifecycle and bounded ZIP import into quarantine (no extraction or execution).
-4. **fnOS adapter** — a small set of verified read-only operations.
-5. **Model adapter** — structured plans, schema validation, bounded retries, and token-saving routing.
-6. **FPK packaging** — GitHub Actions builds a test FPK; then validate install/start/stop/upgrade/uninstall on a test fnOS system.
+- [FPK test plan](docs/fpk-test-plan.md)
 
 ## License
 
 No license has been selected yet. Until one is added, do not assume this repository grants permission to redistribute or reuse its code.
-
-
-## Current safety boundary
-
-Phase 11 reads only a bounded `SKILL.md` manifest from a validated archive for static review. It does not extract or execute imported content. Manifest findings are advisory. Routine file writes include registered folder creation, text-file creation, rename, move, and bounded Base64 upload tools. Deleting a single file or empty directory requires a target-bound, one-time confirmation; arbitrary shell execution and imported Skill execution remain disabled.
-
-
-## Development notes
-
-- [Phase 41 — Dynamic CLI Provider Integration Fix](docs/phase-41-trim-cli-provider-fix.md)
-- [Phase 42 — CLI Connection Health](docs/phase-42-cli-connection-health.md)
-- [Phase 43 — Guided Official CLI OAuth Setup](docs/phase-43-guided-oauth-setup.md)
-- [Phase 44 — CLI Health and Read-only Closure](docs/phase-44-cli-health-and-readonly-closure.md)
-- [Phase 45 — Model Provider Management](docs/phase-45-model-provider-manager.md)
-- [Phase 46 — Model Provider Reliability](docs/phase-46-model-reliability.md)
-- [Phase 47 — Bounded Conversation Context](docs/phase-47-conversation-context.md)
