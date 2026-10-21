@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - phase-2/fpk-packaging
+      - "fix/**"
     paths:
       - "apps/fnos-nas-agent/**"
       - "scripts/generate-fpk-icons.py"
