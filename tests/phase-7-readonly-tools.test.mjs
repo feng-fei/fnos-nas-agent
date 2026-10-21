@@ -12,10 +12,10 @@ const snapshot = {
   processes: { available: true, count: 42 }
 };
 
-test("registry exposes only explicit read-only tools with closed input schemas", () => {
-  const registry = createReadOnlyToolRegistry({ getDiagnostics: async () => snapshot });
+test("registry exposes explicit read-only tools with closed input schemas", () => {
+  const registry = createReadOnlyToolRegistry({ getDiagnostics: async () => snapshot, fileBrowser: { list: async () => ({ entries: [] }) }, fileManager: { preview: async path => ({ name: path }) } });
   const tools = registry.list();
-  assert.deepEqual(tools.map(tool => tool.id), ["system.status", "storage.summary", "system.process-summary", "network.interfaces"]);
+  assert.deepEqual(tools.map(tool => tool.id), ["system.status", "storage.summary", "system.process-summary", "network.interfaces", "files.list", "files.preview"]);
   assert.ok(tools.every(tool => tool.risk === "read-only"));
   assert.ok(tools.every(tool => tool.inputSchema.additionalProperties === false));
 });
@@ -36,11 +36,21 @@ test("each tool returns only its scoped diagnostic data", async () => {
   });
 });
 
-test("registry rejects unknown tools and all arguments", async () => {
-  const registry = createReadOnlyToolRegistry({ getDiagnostics: async () => snapshot });
+test("registry validates per-tool arguments and rejects unknown fields", async () => {
+  const registry = createReadOnlyToolRegistry({ getDiagnostics: async () => snapshot, fileBrowser: { list: async (path, limit) => ({ path, limit }) }, fileManager: { preview: async path => ({ name: path }) } });
   await assert.rejects(registry.invoke("shell.exec", {}), { statusCode: 404 });
   await assert.rejects(registry.invoke("system.status", { command: "id" }), { statusCode: 400 });
   await assert.rejects(registry.invoke("system.status", []), { statusCode: 400 });
+  assert.deepEqual(await registry.invoke("files.list", { path: "/vol1", limit: 10 }), { path: "/vol1", limit: 10 });
+  assert.deepEqual(await registry.invoke("files.preview", { path: "/vol1/readme.txt" }), { name: "/vol1/readme.txt" });
+  await assert.rejects(registry.invoke("files.list", { path: "/vol1", command: "id" }), { statusCode: 400 });
+  await assert.rejects(registry.invoke("files.list", { limit: 201 }), { statusCode: 400 });
+  await assert.rejects(registry.invoke("files.preview", {}), { statusCode: 400 });
+  assert.deepEqual(await registry.invoke("files.list", { path: "/vol1", limit: 10 }), { path: "/vol1", limit: 10 });
+  assert.deepEqual(await registry.invoke("files.preview", { path: "/vol1/readme.txt" }), { name: "/vol1/readme.txt" });
+  await assert.rejects(registry.invoke("files.list", { path: "/vol1", command: "id" }), { statusCode: 400 });
+  await assert.rejects(registry.invoke("files.list", { limit: 201 }), { statusCode: 400 });
+  await assert.rejects(registry.invoke("files.preview", {}), { statusCode: 400 });
 });
 
 test("registry requires a diagnostics provider", () => {

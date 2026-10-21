@@ -167,9 +167,9 @@ async function readOnlyDiagnostics() {
     storage
   };
 }
-const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics });
 const fileBrowser = createFileBrowser();
 const fileManager = createFileManager();
+const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics, fileBrowser, fileManager });
 const modelAdapter = createModelAdapter();
 const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter });
 const taskManager = createTaskManager({ execute: input => agentCore.run(input), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "" });
@@ -183,6 +183,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/audit") return "audit.list";
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
+  if (/^\/api\/skills\/[a-f0-9]{24}$/.test(pathname)) return "skills.remove";
   if (pathname === "/api/skills/import") return "skills.import";
   if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
   if (pathname === "/api/agent/status") return "agent.status";
@@ -372,6 +373,15 @@ const server = createServer(async (req, res) => {
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
       return reply(res, 200, { skill: await skillStore.transition(transitionMatch[1], await jsonBody(req)) });
+    }
+    const skillDeleteMatch = url.pathname.match(/^\/api\/skills\/([a-f0-9]{24})$/);
+    if (skillDeleteMatch) {
+      if (req.method !== "DELETE") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "DELETE" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!skillStore) return reply(res, 503, { error: "App data directory is not configured" });
+      try { return reply(res, 200, await skillStore.remove(skillDeleteMatch[1])); }
+      catch (error) { const status = [404, 409].includes(error?.statusCode) ? error.statusCode : 500; return reply(res, status, { error: status === 500 ? "Unable to remove Skill record" : error.message }); }
     }
     if (url.pathname === "/api/agent/status") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
