@@ -56,6 +56,22 @@ const PRESETS = [
     docsUrl: "https://openrouter.ai/docs/api-reference/overview"
   },
   {
+    id: "gemini",
+    name: "Google Gemini",
+    endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    modelPlaceholder: "填写 Gemini API 中可用的模型 ID",
+    description: "Google Gemini 的 OpenAI 兼容 Chat Completions 接口",
+    docsUrl: "https://ai.google.dev/gemini-api/docs/openai"
+  },
+  {
+    id: "groq",
+    name: "Groq",
+    endpoint: "https://api.groq.com/openai/v1/chat/completions",
+    modelPlaceholder: "填写 Groq 控制台中可用的模型 ID",
+    description: "Groq 官方 OpenAI 兼容接口；模型可用性以账户为准",
+    docsUrl: "https://console.groq.com/docs/openai"
+  },
+  {
     id: "ollama-local",
     name: "本机 Ollama（仅回环地址）",
     endpoint: "http://127.0.0.1:11434/v1/chat/completions",
