@@ -111,3 +111,102 @@ test("model adapter switches to the newly selected provider without restart and 
   assert.equal(await adapter.plan("disabled", tools), null);
   assert.equal(calls.length, 2);
 });
+
+
+test("model adapter retries transient provider failures and exposes bounded aggregate/token metrics without secrets", async () => {
+  let calls = 0;
+  const delays = [];
+  const adapter = createModelAdapter({
+    config: { ...enabledConfig(), providerId: "aaaaaaaaaaaaaaaaaaaaaaaa", providerName: "Retry Provider" },
+    sleepImpl: async ms => { delays.push(ms); },
+    fetchImpl: async () => {
+      calls++;
+      if (calls === 1) return new Response("hidden upstream detail", { status: 503 });
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ message: "ok", toolCalls: [] }) } }],
+        usage: { prompt_tokens: 23, completion_tokens: 7, total_tokens: 30 }
+      }), { status: 200 });
+    }
+  });
+  const plan = await adapter.plan("hello", tools);
+  assert.deepEqual(plan, { message: "ok", toolCalls: [] });
+  assert.equal(calls, 2);
+  assert.deepEqual(delays, [150]);
+  const metrics = adapter.metrics();
+  assert.deepEqual(metrics.totals, {
+    requests: 1, attempts: 2, retries: 1, successes: 1, failures: 0,
+    inputTokens: 23, outputTokens: 7, totalTokens: 30
+  });
+  assert.equal(metrics.providers[0].providerName, "Retry Provider");
+  assert.equal(metrics.providers[0].successRate, 100);
+  assert.equal(metrics.providers[0].lastStatusCode, 200);
+  assert.equal(JSON.stringify(metrics).includes("test-secret-key"), false);
+  assert.equal(JSON.stringify(metrics).includes("hidden upstream detail"), false);
+});
+
+test("model adapter automatically falls back only to explicitly supplied enabled backup models", async () => {
+  const calls = [];
+  const primary = { ...enabledConfig(), providerId: "aaaaaaaaaaaaaaaaaaaaaaaa", providerName: "Primary" };
+  const fallback = {
+    enabled: true, endpoint: "https://backup.example/v1/chat/completions", apiKey: "backup-secret",
+    model: "backup-model", providerId: "bbbbbbbbbbbbbbbbbbbbbbbb", providerName: "Backup", timeoutMs: 1000
+  };
+  const adapter = createModelAdapter({
+    configProvider: () => primary,
+    fallbackConfigProvider: () => [fallback],
+    sleepImpl: async () => {},
+    fetchImpl: async (url, options) => {
+      calls.push({ url, auth: options.headers.authorization });
+      if (url === primary.endpoint) return new Response("upstream unavailable", { status: 503 });
+      return envelope({ message: "backup works", toolCalls: [] });
+    }
+  });
+  assert.equal(adapter.status().fallbackProviders, 1);
+  const plan = await adapter.plan("hello", tools);
+  assert.deepEqual(plan, { message: "backup works", toolCalls: [] });
+  assert.deepEqual(calls.map(item => item.url), [
+    primary.endpoint, primary.endpoint, fallback.endpoint
+  ]);
+  assert.equal(calls[2].auth, "Bearer backup-secret");
+  assert.equal(adapter.metrics().providers.find(item => item.providerName === "Primary").failures, 1);
+  assert.equal(adapter.metrics().providers.find(item => item.providerName === "Backup").successes, 1);
+  assert.equal(JSON.stringify(adapter.metrics()).includes("backup-secret"), false);
+});
+
+test("model adapter does not retry invalid plan data and never runs a fallback for malformed structured output", async () => {
+  let primaryCalls = 0, backupCalls = 0;
+  const adapter = createModelAdapter({
+    config: { ...enabledConfig(), providerId: "aaaaaaaaaaaaaaaaaaaaaaaa", providerName: "Primary" },
+    fallbackConfigProvider: () => [{
+      enabled: true, endpoint: "https://backup.example/v1/chat/completions", apiKey: "backup-secret",
+      model: "backup-model", providerId: "bbbbbbbbbbbbbbbbbbbbbbbb", providerName: "Backup", timeoutMs: 1000
+    }],
+    sleepImpl: async () => {},
+    fetchImpl: async url => {
+      if (url.includes("backup")) { backupCalls++; return envelope({ message: "fallback", toolCalls: [] }); }
+      primaryCalls++; return envelope({ message: "unsafe", toolCalls: [{ id: "system.status", args: { command: "unexpected" } }] });
+    }
+  });
+  await assert.rejects(adapter.plan("hello", tools), error => error.code === "MODEL_INVALID_PLAN");
+  assert.equal(primaryCalls, 1);
+  assert.equal(backupCalls, 0);
+  assert.equal(adapter.metrics().totals.retries, 0);
+});
+
+test("model adapter exposes no sensitive endpoint or key through health metrics and limits metric cardinality", async () => {
+  const adapter = createModelAdapter({
+    config: {
+      ...enabledConfig(), providerId: "aaaaaaaaaaaaaaaaaaaaaaaa", providerName: "Private Provider",
+      endpoint: "https://private.example/customer-path/v1/chat/completions"
+    },
+    fetchImpl: async () => envelope({ message: "ok", toolCalls: [] })
+  });
+  await adapter.plan("hello", tools);
+  const status = adapter.status(), metrics = adapter.metrics();
+  assert.equal(status.enabled, true);
+  assert.equal(Object.hasOwn(status, "endpoint"), false);
+  assert.equal(Object.hasOwn(status, "apiKey"), false);
+  assert.equal(Object.hasOwn(metrics.providers[0], "endpoint"), false);
+  assert.equal(JSON.stringify({ status, metrics }).includes("test-secret-key"), false);
+  assert.equal(JSON.stringify({ status, metrics }).includes("private.example"), false);
+});

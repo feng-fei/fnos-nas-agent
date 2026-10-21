@@ -12,6 +12,8 @@ test("model provider manager provides add/edit fields and stores API keys only i
   assert.match(html, /id="model-provider-model"/);
   assert.match(html, /id="model-provider-key" type="password"/);
   assert.match(html, /id="model-provider-enabled"/);
+  assert.match(html, /id="model-provider-fallback"/);
+  assert.match(html, /id="model-provider-preset"/);
   assert.match(html, /id="model-provider-clear-key"/);
   assert.match(html, /id="model-provider-list"/);
   assert.match(html, /autocomplete="new-password" placeholder="添加时必填；编辑时留空表示保留已保存密钥"/);
@@ -26,6 +28,8 @@ test("model UI calls authenticated CRUD, connection test and active-provider end
   assert.match(html, /已加密保存/);
   assert.match(html, /设为默认/);
   assert.match(html, /测试连接/);
+  assert.match(html, /设为备用模型/);
+  assert.match(html, /主模型出现网络、限流或服务错误时才切换/);
   assert.match(html, /清除已保存的 API Key/);
 });
 
@@ -41,4 +45,7 @@ test("logged-in sessions reveal model management and reload the active model sta
   assert.match(html, /#models-card"\)\.classList\.remove\("hidden"\)/);
   assert.match(html, /await refreshModels\(\)/);
   assert.match(html, /当前默认模型：/);
+  assert.match(html, /refreshModelPresets/);
+  assert.match(html, /model-provider-metrics/);
+  assert.match(html, /API Key/);
 });

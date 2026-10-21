@@ -6,7 +6,7 @@ const ROUTES = new Set([
   "setup", "login", "logout", "diagnostics", "audit.list", "files.list", "files.manage", "skills.list", "skills.register",
   "skills.import", "skills.transition", "skills.remove", "skills.install-cli", "agent.status", "agent.trim-cli-test", "agent.trim-cli-login-command", "agent.message",
   "tasks.status", "tasks.list", "tasks.cancel", "tasks.get", "actions.pending", "actions.confirm", "tools.list",
-  "tools.run", "models.list", "models.add", "models.update", "models.remove", "models.default", "models.test", "other_api"
+  "tools.run", "models.presets", "models.list", "models.add", "models.update", "models.remove", "models.default", "models.test", "other_api"
 ]);
 
 function normalizeEvent(event, now) {

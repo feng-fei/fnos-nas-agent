@@ -11,6 +11,7 @@ import { MAX_ARCHIVE_BYTES } from "./skill-archives.mjs";
 import { createReadOnlyToolRegistry } from "./read-only-tools.mjs";
 import { createModelAdapter, modelConfiguration } from "./model-adapter.mjs";
 import { createModelProviderStore } from "./model-provider-store.mjs";
+import { listModelProviderPresets } from "./model-provider-presets.mjs";
 import { createAgentCore } from "./agent-core.mjs";
 import { createTaskManager } from "./task-manager.mjs";
 import { createFixedWindowLimiter } from "./request-limiter.mjs";
@@ -186,10 +187,13 @@ const trimCli = createTrimCliAdapter({
 });
 const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics, fileBrowser, fileManager, trimCli });
 const modelProviderStore = dataDir ? createModelProviderStore({ dataDir }) : null;
-const modelAdapter = createModelAdapter({ configProvider: () => {
-  const managed = modelProviderStore?.runtimeConfig();
-  return managed || modelConfiguration();
-} });
+const modelAdapter = createModelAdapter({
+  configProvider: () => {
+    const managed = modelProviderStore?.runtimeConfig();
+    return managed || modelConfiguration();
+  },
+  fallbackConfigProvider: () => modelProviderStore?.runtimeFallbackConfigs() || []
+});
 const actionApprovals = createActionApprovalService({ tools: readOnlyTools });
 const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter, requestApproval: action => actionApprovals.request(action) });
 const taskManager = createTaskManager({ execute: input => agentCore.run(input), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "" });
@@ -207,6 +211,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/skills/import") return "skills.import";
   if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
   if (/^\/api\/skills\/([a-f0-9]{24})\/install-cli$/.test(pathname)) return "skills.install-cli";
+  if (pathname === "/api/models/presets") return "models.presets";
   if (pathname === "/api/models") return method === "GET" ? "models.list" : method === "POST" ? "models.add" : "other_api";
   if (/^\/api\/models\/[a-f0-9]{24}$/.test(pathname)) return method === "PUT" ? "models.update" : method === "DELETE" ? "models.remove" : "other_api";
   if (/^\/api\/models\/[a-f0-9]{24}\/default$/.test(pathname)) return "models.default";
@@ -429,12 +434,17 @@ const server = createServer(async (req, res) => {
       try { return reply(res, 200, await skillStore.remove(skillDeleteMatch[1])); }
       catch (error) { const status = [404, 409].includes(error?.statusCode) ? error.statusCode : 500; return reply(res, status, { error: status === 500 ? "Unable to remove Skill record" : error.message }); }
     }
+    if (url.pathname === "/api/models/presets") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, { presets: listModelProviderPresets() });
+    }
     if (url.pathname === "/api/models") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (!modelProviderStore) return reply(res, 503, { error: "模型管理需要配置 Agent 私有数据目录。" });
       if (req.method === "GET") {
         try {
-          return reply(res, 200, { ...modelProviderStore.list(), modelStatus: modelAdapter.status(), storage: modelProviderStore.status() });
+          return reply(res, 200, { ...modelProviderStore.list(), modelStatus: modelAdapter.status(), storage: modelProviderStore.status(), metrics: modelAdapter.metrics() });
         } catch (error) {
           return reply(res, error.statusCode || 503, { error: error.statusCode ? error.message : "模型配置暂不可用。" });
         }

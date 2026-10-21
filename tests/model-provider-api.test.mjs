@@ -60,9 +60,18 @@ test("model management API enforces session/origin, persists provider settings, 
   assert.equal(login.status, 200, await login.text());
   const cookie = (login.headers.get("set-cookie") || "").split(";")[0];
 
+  const presetResponse = await request("/api/models/presets", { headers: { cookie } });
+  assert.equal(presetResponse.status, 200);
+  const presetPayload = await presetResponse.json();
+  assert.ok(presetPayload.presets.some(item => item.id === "openai"));
+  assert.ok(presetPayload.presets.some(item => item.id === "deepseek"));
+  assert.ok(presetPayload.presets.some(item => item.id === "siliconflow"));
+
   const listing = await request("/api/models", { headers: { cookie } });
   assert.equal(listing.status, 200);
-  assert.deepEqual((await listing.json()).providers, []);
+  const listingPayload = await listing.json();
+  assert.deepEqual(listingPayload.providers, []);
+  assert.ok(listingPayload.metrics?.totals);
 
   const wrongOrigin = await request("/api/models", {
     method: "POST", headers: { cookie, origin: "http://attacker.invalid" },
@@ -77,9 +86,9 @@ test("model management API enforces session/origin, persists provider settings, 
   assert.equal(invalidEndpoint.status, 400);
 
   const secret = "MODEL_API_KEY_SUPER_SECRET_123";
-  const create = async (name, model) => request("/api/models", {
+  const create = async (name, model, fallback = false) => request("/api/models", {
     method: "POST", headers: { cookie },
-    body: JSON.stringify({ name, endpoint: "https://provider.example/v1/chat/completions", model, apiKey: secret, enabled: true })
+    body: JSON.stringify({ name, endpoint: "https://provider.example/v1/chat/completions", model, apiKey: secret, enabled: true, fallback })
   });
   const oneResponse = await create("Provider One", "model-one");
   assert.equal(oneResponse.status, 201, "provider creation should succeed");
@@ -90,10 +99,15 @@ test("model management API enforces session/origin, persists provider settings, 
   assert.equal(one.isDefault, true);
   assert.equal(JSON.stringify(oneBody).includes(secret), false);
 
-  const twoResponse = await create("Provider Two", "model-two");
+  const twoResponse = await create("Provider Two", "model-two", true);
   assert.equal(twoResponse.status, 201, "second provider creation should succeed");
   const two = (await twoResponse.json()).provider;
   assert.equal(two.isDefault, false);
+  assert.equal(two.fallback, true);
+  const fallbackState = await request("/api/models", { headers: { cookie } });
+  const fallbackStateBody = await fallbackState.json();
+  assert.equal(fallbackStateBody.modelStatus.fallbackProviders, 1);
+  assert.equal(fallbackStateBody.metrics.scope, "process-lifetime-memory-only");
 
   const choose = await request("/api/models/" + two.id + "/default", { method: "POST", headers: { cookie } });
   assert.equal(choose.status, 200, "default selection should succeed");
