@@ -31,6 +31,8 @@ on:
       - "phase-23-*"
       - "phase-24/**"
       - "phase-24-*"
+      - "phase-25/**"
+      - "phase-25-*"
       - "fix/**"
       - "test/**"
     paths:
@@ -39,6 +41,8 @@ on:
       - "package.json"
       - "src/**"
       - "tests/**"
+      - "scripts/**"
+      - "docs/phase-25-release-manifest-and-provenance.md"
       - ".github/workflows/build-fpk.yml"
   pull_request:
     branches:
@@ -62,6 +66,10 @@ on:
       - "phase-18/**"
       - "phase-19/**"
       - "phase-20/**"
+      - "phase-24/**"
+      - "phase-24-*"
+      - "phase-25/**"
+      - "phase-25-*"
       - "fix/**"
       - "test/**"
     paths:
@@ -70,6 +78,8 @@ on:
       - "package.json"
       - "src/**"
       - "tests/**"
+      - "scripts/**"
+      - "docs/phase-25-release-manifest-and-provenance.md"
       - ".github/workflows/build-fpk.yml"
   workflow_dispatch:
 
@@ -135,6 +145,7 @@ jobs:
           node --check "$app/app/request-limiter.mjs"
           node --check "$app/app/approval-ledger.mjs"
           node --check scripts/verify-fpk-artifact.mjs
+          node --check scripts/create-release-manifest.mjs
 
       - name: Prepare app payload and icons
         if: matrix.node-version == '26.x'
@@ -203,6 +214,7 @@ jobs:
           sha256sum dist/fnos-nas-agent-test.fpk | tee dist/fnos-nas-agent-test.fpk.sha256
           file dist/fnos-nas-agent-test.fpk
           node scripts/verify-fpk-artifact.mjs dist/fnos-nas-agent-test.fpk
+          node scripts/create-release-manifest.mjs dist/fnos-nas-agent-test.fpk dist/release-manifest.json
           tar -tzf dist/fnos-nas-agent-test.fpk > dist/fpk-contents.txt
           ls -lh dist/fnos-nas-agent-test.fpk*
 
@@ -214,5 +226,6 @@ jobs:
           path: |
             dist/fnos-nas-agent-test.fpk
             dist/fnos-nas-agent-test.fpk.sha256
+            dist/release-manifest.json
           if-no-files-found: error
           retention-days: 14
