@@ -73,6 +73,8 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 32 confirm-first action policy](docs/phase-32-confirm-first-action-policy.md)
 - [Phase 33 practical routine file write tools](docs/phase-33-practical-file-write-tools.md)
 - [Phase 34 confirmed destructive file actions](docs/phase-34-confirmed-destructive-file-actions.md)\n- [Phase 35 Agent text-file creation](docs/phase-35-agent-text-file-creation.md)
+- [Phase 36 bounded Agent file upload](docs/phase-36-bounded-agent-file-upload.md)
+- [Phase 37 natural-language operations](docs/phase-37-natural-language-operations.md)
 - [Phase 30 fnOS CLI path traversal guard](docs/phase-30-trim-cli-path-traversal-guard.md)
 - [Phase 29 mobile fnOS read-only tool usability](docs/phase-29-mobile-fnos-tools.md)
 - [Practical file management](docs/practical-file-management.md)
