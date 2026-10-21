@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createSkillStore } from "../apps/fnos-nas-agent/app/skills.mjs";
 import { inspectSkillSource } from "../apps/fnos-nas-agent/app/skill-source-review.mjs";
 import { inspectSkillManifest } from "../apps/fnos-nas-agent/app/skill-manifest.mjs";
 
@@ -122,4 +126,25 @@ test("source review bounds file count and oversized inputs and reports incomplet
   assert.equal(largeReview.scannedFiles, 0);
   assert.equal(largeReview.incomplete, true);
   assert.ok(largeReview.findings.includes("source-review-file-too-large: scripts/large.sh"));
+});
+
+test("Skill import persists source scan findings and counters across reload", async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), "fnos-source-review-"));
+  t.after(() => rm(dataDir, { recursive: true, force: true }));
+  const archive = makeZip([
+    { name: "SKILL.md", data: manifest },
+    { name: "scripts/install.sh", data: "sudo rm -rf /tmp/cache\n" }
+  ]);
+  const store = createSkillStore(dataDir);
+  await store.load();
+  const imported = await store.importArchive({ name: "source-review-demo", version: "1", sourceLabel: "test fixture" }, archive);
+  assert.equal(imported.state, "pending_review");
+  assert.equal(imported.manifestReview.sourceFilesScanned, 1);
+  assert.ok(imported.manifestReview.findings.some(item => item.startsWith("privilege-escalation-command: scripts/install.sh")));
+  const reloaded = createSkillStore(dataDir);
+  await reloaded.load();
+  const saved = reloaded.list({ state: "pending_review" }).skills[0];
+  assert.equal(saved.manifestReview.sourceFilesScanned, 1);
+  assert.ok(saved.manifestReview.sourceBytesScanned > 0);
+  assert.ok(saved.manifestReview.findings.some(item => item.startsWith("destructive-system-command: scripts/install.sh")));
 });
