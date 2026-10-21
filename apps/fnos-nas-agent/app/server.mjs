@@ -295,7 +295,29 @@ const server = createServer(async (req, res) => {
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
-      return reply(res, 200, await agentCore.run(await jsonBody(req)));
+      const input = await jsonBody(req);
+      if (!input || typeof input !== "object" || Array.isArray(input) || typeof input.text !== "string" || !input.text.trim() || input.text.trim().length > 2000)
+        return reply(res, 400, { error: "Message must contain 1 to 2000 characters" });
+      const task = taskManager.submit({ text: input.text.trim() });
+      return reply(res, 202, { task });
+    }
+    if (url.pathname === "/api/tasks/status") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, taskManager.stats());
+    }
+    if (url.pathname === "/api/tasks") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const requested = Number(url.searchParams.get("limit") || 20);
+      return reply(res, 200, { tasks: taskManager.list({ limit: Number.isFinite(requested) ? Math.trunc(requested) : 20 }) });
+    }
+    const taskMatch = url.pathname.match(new RegExp("^/api/tasks/([a-f0-9-]{8,64})$", "i"));
+    if (taskMatch) {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const task = taskManager.get(taskMatch[1]);
+      return task ? reply(res, 200, { task }) : reply(res, 404, { error: "Task not found" });
     }
     if (url.pathname === "/api/tools") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
