@@ -5,6 +5,7 @@
 - Add the official Skill-documented `photos folders` command as a read-only tool.
 - Add keyword-based `photos search <keyword> --limit N` with a required keyword and a bounded result limit (1–50, default 20).
 - Add `monitor beep-supported` to query capability support only; this command does not trigger a beep.
+- Route common Chinese requests such as “查看相册文件夹” and “搜索照片 家庭旅行” directly to these tools without requiring a model API.
 - Keep the fixed argv allowlist, shell-free process invocation, output bounds, timeout handling, and stderr suppression.
 - Add adapter and registry regression tests for command mapping, argument validation, and read-only tool metadata.
 
