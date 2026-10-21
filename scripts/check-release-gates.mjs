@@ -113,6 +113,8 @@ const modelProviderStoreTests = await read("tests/model-provider-store.test.mjs"
 const modelProviderApiTests = await read("tests/model-provider-api.test.mjs");
 const modelProviderUiTests = await read("tests/model-provider-ui.test.mjs");
 const modelAdapterTests = await read("tests/phase-19-model-adapter-contract.test.mjs");
+const modelProviderPresetsSource = await read("apps/fnos-nas-agent/app/model-provider-presets.mjs");
+const modelProviderPresetsTests = await read("tests/model-provider-presets.test.mjs");
 const cliHealth = await read("apps/fnos-nas-agent/app/trim-cli-health.mjs");
 const cliHealthTests = await read("tests/trim-cli-health.test.mjs");
 const cliMatrixTests = await read("tests/phase-44-read-only-cli-contract.test.mjs");
@@ -149,6 +151,24 @@ assert.match(modelProviderApiTests, /never returns the API key/);
 assert.match(modelProviderUiTests, /never renders a key value/);
 assert.match(modelAdapterTests, /switches to the newly selected provider/);
 assert.match(readme, /\[Phase 45 — Model Provider Management\]\(docs\/phase-45-model-provider-manager\.md\)/);
+assert.match(modelProviderPresetsSource, /api\.openai\.com\/v1\/chat\/completions/);
+assert.match(modelProviderPresetsSource, /api\.deepseek\.com\/chat\/completions/);
+assert.match(modelProviderPresetsSource, /api\.siliconflow\.cn\/v1\/chat\/completions/);
+assert.match(modelProviderPresetsTests, /verified OpenAI-compatible HTTPS Chat Completions endpoints/);
+assert.match(modelProviderStoreSource, /runtimeFallbackConfigs/);
+assert.match(modelProviderStoreSource, /fallback: item\.fallback === true/);
+assert.match(modelProviderStoreTests, /only explicitly marked enabled backup providers/);
+assert.match(modelProviderApiTests, /api\/models\/presets/);
+assert.match(modelProviderUiTests, /model-provider-fallback/);
+assert.match(modelProviderUiTests, /model-provider-metrics/);
+assert.match(modelAdapterTests, /retries transient provider failures/);
+assert.match(modelAdapterTests, /automatically falls back only to explicitly supplied enabled backup models/);
+assert.match(modelAdapterTests, /token metrics/);
+assert.match(server, /fallbackConfigProvider/);
+assert.match(server, /modelAdapter\.metrics\(\)/);
+assert.match(await read("apps/fnos-nas-agent/app/model-adapter.mjs"), /DEFAULT_MAX_ATTEMPTS = 2/);
+assert.match(await read("apps/fnos-nas-agent/app/model-adapter.mjs"), /MAX_METRIC_PROVIDERS = 21/);
+assert.match(readme, /\[Phase 46 — Model Provider Reliability\]\(docs\/phase-46-model-reliability\.md\)/);
 
 console.log("Release readiness gates passed: runtime dependency, CI matrix, packaging, and safety invariants.");
 
