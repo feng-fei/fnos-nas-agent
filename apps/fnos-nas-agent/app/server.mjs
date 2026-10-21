@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import os from "node:os";
+import { statfs } from "node:fs/promises";
 import { readFile, writeFile, mkdir, rename, chmod } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,6 +107,33 @@ async function loadPassword() {
     if (error.code !== "ENOENT") console.error("Password record could not be loaded; setup is required.");
   }
 }
+async function diskUsage(path, label) {
+  try {
+    const s = await statfs(path, { bigint: true });
+    const total = s.blocks * s.bsize;
+    const free = s.bavail * s.bsize;
+    return { label, available: true, totalBytes: Number(total), freeBytes: Number(free), usedBytes: Number(total - free) };
+  } catch {
+    return { label, available: false };
+  }
+}
+async function readOnlyDiagnostics() {
+  const cpus = os.cpus();
+  const interfaces = Object.entries(os.networkInterfaces()).map(([name, entries]) => ({
+    name,
+    addresses: (entries || []).filter(entry => !entry.internal).map(entry => ({ address: entry.address, family: entry.family, cidr: entry.cidr }))
+  })).filter(item => item.addresses.length > 0);
+  const storage = [await diskUsage("/", "root")];
+  if (dataDir && dataDir !== "/") storage.push(await diskUsage(dataDir, "app-data"));
+  return {
+    collectedAt: new Date().toISOString(),
+    system: { platform: process.platform, arch: process.arch, release: os.release(), nodeVersion: process.version, uptimeSeconds: Math.floor(os.uptime()) },
+    cpu: { logicalCores: cpus.length, model: cpus[0]?.model || "unknown", loadAverage: os.loadavg() },
+    memory: { totalBytes: os.totalmem(), freeBytes: os.freemem(), usedBytes: os.totalmem() - os.freemem() },
+    network: interfaces,
+    storage
+  };
+}
 function limited(req) {
   const key = req.socket.remoteAddress || "unknown", now = Date.now();
   let item = attempts.get(key);
@@ -174,6 +203,10 @@ const server = createServer(async (req, res) => {
       return reply(res, 200, { authenticated: false }, "application/json; charset=utf-8", {
         "set-cookie": "nas_agent_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"
       });
+    }
+    if (req.method === "GET" && url.pathname === "/api/diagnostics") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      return reply(res, 200, await readOnlyDiagnostics());
     }
     if (req.method === "GET" && url.pathname === "/api/tools") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
