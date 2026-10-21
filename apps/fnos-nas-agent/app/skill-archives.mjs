@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { inflateRawSync } from "node:zlib";
 import { mkdir, writeFile, rename, chmod, lstat, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -59,6 +60,7 @@ export function inspectZipArchive(buffer) {
     const madeBy = buffer.readUInt16LE(cursor + 4);
     const flags = buffer.readUInt16LE(cursor + 8);
     const method = buffer.readUInt16LE(cursor + 10);
+    const crc = buffer.readUInt32LE(cursor + 16);
     const compressedSize = buffer.readUInt32LE(cursor + 20);
     const uncompressedSize = buffer.readUInt32LE(cursor + 24);
     const nameLength = buffer.readUInt16LE(cursor + 28);
@@ -111,11 +113,45 @@ export function inspectZipArchive(buffer) {
     declaredBytes += uncompressedSize;
     if (declaredBytes > MAX_DECLARED_UNCOMPRESSED_BYTES)
       invalid("ZIP declared uncompressed size exceeds 64 MiB limit");
-    entries.push({ name, compressedSize, uncompressedSize, method });
+    entries.push({ name, compressedSize, uncompressedSize, method, crc, localOffset });
     cursor = end;
   }
   if (cursor !== centralOffset + centralSize) invalid("ZIP central directory size does not match its entries");
   return { entryCount, declaredUncompressedBytes: declaredBytes, entries };
+}
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/** Extracts one exact, previously validated ZIP entry into memory; never writes archive paths to disk. */
+export function extractZipEntry(buffer, entryName, maxOutputBytes = 16 * 1024 * 1024) {
+  const archive = inspectZipArchive(buffer);
+  if (typeof entryName !== "string" || !Number.isSafeInteger(maxOutputBytes) || maxOutputBytes < 1 || maxOutputBytes > MAX_DECLARED_UNCOMPRESSED_BYTES)
+    invalid("Invalid ZIP extraction request");
+  const entry = archive.entries.find(item => item.name === entryName);
+  if (!entry) throw Object.assign(new Error("Required ZIP entry is missing"), { statusCode: 404 });
+  if (entry.uncompressedSize > maxOutputBytes)
+    throw Object.assign(new Error("ZIP entry exceeds the extraction size limit"), { statusCode: 413 });
+  const local = entry.localOffset;
+  const nameLength = buffer.readUInt16LE(local + 26);
+  const extraLength = buffer.readUInt16LE(local + 28);
+  const start = local + 30 + nameLength + extraLength;
+  const compressed = buffer.subarray(start, start + entry.compressedSize);
+  let data;
+  try {
+    data = entry.method === 0 ? Buffer.from(compressed) : inflateRawSync(compressed, { maxOutputLength: maxOutputBytes });
+  } catch {
+    throw Object.assign(new Error("ZIP entry decompression failed"), { statusCode: 400 });
+  }
+  if (data.length !== entry.uncompressedSize || crc32(data) !== entry.crc)
+    throw Object.assign(new Error("ZIP entry integrity check failed"), { statusCode: 400 });
+  return Buffer.from(data);
 }
 
 export async function saveQuarantinedArchive(dataDir, buffer) {
