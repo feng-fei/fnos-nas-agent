@@ -103,7 +103,35 @@ test("first-run setup stores only a salted password hash and protects session en
   assert.equal(protectedDiagnostics.status, 401);
   const tools = await fetch(baseUrl + "/api/tools", { headers: { cookie } });
   assert.equal(tools.status, 200);
-  assert.deepEqual(await tools.json(), { tools: [], executionEnabled: false });
+  const toolCatalogue = await tools.json();
+  assert.equal(toolCatalogue.executionEnabled, false);
+  assert.equal(toolCatalogue.readOnlyExecutionEnabled, true);
+  assert.deepEqual(toolCatalogue.tools.map(tool => tool.id), ["system.status", "storage.summary", "network.interfaces"]);
+  assert.ok(toolCatalogue.tools.every(tool => tool.risk === "read-only" && tool.inputSchema.additionalProperties === false));
+
+  const hiddenToolRun = await fetch(baseUrl + "/api/tools/system.status/run", {
+    method: "POST", headers: { "content-type": "application/json" }, body: "{}"
+  });
+  assert.equal(hiddenToolRun.status, 401);
+  const wrongOriginToolRun = await fetch(baseUrl + "/api/tools/system.status/run", {
+    method: "POST", headers: { cookie, origin: "http://attacker.invalid", "content-type": "application/json" }, body: "{}"
+  });
+  assert.equal(wrongOriginToolRun.status, 403);
+  const statusToolRun = await fetch(baseUrl + "/api/tools/system.status/run", {
+    method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: "{}"
+  });
+  assert.equal(statusToolRun.status, 200);
+  const statusToolResult = await statusToolRun.json();
+  assert.equal(statusToolResult.tool, "system.status");
+  assert.ok(statusToolResult.result.cpu.logicalCores > 0);
+  const invalidToolArgs = await fetch(baseUrl + "/api/tools/system.status/run", {
+    method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: JSON.stringify({ command: "id" })
+  });
+  assert.equal(invalidToolArgs.status, 400);
+  const unknownToolRun = await fetch(baseUrl + "/api/tools/shell.run/run", {
+    method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: "{}"
+  });
+  assert.equal(unknownToolRun.status, 404);
   const diagnosticResponse = await fetch(baseUrl + "/api/diagnostics", { headers: { cookie } });
   assert.equal(diagnosticResponse.status, 200);
   const diagnostics = await diagnosticResponse.json();
