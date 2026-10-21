@@ -2,7 +2,7 @@
 
 A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mobile-friendly web interface, controlled NAS operations, and a reviewable Skill manager.
 
-> **Status: Phase 4 development.** The FPK app has password-based web authentication and an authenticated read-only diagnostics endpoint. NAS command execution, Skill execution, and model calls remain disabled. Treat this branch as unvalidated until CI and FPK checks pass.
+> **Status: Phase 6 in progress.** The app has password-based web authentication, read-only diagnostics, Skill inventory/review, and bounded ZIP quarantine import. Skill archives are not extracted or executed; the tool registry remains empty and `executionEnabled=false`. Require Node.js 24/26 CI and Node 26 FPK packaging before merge.
 
 ## Goals
 
