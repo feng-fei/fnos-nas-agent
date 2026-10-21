@@ -53,6 +53,7 @@ on:
       - "docs/phase-25-release-manifest-and-provenance.md"
       - "docs/phase-26-release-artifact-verification.md"
       - "docs/phase-27-build-provenance-attestation.md"
+      - "docs/phase-114-build-provenance-attestation.md"
       - ".github/workflows/build-fpk.yml"
   pull_request:
     branches:
@@ -96,6 +97,7 @@ on:
       - "docs/phase-25-release-manifest-and-provenance.md"
       - "docs/phase-26-release-artifact-verification.md"
       - "docs/phase-27-build-provenance-attestation.md"
+      - "docs/phase-114-build-provenance-attestation.md"
       - ".github/workflows/build-fpk.yml"
   workflow_dispatch:
 
