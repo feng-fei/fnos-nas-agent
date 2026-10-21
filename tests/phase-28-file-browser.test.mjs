@@ -113,6 +113,6 @@ test("file browser applies name/type filters and sort before slicing pages", asy
     assert.equal(search.totalDirectoryEntries, 3);
     assert.equal(search.totalEntries, 1);
     assert.equal(search.entries[0].name, "z.txt");
-    assert.throws(() => browser.list(root, 10, 0, "invalid"), { statusCode: 400 });
+    await assert.rejects(browser.list(root, 10, 0, "invalid"), { statusCode: 400 });
   } finally { await rm(temp, { recursive: true, force: true }); }
 });
