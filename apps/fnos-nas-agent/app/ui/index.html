@@ -789,7 +789,7 @@ document.querySelector("#skill-remote-import-form").addEventListener("submit",as
   const response=await api("/api/skills/import-remote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
   const result=await response.json();if(!response.ok)throw Error(result.error||"GitHub Skill 导入失败");
   e.target.reset();await refreshSkills();
-  status.textContent="已隔离 "+result.repository+(result.branch?" · 分支 "+result.branch:"")+"（"+result.archiveBytes+" 字节）；尚未解压或执行，请在列表中审核。";
+  status.textContent="已隔离 "+result.repository+(result.branch?" · "+(result.refType==="tags"?"标签 ":"分支 ")+result.branch:"")+"（"+result.archiveBytes+" 字节）；尚未解压或执行，请在列表中审核。";
  }catch(error){status.className="error";status.textContent=error.message||"GitHub Skill 导入失败";}
  finally{button.disabled=false;}
 });

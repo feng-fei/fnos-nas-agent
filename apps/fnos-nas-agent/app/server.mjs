@@ -455,10 +455,10 @@ const server = createServer(async (req, res) => {
         return reply(res, 400, { error: "Skill name is required; name or version exceeds its length limit." });
       try {
         const archive = await fetchGitHubSkillArchive(body.url, { maxBytes: MAX_ARCHIVE_BYTES });
-        const sourceLabel = ("GitHub: " + archive.repository).slice(0, 100);
+        const sourceLabel = ("GitHub: " + archive.repository + (archive.refType && archive.branch ? "@" + archive.refType + "/" + archive.branch : "")).slice(0, 100);
         const skill = await skillStore.importArchive({ name, version, sourceLabel }, archive.buffer);
         return reply(res, 201, {
-          skill, repository: archive.repository, branch: archive.branch,
+          skill, repository: archive.repository, branch: archive.branch, refType: archive.refType,
           resolvedFromRepository: archive.resolvedFromRepository,
           archiveBytes: archive.bytes, redirects: archive.redirects,
           note: "GitHub archive stored in quarantine; no extraction or execution occurred."

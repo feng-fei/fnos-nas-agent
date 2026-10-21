@@ -130,3 +130,21 @@ test("GitHub repository metadata failures never expose upstream response bodies"
     error => error.code === "SKILL_REMOTE_LOOKUP_FAILED" && !error.message.includes("private upstream secret")
   );
 });
+
+test("GitHub archive validation preserves branch or tag provenance across archive host redirects", () => {
+  const branch = validateGitHubArchiveUrl(githubUrl);
+  const tag = validateGitHubArchiveUrl("https://github.com/example/project/archive/refs/tags/v1.2.3.zip");
+  const codeloadBranch = validateGitHubArchiveUrl(codeloadUrl);
+  assert.deepEqual({ type: branch.refType, ref: branch.ref }, { type: "heads", ref: "main" });
+  assert.deepEqual({ type: tag.refType, ref: tag.ref }, { type: "tags", ref: "v1.2.3" });
+  assert.deepEqual({ type: codeloadBranch.refType, ref: codeloadBranch.ref }, { type: "heads", ref: "main" });
+});
+
+test("remote Skill import persists repository plus branch/tag as source provenance", async () => {
+  const server = await readFile(new URL("../apps/fnos-nas-agent/app/server.mjs", import.meta.url), "utf8");
+  const routeStart = server.indexOf('if (url.pathname === "/api/skills/import-remote")');
+  const routeEnd = server.indexOf('if (url.pathname === "/api/skills/transitions/batch")', routeStart);
+  const route = server.slice(routeStart, routeEnd);
+  assert.match(route, /"GitHub: " \+ archive\.repository \+ \(archive\.refType && archive\.branch \? "@" \+ archive\.refType \+ "\/" \+ archive\.branch/);
+  assert.match(route, /refType: archive\.refType/);
+});
