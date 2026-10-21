@@ -68,7 +68,11 @@ function sessionFor(req) {
   const key = id && sessionKey(id);
   const session = key && sessions.get(key);
   if (!session || session.expiresAt <= Date.now()) {
-    if (key && sessions.delete(key)) void persistSessions();
+    if (key && sessions.delete(key)) {
+      void persistSessions().catch(() => {
+        console.error("Expired session cleanup could not be persisted.");
+      });
+    }
     return null;
   }
   return { key, session };
