@@ -37,6 +37,7 @@ async function refreshRecentTasks(){
    const title=document.createElement("strong");title.textContent=task.taskId+" · "+task.status;card.append(title);
    const info=document.createElement("p");info.className="muted";info.textContent="创建："+task.createdAt+(task.completedAt?"；完成："+task.completedAt:"");card.append(info);
    if(task.result?.message){const message=document.createElement("p");message.textContent=task.result.message;card.append(message);}
+   if(task.status==="queued"){const cancel=document.createElement("button");cancel.type="button";cancel.textContent="取消排队任务";cancel.addEventListener("click",async()=>{cancel.disabled=true;try{const cr=await api("/api/tasks/"+encodeURIComponent(task.taskId)+"/cancel",{method:"POST"});const cb=await cr.json();if(!cr.ok)throw Error(cb.error||"取消失败");await refreshRecentTasks();}catch(error){cancel.disabled=false;alert(error.message||"取消失败");}});card.append(cancel);}
    if(task.error){const error=document.createElement("p");error.textContent=task.error;card.append(error);}
    host.append(card);
   }
@@ -52,7 +53,7 @@ document.querySelector("#agent-form").addEventListener("submit",async e=>{
   const taskId=accepted.task.taskId;
   let task=accepted.task;
   for(let i=0;i<90;i++){
-   if(task.status==="completed"||task.status==="failed")break;
+   if(task.status==="completed"||task.status==="failed"||task.status==="cancelled")break;
    await new Promise(resolve=>setTimeout(resolve,500));
    const poll=await api("/api/tasks/"+encodeURIComponent(taskId));const body=await poll.json();
    if(!poll.ok)throw Error(body.error||"任务状态读取失败");task=body.task;
@@ -61,7 +62,7 @@ document.querySelector("#agent-form").addEventListener("submit",async e=>{
    const result=task.result,details=[result.message,"任务："+taskId+"；模式："+result.mode+"；状态："+result.status];
    for(const item of result.results||[])details.push("工具 "+item.tool+"：\n"+JSON.stringify(item.result,null,2));
    renderAgentTurn("NAS Agent",details.join("\n\n"));
-  }else if(task.status==="failed")renderAgentTurn("NAS Agent","任务失败："+(task.error||"未知错误")+"\n任务 ID："+taskId);
+  }else if(task.status==="failed")renderAgentTurn("NAS Agent","任务失败："+(task.error||"未知错误")+"\n任务 ID："+taskId);\n  else if(task.status==="cancelled")renderAgentTurn("NAS Agent","任务已取消。任务 ID："+taskId);
   else renderAgentTurn("NAS Agent","任务仍在执行。任务 ID："+taskId+"。可在“最近任务”中刷新查看。");
   await refreshRecentTasks();
  }catch(error){err.textContent=error.message||"请求失败";}
@@ -96,6 +97,7 @@ async function refreshSkills(){
    const card=document.createElement("div");card.className="card";
    const title=document.createElement("strong");title.textContent=item.name+" · "+item.state;card.append(title);
    const meta=document.createElement("p");meta.className="muted";meta.textContent="版本："+(item.version||"未填写")+"；SHA-256："+item.archiveSha256+(item.quarantineFile?"；隔离归档："+item.archiveSizeBytes+" 字节 / "+item.archiveEntryCount+" 个条目":"；仅登记元数据");card.append(meta);
+   if(item.manifestReview){const review=document.createElement("p");review.className=item.manifestReview.findings?.length?"warning":"muted";review.textContent="静态清单："+(item.manifestReview.name||"未识别名称")+"；"+(item.manifestReview.description||"无描述")+"；发现："+((item.manifestReview.findings||[]).join("、")||"未发现规则提示")+"。此结果仅供人工审核，不代表安全认证。";card.append(review);}
    if(item.reviewNote){const note=document.createElement("p");note.textContent="审核备注："+item.reviewNote;card.append(note);}
    const choices={pending_review:[["approved","批准"],["rejected","拒绝"]],approved:[["enabled","启用"],["disabled","停用"],["rejected","拒绝"]],enabled:[["disabled","停用"]],disabled:[["approved","重新批准"],["rejected","拒绝"]],rejected:[]};
    for(const [state,label] of (choices[item.state]||[])){
