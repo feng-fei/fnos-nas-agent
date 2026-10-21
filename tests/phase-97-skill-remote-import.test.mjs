@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { fetchGitHubSkillArchive, validateGitHubArchiveUrl } from "../apps/fnos-nas-agent/app/skill-remote-import.mjs";
 
 const githubUrl = "https://github.com/example/project/archive/refs/heads/main.zip";
@@ -66,4 +67,23 @@ test("remote import rejects non-success and empty upstream responses without exp
     fetchGitHubSkillArchive(githubUrl, { fetchImpl: async () => new Response(null, { status: 200 }) }),
     error => error.code === "SKILL_REMOTE_EMPTY"
   );
+});
+
+test("remote Skill import is wired through authenticated quarantine flow and mobile UI", async () => {
+  const server = await readFile(new URL("../apps/fnos-nas-agent/app/server.mjs", import.meta.url), "utf8");
+  const html = await readFile(new URL("../apps/fnos-nas-agent/app/ui/index.html", import.meta.url), "utf8");
+  const start = server.indexOf('if (url.pathname === "/api/skills/import-remote")');
+  const end = server.indexOf('if (url.pathname === "/api/skills/transitions/batch")', start);
+  assert.ok(start >= 0 && end > start, "remote import route must be registered");
+  const route = server.slice(start, end);
+  assert.match(route, /sessionFor\(req\)/);
+  assert.match(route, /sameOrigin\(req\)/);
+  assert.match(route, /skillRemoteImportLimiter\.allow/);
+  assert.match(route, /fetchGitHubSkillArchive\(body\.url/);
+  assert.match(route, /skillStore\.importArchive\(\{ name, version, sourceLabel \}, archive\.buffer\)/);
+  assert.match(route, /no extraction or execution occurred/);
+  assert.match(html, /id="skill-remote-import-form"/);
+  assert.match(html, /id="skill-remote-url" type="url" maxlength="2048"/);
+  assert.match(html, /api\("\/api\/skills\/import-remote"/);
+  assert.match(html, /尚未解压或执行/);
 });
