@@ -21,6 +21,7 @@ on:
       - "phase-17/**"
       - "phase-18/**"
       - "phase-19/**"
+      - "phase-20/**"
       - "fix/**"
       - "test/**"
     paths:
@@ -32,6 +33,7 @@ on:
       - ".github/workflows/build-fpk.yml"
   pull_request:
     branches:
+      - main
       - phase-2/fpk-packaging
       - "phase-2/**"
       - "phase-3/**"
@@ -46,6 +48,11 @@ on:
       - "phase-13/**"
       - "phase-14/**"
       - "phase-15/**"
+      - "phase-16/**"
+      - "phase-17/**"
+      - "phase-18/**"
+      - "phase-19/**"
+      - "phase-20/**"
       - "fix/**"
       - "test/**"
     paths:
@@ -111,6 +118,7 @@ jobs:
           node --check "$app/app/model-adapter.mjs"
           node --check "$app/app/agent-core.mjs"
           node --check "$app/app/task-manager.mjs"
+          node --check "$app/app/audit-log.mjs"
           python3 -c 'import re, pathlib; s=pathlib.Path("apps/fnos-nas-agent/app/ui/index.html").read_text(); m=re.search(r"<script>(.*?)</script>", s, re.S); assert m, "inline UI script not found"; pathlib.Path("/tmp/fnos-agent-ui-check.mjs").write_text(m.group(1))'
           node --check /tmp/fnos-agent-ui-check.mjs
           node --check "$app/app/permission-policy.mjs"
