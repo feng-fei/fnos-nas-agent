@@ -146,3 +146,34 @@ test("trim-cli adapter classifies an expired login and updates health without ex
   assert.equal(status.errorCategory, "auth_required");
   assert.match(status.nextAction, /refresh/);
 });
+
+test("trim-cli adapter exposes official read-only Docker, monitor, and system queries using fixed argv", async () => {
+  const calls = [];
+  const cli = createTrimCliAdapter({
+    binaryPath: "/opt/trim-cli",
+    accessImpl: async () => {},
+    execFileImpl: async (...args) => { calls.push(args); return { stdout: '{"ok":true}', stderr: "" }; }
+  });
+  const commands = [
+    ["docker.stats", {}, ["docker", "stats"]],
+    ["docker.container.ls", {}, ["docker", "container", "ls"]],
+    ["docker.container.ls-all", {}, ["docker", "container", "ls", "--all"]],
+    ["docker.compose.ls", {}, ["docker", "compose", "ls"]],
+    ["monitor.memory", {}, ["monitor", "memory"]],
+    ["monitor.net", {}, ["monitor", "net"]],
+    ["monitor.disk", {}, ["monitor", "disk"]],
+    ["system.trim-version", {}, ["system", "trim-version"]],
+    ["system.kernel-version", {}, ["system", "kernel-version"]],
+    ["system.host-name", {}, ["system", "host-name"]],
+    ["system.uptime", {}, ["system", "uptime"]],
+    ["system.vols", {}, ["system", "vols"]],
+    ["system.all-vols", {}, ["system", "all-vols"]]
+  ];
+  for (const [id, args] of commands) {
+    assert.deepEqual(await cli.runReadOnly(id, args), { command: id, data: { ok: true } });
+  }
+  assert.deepEqual(calls.map(call => call[1].slice(2)), commands.map(([, , argv]) => argv));
+  await assert.rejects(cli.runReadOnly("docker.container.ls", { all: true }), { statusCode: 400 });
+  await assert.rejects(cli.runReadOnly("docker.container.ls-all", { command: "docker rm -f" }), { statusCode: 400 });
+  assert.equal(calls.length, commands.length);
+});

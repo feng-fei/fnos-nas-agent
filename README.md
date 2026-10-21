@@ -115,6 +115,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 98 — Direct Natural-Language fnOS Queries](docs/phase-98-fnos-query-intents.md)
 - [Phase 99 — GitHub Repository URL Shortcut](docs/phase-99-github-repo-shortcut.md)
 - [Phase 100 — Skill Source Provenance](docs/phase-100-skill-source-provenance.md)
+- [Phase 101 — Expanded Official fnOS Read-only Operations](docs/phase-101-official-readonly-tools.md)
 
 ### Foundations
 - [Architecture](docs/architecture.md)
