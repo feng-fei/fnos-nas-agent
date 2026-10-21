@@ -15,7 +15,7 @@ const snapshot = {
 test("registry exposes explicit read-only tools with closed input schemas", () => {
   const registry = createReadOnlyToolRegistry({ getDiagnostics: async () => snapshot, fileBrowser: { list: async () => ({ entries: [] }) }, fileManager: { preview: async path => ({ name: path }) } });
   const tools = registry.list();
-  assert.deepEqual(tools.map(tool => tool.id), ["fnos.system.info", "fnos.file.ls", "fnos.file.ls-dir", "fnos.file.usage", "fnos.app.list", "fnos.docker.image-list", "fnos.download.list", "fnos.monitor.cpu", "fnos.storage.pools", "fnos.user.info", "system.status", "storage.summary", "system.process-summary", "network.interfaces", "files.list", "files.preview"]);
+  assert.deepEqual(tools.map(tool => tool.id), ["fnos.system.info", "fnos.file.ls", "fnos.file.ls-dir", "fnos.file.usage", "fnos.app.list", "fnos.docker.image-list", "fnos.download.list", "fnos.monitor.cpu", "fnos.storage.pools", "fnos.user.info", "fnos.monitor.beep-supported", "fnos.photos.folders", "fnos.photos.search", "system.status", "storage.summary", "system.process-summary", "network.interfaces", "files.list", "files.preview"]);
   assert.ok(tools.every(tool => tool.risk === "read-only"));
   assert.ok(tools.every(tool => tool.inputSchema.additionalProperties === false));
 });

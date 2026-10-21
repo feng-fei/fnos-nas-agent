@@ -6,7 +6,9 @@ const DIRECT_INTENTS = [
   { pattern: /^(?:查看|查询|显示|检查|看看)?\s*(?:存储|磁盘|硬盘|磁盘空间|存储空间)(?:情况|状态|使用情况|容量)?\s*[。！!？?]?$/i, tool: "storage.summary", message: "正在读取存储容量信息。" },
   { pattern: /^(?:查看|查询|显示|检查|看看)?\s*(?:网络|网卡|网络接口|ip地址)(?:情况|状态|信息)?\s*[。！!？?]?$/i, tool: "network.interfaces", message: "正在读取网络接口信息。" },
   { pattern: /^(?:查看|查询|统计)?\s*(?:系统)?进程(?:数量|数目|概况)?\s*[。！!？?]?$/i, tool: "system.process-summary", message: "正在读取进程数量（不读取进程详情）。" },
-  { pattern: /^(?:查看|列出|浏览)(?:一下)?(?:文件|文件夹|目录)(?:列表)?\s*[。！!？?]?$/i, tool: "files.list", message: "正在读取允许存储卷中的文件目录。" }
+  { pattern: /^(?:查看|列出|浏览)(?:一下)?(?:文件|文件夹|目录)(?:列表)?\s*[。！!？?]?$/i, tool: "files.list", message: "正在读取允许存储卷中的文件目录。" },
+  { pattern: /^(?:查看|列出|浏览)(?:一下)?(?:相册文件夹|照片文件夹)\s*[。！!？?]?$/i, tool: "fnos.photos.folders", message: "正在读取相册文件夹。" },
+  { pattern: /^(?:搜索|查找|搜一下)(?:相册|照片|图片)(?:中|里)?[：:\s]*(.{1,200})$/i, tool: "fnos.photos.search", args: match => ({ keyword: match[1].trim(), limit: 20 }), message: "正在搜索相册内容。" }
 ];
 
 function argsMatchSchema(args, schema) {
@@ -58,10 +60,10 @@ export function createAgentCore({ tools, model, now = () => new Date().toISOStri
       if (!text || text.length > MAX_USER_TEXT) throw Object.assign(new Error("Message must contain 1 to 2000 characters"), { statusCode: 400 });
       const taskId = id();
       const createdAt = now();
-      const direct = DIRECT_INTENTS.find(item => item.pattern.test(text));
+      const direct = DIRECT_INTENTS.map(item => ({ item, match: item.pattern.exec(text) })).find(entry => entry.match);
       if (direct) {
-        const results = await executePlan({ toolCalls: [{ id: direct.tool, args: {} }] });
-        return { taskId, createdAt, completedAt: now(), status: "completed", mode: "rules", message: direct.message, results };
+        const results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] });
+        return { taskId, createdAt, completedAt: now(), status: "completed", mode: "rules", message: direct.item.message, results };
       }
 
       if (!model.status().enabled) {

@@ -53,6 +53,27 @@ test("trim-cli adapter suppresses stderr and bounds timeout failures", async () 
   });
 });
 
+test("trim-cli adapter exposes verified read-only photo and capability commands", async () => {
+  const calls = [];
+  const cli = createTrimCliAdapter({
+    binaryPath: "/opt/trim-cli",
+    accessImpl: async () => {},
+    execFileImpl: async (...args) => { calls.push(args); return { stdout: '{"items":[]}', stderr: "" }; }
+  });
+  assert.deepEqual(await cli.runReadOnly("photos.folders"), { command: "photos.folders", data: { items: [] } });
+  assert.deepEqual(await cli.runReadOnly("monitor.beep-supported"), { command: "monitor.beep-supported", data: { items: [] } });
+  assert.deepEqual(await cli.runReadOnly("photos.search", { keyword: "family album" }), { command: "photos.search", data: { items: [] } });
+  assert.deepEqual(calls.map(call => call[1].slice(2)), [
+    ["photos", "folders"],
+    ["monitor", "beep-supported"],
+    ["photos", "search", "family album", "--limit", "20"]
+  ]);
+  await assert.rejects(cli.runReadOnly("photos.search", { keyword: "   " }), { statusCode: 400 });
+  await assert.rejects(cli.runReadOnly("photos.search", { keyword: "cats", limit: 51 }), { statusCode: 400 });
+  await assert.rejects(cli.runReadOnly("photos.search", { keyword: "cats", extra: true }), { statusCode: 400 });
+  assert.equal(calls.length, 3);
+});
+
 test("trim-cli profile and timeout configuration are validated", () => {
   assert.throws(() => createTrimCliAdapter({ profile: "../other" }), /profile/);
   assert.throws(() => createTrimCliAdapter({ timeoutMs: 1 }), /timeout/);

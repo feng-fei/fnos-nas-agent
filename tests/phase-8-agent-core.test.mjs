@@ -9,12 +9,14 @@ function fixture({ enabled = false, plan = null } = {}) {
     list: () => [
       { id: "system.status", title: "系统状态", description: "只读", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
       { id: "storage.summary", title: "存储概况", description: "只读", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
-      { id: "files.list", title: "浏览文件目录", description: "只读", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, limit: { type: "integer", minimum: 1, maximum: 200 } }, additionalProperties: false } }
+      { id: "files.list", title: "浏览文件目录", description: "只读", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, limit: { type: "integer", minimum: 1, maximum: 200 } }, additionalProperties: false } },
+      { id: "fnos.photos.folders", title: "相册文件夹", description: "只读", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+      { id: "fnos.photos.search", title: "相册搜索", description: "只读", inputSchema: { type: "object", properties: { keyword: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["keyword"], additionalProperties: false } }
     ],
     async invoke(id, args) {
       calls.push({ id, args });
-      if (!["system.status", "storage.summary", "files.list"].includes(id)) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
-      if (id === "files.list" ? Object.keys(args).some(k => !["path", "limit"].includes(k)) : Object.keys(args).length) throw Object.assign(new Error("Invalid args"), { statusCode: 400 });
+      if (!["system.status", "storage.summary", "files.list", "fnos.photos.folders", "fnos.photos.search"].includes(id)) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
+      if (id === "files.list" ? Object.keys(args).some(k => !["path", "limit"].includes(k)) : id === "fnos.photos.search" ? typeof args.keyword !== "string" || !Number.isInteger(args.limit) || args.limit < 1 || args.limit > 50 : id === "fnos.photos.folders" ? Object.keys(args).length > 0 : Object.keys(args).length) throw Object.assign(new Error("Invalid args"), { statusCode: 400 });
       return { ok: true, id };
     }
   };
@@ -37,6 +39,19 @@ test("common storage query routes to the allowlisted storage tool", async () => 
   const f = fixture();
   const result = await f.agent.run({ text: "磁盘空间" });
   assert.equal(result.results[0].tool, "storage.summary");
+});
+
+
+test("direct photo queries route to bounded read-only tools without a model", async () => {
+  const f = fixture();
+  const folders = await f.agent.run({ text: "查看相册文件夹" });
+  assert.equal(folders.results[0].tool, "fnos.photos.folders");
+  const search = await f.agent.run({ text: "搜索照片 家庭旅行" });
+  assert.equal(search.results[0].tool, "fnos.photos.search");
+  assert.deepEqual(f.calls, [
+    { id: "fnos.photos.folders", args: {} },
+    { id: "fnos.photos.search", args: { keyword: "家庭旅行", limit: 20 } }
+  ]);
 });
 
 test("unconfigured model safely declines ambiguous requests without tool calls", async () => {

@@ -17,14 +17,20 @@ const COMMANDS = Object.freeze({
   "download.ls": { args: () => ["download", "ls"] },
   "monitor.cpu": { args: () => ["monitor", "cpu"] },
   "storage.pools": { args: () => ["storage", "pools"] },
-  "user.info": { args: () => ["user", "info"] }
+  "user.info": { args: () => ["user", "info"] },
+  "monitor.beep-supported": { args: () => ["monitor", "beep-supported"] },
+  "photos.folders": { args: () => ["photos", "folders"] },
+  "photos.search": { args: input => ["photos", "search", input.keyword, "--limit", String(input.limit ?? 20)] }
 });
 
 function validateInput(id, input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw Object.assign(new Error("Invalid trim-cli tool arguments"), { statusCode: 400 });
-  const allowed = new Set(["file.ls", "file.ls-dir", "file.usage"]);
+  const allowed = new Set(["file.ls", "file.ls-dir", "file.usage", "photos.search"]);
   if (!allowed.has(id) && Object.keys(input).length) throw Object.assign(new Error("This trim-cli tool accepts no arguments"), { statusCode: 400 });
-  if (allowed.has(id)) {
+  if (id === "photos.search") {
+    if (Object.keys(input).some(key => !["keyword", "limit"].includes(key)) || typeof input.keyword !== "string" || input.keyword.trim().length < 1 || input.keyword.length > 200 || (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 50))) throw Object.assign(new Error("photos.search requires a keyword up to 200 characters and an optional limit from 1 to 50"), { statusCode: 400 });
+  }
+  if (allowed.has(id) && id !== "photos.search") {
     const keys = id === "file.usage" ? ["volumeId"] : ["path"];
     if (Object.keys(input).some(key => !keys.includes(key))) throw Object.assign(new Error("Unknown trim-cli tool argument"), { statusCode: 400 });
     if (id === "file.usage") {
