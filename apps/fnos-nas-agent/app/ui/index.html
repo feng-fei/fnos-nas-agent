@@ -8,6 +8,7 @@
 <section class="card hidden" id="files-card"><h2>文件浏览</h2><p class="muted">支持浏览、文本预览、下载、上传、建文件夹、重命名、移动和删除。上传上限 25 MiB；删除需要确认。</p><div id="file-roots"></div><form id="file-form"><label for="file-path">当前目录</label><input id="file-path" maxlength="2048" placeholder="选择一个存储卷" autocomplete="off"><button type="submit">打开目录</button><button id="file-parent" type="button" disabled>上一级</button></form><div class="file-actions"><button id="file-mkdir" type="button">新建文件夹</button><label for="file-upload">上传文件（最大 25 MiB）</label><input id="file-upload" type="file"><button id="file-upload-button" type="button">上传所选文件</button></div><pre id="file-preview" class="hidden"></pre><p id="file-error" class="error" role="status"></p><div id="file-list"><p class="muted">登录后加载目录。</p></div></section>
 <section class="card hidden" id="tools-card"><h2>NAS 工具</h2><p class="muted">只读查询可直接执行；创建文件夹、重命名和移动属于常规文件操作。删除、系统配置变更和任意命令执行仍未开放。</p><div id="tool-list"><p class="muted">登录后加载工具清单…</p></div><pre id="tool-result">选择工具后显示结果。</pre></section>
 <section class="card hidden" id="agent-card"><h2>NAS 智能助手</h2><p class="muted" id="agent-status">规则优先；模型仅可请求已登记且参数校验通过的工具。</p><button id="trim-cli-test" type="button">检测官方 CLI 连接</button><p id="trim-cli-test-result" class="muted" role="status">尚未执行连接检测。CLI 可执行不代表 OAuth 已授权。</p>
+<p id="trim-cli-connection-detail" class="muted" role="status">完成授权后，这里会显示最近一次检测状态与恢复建议。</p>
 <details id="trim-cli-setup"><summary>首次授权 / 连接配置指南</summary>
 <p class="muted">当前版本不会把 OAuth 验证码通过网页转发，也不会收集密码或令牌。请在 NAS 终端中运行官方 CLI 登录，完成后回到这里检测连接。</p>
 <label for="trim-cli-host">NAS 地址（仅主机名或 IP，不含协议）</label><input id="trim-cli-host" maxlength="253" autocomplete="url" placeholder="例如 192.168.1.20 或 nas.example.com">
@@ -33,6 +34,17 @@ async function init(){try{const r=await api("/api/session");const x=await r.json
 document.querySelector("#setup-form").addEventListener("submit",async e=>{e.preventDefault();document.querySelector("#setup-error").textContent="";try{const token=newTokenEl.value;const r=await api("/api/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:token})});const x=await r.json();if(!r.ok)throw Error(x.error||"设置失败");tokenEl.value=token;setupCard.classList.add("hidden");loginCard.classList.remove("hidden");document.querySelector("#login-help").textContent="密码已设置，请登录。";newTokenEl.value="";tokenEl.focus();}catch(e){document.querySelector("#setup-error").textContent=e.message||"设置失败";}});
 document.querySelector("#login-form").addEventListener("submit",async e=>{e.preventDefault();errorEl.textContent="";try{const r=await api("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:tokenEl.value,remember:document.querySelector("#remember").checked})});const x=await r.json();if(!r.ok)throw Error(x.error||"登录失败");tokenEl.value="";loginCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#files-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();}catch(e){errorEl.textContent=e.message||"登录失败";}});
 let generatedTrimCliCommand = "";
+const trimHostInput=document.querySelector("#trim-cli-host"),trimPortInput=document.querySelector("#trim-cli-port"),trimSchemeInput=document.querySelector("#trim-cli-scheme");
+let trimPortEdited=false;
+trimPortInput.addEventListener("input",()=>{trimPortEdited=true;});
+function updateDefaultTrimCliPort(){
+ if(trimPortEdited)return;
+ const host=trimHostInput.value.trim().replace(/^\[|\]$/g,"");
+ const isIp=host.includes(":")||/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host);
+ trimPortInput.value=trimSchemeInput.value==="http"?"5666":isIp?"5667":"443";
+}
+trimHostInput.addEventListener("change",updateDefaultTrimCliPort);
+trimSchemeInput.addEventListener("change",updateDefaultTrimCliPort);
 document.querySelector("#trim-cli-command").addEventListener("click",async()=>{
  const out=document.querySelector("#trim-cli-command-output"),copy=document.querySelector("#trim-cli-copy"),button=document.querySelector("#trim-cli-command");
  generatedTrimCliCommand="";copy.disabled=true;button.disabled=true;out.textContent="正在生成命令…";
@@ -70,7 +82,10 @@ document.querySelector("#trim-cli-test").addEventListener("click",async()=>{
  try{
   const r=await api("/api/agent/trim-cli/test",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});
   const body=await r.json();
-  if(!r.ok)throw Error(body.error||"连接探测失败");
+  if(!r.ok){
+   result.textContent=(body.error||"连接探测失败")+(body.nextAction?" 下一步："+body.nextAction:"");
+   return;
+  }
   result.textContent="连接成功（"+body.checkedAt+"）。官方 CLI 已完成只读系统信息查询，OAuth 授权与 API 连通性已验证。";
  }catch(error){result.textContent=error.message||"连接探测失败";}
  finally{await refreshAgentStatus();button.disabled=false;}
@@ -78,12 +93,27 @@ document.querySelector("#trim-cli-test").addEventListener("click",async()=>{
 async function refreshAgentStatus(){
  try{
   const r=await api("/api/agent/status");const x=await r.json();if(!r.ok)throw Error(x.error||"状态读取失败");
-  const cli=x.trimCli?.available
-   ?"官方 fnOS CLI 已安装且可执行；OAuth/连接状态尚未验证"
-   :x.trimCli?.configured?"官方 fnOS CLI 路径已配置但不可执行":"官方 fnOS CLI 尚未安装";
-  document.querySelector("#agent-status").textContent="规则优先；模型："+(x.model.enabled?"已启用（"+x.model.model+"）":"未配置")+"；可用工具："+x.availableTools+"；"+cli+"；任意命令执行：关闭。";
-  const testButton=document.querySelector("#trim-cli-test");if(testButton)testButton.disabled=!x.trimCli?.available;
- }catch(e){document.querySelector("#agent-status").textContent="Agent 状态暂不可用";}
+  const cli=x.trimCli||{};
+  const statuses={
+   not_ready:"未就绪",not_tested:"尚未测试",stale:"检测结果已过期",connected:"连接正常",
+   auth_required:"需要重新登录",scope_missing:"授权范围不足",tls_error:"HTTPS 证书错误",
+   timeout:"请求超时",network_error:"网络不可达",rate_limited:"请求过于频繁",
+   profile_unavailable:"Profile 配置不可用",failed:"连接失败"
+  };
+  const statusLabel=statuses[cli.connectionStatus]||"状态未知";
+  const install=cli.available?"CLI 已安装且可执行":cli.configured?"CLI 路径已配置但不可执行":"官方 CLI 尚未安装";
+  document.querySelector("#agent-status").textContent="规则优先；模型："+(x.model.enabled?"已启用（"+x.model.model+"）":"未配置")+"；可用工具："+x.availableTools+"；官方 CLI："+install+"；连接状态："+statusLabel+"；任意命令执行：关闭。";
+  const detail=document.querySelector("#trim-cli-connection-detail");
+  const parts=[cli.message||cli.note||"尚无连接状态信息。"];
+  if(cli.checkedAt)parts.push("上次检测："+cli.checkedAt);
+  if(cli.errorCategory)parts.push("错误类别："+cli.errorCategory);
+  if(cli.nextAction)parts.push("建议："+cli.nextAction);
+  detail.textContent=parts.join(" ");
+  const testButton=document.querySelector("#trim-cli-test");if(testButton)testButton.disabled=!cli.available;
+ }catch(e){
+  document.querySelector("#agent-status").textContent="Agent 状态暂不可用";
+  document.querySelector("#trim-cli-connection-detail").textContent="无法获取连接状态；请刷新页面后重试。";
+ }
 }
 function renderAgentTurn(label, body){
  const host=document.querySelector("#agent-history");const card=document.createElement("div");card.className="card";
@@ -212,7 +242,7 @@ async function refreshTools(){
     input.placeholder=input.required?"必填":"可选";
     label.append(input);form.append(label);
    }
-   const btn=document.createElement("button");btn.type="submit";btn.textContent=item.risk==="write"?"执行文件操作":item.risk==="destructive"?"请通过助手请求确认":"运行只读查询";if(item.risk==="destructive")btn.disabled=true;form.append(btn);
+   const btn=document.createElement("button");btn.type="submit";btn.textContent=item.risk==="write"?"执行文件操作":item.risk==="destructive"?"请通过助手请求确认":"运行只读查询";if(item.risk==="destructive")btn.disabled=true;if(item.providerAvailable===false){btn.disabled=true;btn.textContent="先安装官方 CLI";const availability=document.createElement("p");availability.className="muted";availability.textContent="此工具需要已审核、已安装并启用的官方 fnOS CLI；其他本地只读工具仍可使用。";row.append(availability);}form.append(btn);
    form.addEventListener("submit",async event=>{
     event.preventDefault();if(!form.reportValidity())return;
     const args={};
@@ -221,9 +251,9 @@ async function refreshTools(){
      args[name]=rule.type==="integer"?Number(field.value):field.value;
     }
     const out=document.querySelector("#tool-result");out.textContent="正在读取 "+item.id+"…";btn.disabled=true;
-    try{const result=await api("/api/tools/"+encodeURIComponent(item.id)+"/run",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(args)});const payload=await result.json();if(!result.ok)throw Error(payload.error||"工具调用失败");out.textContent=JSON.stringify(payload.result,null,2);}
+    try{const result=await api("/api/tools/"+encodeURIComponent(item.id)+"/run",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(args)});const payload=await result.json();if(!result.ok){out.textContent=(payload.error||"工具调用失败")+(payload.nextAction?"\\n\\n建议："+payload.nextAction:"");return;}out.textContent=JSON.stringify(payload.result,null,2);}
     catch(error){out.textContent=error.message||"工具调用失败";}
-    finally{btn.disabled=false;}
+    finally{btn.disabled=false;if(item.id.startsWith("fnos."))await refreshAgentStatus();}
    });
    row.append(form);host.append(row);
   }

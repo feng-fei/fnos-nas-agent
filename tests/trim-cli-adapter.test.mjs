@@ -20,10 +20,19 @@ test("trim-cli adapter resolves an enabled Skill-managed binary through the prov
       return { stdout: '{"system":"fnOS"}' };
     }
   });
-  assert.deepEqual(await cli.status(), { configured: true, available: true, profile: "home" });
+  const before = await cli.status();
+  assert.equal(before.configured, true);
+  assert.equal(before.available, true);
+  assert.equal(before.profile, "home");
+  assert.equal(before.connectionStatus, "not_tested");
+  assert.equal(before.authenticated, null);
   assert.deepEqual(await cli.runReadOnly("system.info"), {
     command: "system.info", data: { system: "fnOS" }
   });
+  const after = await cli.status();
+  assert.equal(after.connectionStatus, "connected");
+  assert.equal(after.authenticated, true);
+  assert.equal(after.command, "system.info");
   assert.equal(calls, 1);
 });
 
@@ -110,4 +119,30 @@ test("trim-cli adapter exposes verified read-only photo and capability commands"
 test("trim-cli profile and timeout configuration are validated", () => {
   assert.throws(() => createTrimCliAdapter({ profile: "../other" }), /profile/);
   assert.throws(() => createTrimCliAdapter({ timeoutMs: 1 }), /timeout/);
+});
+
+test("trim-cli adapter classifies an expired login and updates health without exposing stderr", async () => {
+  const cli = createTrimCliAdapter({
+    binaryPath: "/opt/trim-cli",
+    accessImpl: async () => {},
+    execFileImpl: async () => {
+      const error = new Error("command failed");
+      error.code = 1;
+      error.stderr = "401 unauthorized refresh_token=never-output";
+      throw error;
+    }
+  });
+  await assert.rejects(cli.runReadOnly("system.info"), error => {
+    assert.equal(error.statusCode, 401);
+    assert.equal(error.errorCategory, "auth_required");
+    assert.equal(error.connectionStatus, "auth_required");
+    assert.match(error.nextAction, /refresh/);
+    assert.doesNotMatch(error.message, /never-output|refresh_token/);
+    return true;
+  });
+  const status = await cli.status();
+  assert.equal(status.connectionStatus, "auth_required");
+  assert.equal(status.authenticated, false);
+  assert.equal(status.errorCategory, "auth_required");
+  assert.match(status.nextAction, /refresh/);
 });
