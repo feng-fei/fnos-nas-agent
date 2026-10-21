@@ -1,7 +1,7 @@
 import { readdir, lstat, realpath, mkdir, open, link, unlink, rename, rmdir, readFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
-import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024, MAX_PREVIEW_BYTES = 1024 * 1024, MAX_TEXT_CREATE_BYTES = 1024 * 1024;
 export const MAX_CHECKSUM_BYTES = 256 * 1024 * 1024;
 const CHECKSUM_CHUNK_BYTES = 1024 * 1024;
@@ -25,6 +25,53 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
     fail(409, "File changed while opening; retry the operation");
    throw error;
   }
+ }
+ function sameIdentity(a, b) {
+  return BigInt(a.dev) === BigInt(b.dev) && BigInt(a.ino) === BigInt(b.ino);
+ }
+ function descriptorPath(handle) {
+  if (process.platform !== "linux") fail(503, "Secure file operations require Linux directory descriptors");
+  return "/proc/self/fd/" + handle.fd;
+ }
+ async function openValidatedDirectory(item) {
+  if (process.platform !== "linux") fail(503, "Secure file operations require Linux directory descriptors");
+  let handle;
+  try {
+   handle = await fs.open(item.path, constants.O_RDONLY | (constants.O_DIRECTORY || 0) | (constants.O_NOFOLLOW || 0));
+   const info = await handle.stat({ bigint: true });
+   if (!info.isDirectory() || !sameIdentity(info, item.info)) fail(409, "Directory changed while opening; retry the operation");
+   return { handle, path: descriptorPath(handle) };
+  } catch (error) {
+   if (handle) await handle.close().catch(() => {});
+   if (["ELOOP", "ENOENT", "ENOTDIR"].includes(error?.code))
+    fail(409, "Directory changed while opening; retry the operation");
+   throw error;
+  }
+ }
+ async function verifyChildIdentity(path, expectedInfo) {
+  let info;
+  try { info = await fs.lstat(path); }
+  catch (error) {
+   if (error?.code === "ENOENT" || error?.code === "ENOTDIR")
+    fail(409, "File changed during operation; retry the operation");
+   throw error;
+  }
+  if (info.isSymbolicLink() || !sameIdentity(info, expectedInfo))
+   fail(409, "File changed during operation; retry the operation");
+  return info;
+ }
+ async function ensureDirectoryPathStillMatches(item) {
+  let actual, info;
+  try {
+   actual = await fs.realpath(item.path);
+   info = await fs.lstat(item.path);
+  } catch (error) {
+   if (["ENOENT", "ENOTDIR", "ELOOP"].includes(error?.code))
+    fail(409, "Directory changed during operation; retry the operation");
+   throw error;
+  }
+  if (actual !== item.path || info.isSymbolicLink() || !sameIdentity(info, item.info))
+   fail(409, "Directory changed during operation; retry the operation");
  }
  async function destination(directory,name){const parent=await resolveExisting(directory,"directory"),clean=safeName(name),target=resolve(parent.path,clean);if(!within(parent.root,target)||target===parent.root)fail(403,"Path is outside configured storage roots");return {...parent,target,name:clean};}
  async function ensureAbsent(path){try{await fs.lstat(path);fail(409,"A file or directory with that name already exists");}catch(e){if(e.statusCode)throw e;if(e.code!=="ENOENT")throw e;}}
@@ -88,9 +135,127 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
     await handle.close();
   }
  }
- async function createText(directory,name,content){if(typeof content!=="string")fail(400,"Text content must be a string");const buffer=Buffer.from(content,"utf8");if(buffer.length>MAX_TEXT_CREATE_BYTES)fail(413,"Text files are limited to 1 MiB");if(content.includes("\0"))fail(400,"Text content cannot contain NUL characters");const target=await destination(directory,name);await ensureAbsent(target.target);const temp=resolve(target.path,".fnos-text-"+randomUUID()+".tmp"),handle=await fs.open(temp,"wx",0o600);try{await handle.writeFile(buffer);await handle.sync();}finally{await handle.close();}try{await fs.link(temp,target.target);}catch(e){if(e.code==="EEXIST")fail(409,"A file or directory with that name already exists");throw e;}finally{await fs.unlink(temp).catch(()=>{});}return {name:target.name,path:target.target,sizeBytes:buffer.length};}
- async function upload(directory,name,buffer){if(!Buffer.isBuffer(buffer))fail(400,"Upload body must be binary");if(buffer.length>MAX_UPLOAD_BYTES)fail(413,"Upload is limited to 25 MiB");const target=await destination(directory,name);await ensureAbsent(target.target);const temp=resolve(target.path,".fnos-upload-"+randomUUID()+".tmp"),handle=await fs.open(temp,"wx",0o600);try{await handle.writeFile(buffer);await handle.sync();}finally{await handle.close();}try{await fs.link(temp,target.target);}catch(e){if(e.code==="EEXIST")fail(409,"A file or directory with that name already exists");throw e;}finally{await fs.unlink(temp).catch(()=>{});}return {name:target.name,path:target.target,sizeBytes:buffer.length};}
- async function operate(input){if(!input||typeof input!=="object"||Array.isArray(input))fail(400,"Invalid operation");const action=input.action;if(action==="mkdir"){const d=await destination(input.path,input.name);await ensureAbsent(d.target);await fs.mkdir(d.target,{mode:0o750});return {action,name:d.name,path:d.target};}if(action==="rename"||action==="move"){const source=await resolveExisting(input.path);if(source.path===source.root)fail(403,"Cannot rename or move a storage root");const dir=action==="move"?input.destination:dirname(source.path),d=await destination(dir,action==="move"?basename(source.path):input.name);if(d.target===source.path)return {action,path:source.path,unchanged:true};await ensureAbsent(d.target);await fs.rename(source.path,d.target);return {action,path:d.target,name:basename(d.target)};}if(action==="delete"){if(input.confirm!==true)fail(400,"Explicit confirmation is required");const source=await resolveExisting(input.path);if(source.path===source.root)fail(403,"Cannot delete a storage root");if(source.info.isDirectory())await fs.rmdir(source.path);else if(source.info.isFile())await fs.unlink(source.path);else fail(400,"Unsupported file type");return {action,path:source.path,deleted:true};}fail(400,"Unsupported file operation");}
+ async function createText(directory,name,content) {
+  if (typeof content !== "string") fail(400, "Text content must be a string");
+  const buffer = Buffer.from(content, "utf8");
+  if (buffer.length > MAX_TEXT_CREATE_BYTES) fail(413, "Text files are limited to 1 MiB");
+  if (content.includes("\0")) fail(400, "Text content cannot contain NUL characters");
+  const target = await destination(directory, name);
+  const parent = await openValidatedDirectory(target);
+  const targetPath = join(parent.path, target.name);
+  let temp = null, created = false;
+  try {
+    await ensureAbsent(targetPath);
+    temp = join(parent.path, ".fnos-text-" + randomUUID() + ".tmp");
+    const handle = await fs.open(temp, "wx", 0o600);
+    try { await handle.writeFile(buffer); await handle.sync(); }
+    finally { await handle.close(); }
+    try { await fs.link(temp, targetPath); created = true; }
+    catch (error) {
+      if (error?.code === "EEXIST") fail(409, "A file or directory with that name already exists");
+      throw error;
+    }
+    await ensureDirectoryPathStillMatches(target);
+    return { name: target.name, path: target.target, sizeBytes: buffer.length };
+  } catch (error) {
+    if (created) await fs.unlink(targetPath).catch(() => {});
+    throw error;
+  } finally {
+    if (temp) await fs.unlink(temp).catch(() => {});
+    await parent.handle.close().catch(() => {});
+  }
+ }
+ async function upload(directory,name,buffer) {
+  if (!Buffer.isBuffer(buffer)) fail(400, "Upload body must be binary");
+  if (buffer.length > MAX_UPLOAD_BYTES) fail(413, "Upload is limited to 25 MiB");
+  const target = await destination(directory, name);
+  const parent = await openValidatedDirectory(target);
+  const targetPath = join(parent.path, target.name);
+  let temp = null, created = false;
+  try {
+    await ensureAbsent(targetPath);
+    temp = join(parent.path, ".fnos-upload-" + randomUUID() + ".tmp");
+    const handle = await fs.open(temp, "wx", 0o600);
+    try { await handle.writeFile(buffer); await handle.sync(); }
+    finally { await handle.close(); }
+    try { await fs.link(temp, targetPath); created = true; }
+    catch (error) {
+      if (error?.code === "EEXIST") fail(409, "A file or directory with that name already exists");
+      throw error;
+    }
+    await ensureDirectoryPathStillMatches(target);
+    return { name: target.name, path: target.target, sizeBytes: buffer.length };
+  } catch (error) {
+    if (created) await fs.unlink(targetPath).catch(() => {});
+    throw error;
+  } finally {
+    if (temp) await fs.unlink(temp).catch(() => {});
+    await parent.handle.close().catch(() => {});
+  }
+ }
+ async function operate(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) fail(400, "Invalid operation");
+  const action = input.action;
+  if (action === "mkdir") {
+    const d = await destination(input.path, input.name);
+    const parent = await openValidatedDirectory(d);
+    const targetPath = join(parent.path, d.name);
+    try {
+      await ensureAbsent(targetPath);
+      await fs.mkdir(targetPath, { mode: 0o750 });
+      try { await ensureDirectoryPathStillMatches(d); }
+      catch (error) { await fs.rmdir(targetPath).catch(() => {}); throw error; }
+      return { action, name: d.name, path: d.target };
+    } finally { await parent.handle.close().catch(() => {}); }
+  }
+  if (action === "rename" || action === "move") {
+    const source = await resolveExisting(input.path);
+    if (source.path === source.root) fail(403, "Cannot rename or move a storage root");
+    const dir = action === "move" ? input.destination : dirname(source.path);
+    const d = await destination(dir, action === "move" ? basename(source.path) : input.name);
+    if (d.target === source.path) return { action, path: source.path, unchanged: true };
+    const sourceParent = await resolveExisting(dirname(source.path), "directory");
+    let sourceOpened = null, destinationOpened = null;
+    try {
+      sourceOpened = await openValidatedDirectory(sourceParent);
+      const sourcePath = join(sourceOpened.path, basename(source.path));
+      await verifyChildIdentity(sourcePath, source.info);
+      destinationOpened = await openValidatedDirectory(d);
+      const targetPath = join(destinationOpened.path, d.name);
+      await ensureAbsent(targetPath);
+      await fs.rename(sourcePath, targetPath);
+      try {
+        await ensureDirectoryPathStillMatches(sourceParent);
+        await ensureDirectoryPathStillMatches(d);
+      } catch (error) {
+        await fs.rename(targetPath, sourcePath).catch(() => {});
+        throw error;
+      }
+      return { action, path: d.target, name: basename(d.target) };
+    } finally {
+      if (destinationOpened) await destinationOpened.handle.close().catch(() => {});
+      if (sourceOpened) await sourceOpened.handle.close().catch(() => {});
+    }
+  }
+  if (action === "delete") {
+    if (input.confirm !== true) fail(400, "Explicit confirmation is required");
+    const source = await resolveExisting(input.path);
+    if (source.path === source.root) fail(403, "Cannot delete a storage root");
+    const sourceParent = await resolveExisting(dirname(source.path), "directory");
+    const parent = await openValidatedDirectory(sourceParent);
+    try {
+      const sourcePath = join(parent.path, basename(source.path));
+      await ensureDirectoryPathStillMatches(sourceParent);
+      const info = await verifyChildIdentity(sourcePath, source.info);
+      if (info.isDirectory()) await fs.rmdir(sourcePath);
+      else if (info.isFile()) await fs.unlink(sourcePath);
+      else fail(400, "Unsupported file type");
+      return { action, path: source.path, deleted: true };
+    } finally { await parent.handle.close().catch(() => {}); }
+  }
+  fail(400, "Unsupported file operation");
+ }
+
 
   async function operateBatch(input) {
     if (!input || typeof input !== "object" || Array.isArray(input) || !Array.isArray(input.operations))
