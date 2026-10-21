@@ -116,6 +116,18 @@ test("first-run setup stores only a salted password hash and protects session en
 
   const hiddenSkills = await fetch(baseUrl + "/api/skills");
   assert.equal(hiddenSkills.status, 401);
+  const hiddenArchiveImport = await fetch(baseUrl + "/api/skills/import", {
+    method: "POST", headers: { "content-type": "application/zip" }, body: Buffer.from("not a zip")
+  });
+  assert.equal(hiddenArchiveImport.status, 401);
+  const wrongOriginArchiveImport = await fetch(baseUrl + "/api/skills/import", {
+    method: "POST", headers: { cookie, origin: "http://attacker.invalid", "content-type": "application/zip", "x-skill-name": "test" }, body: Buffer.from("not a zip")
+  });
+  assert.equal(wrongOriginArchiveImport.status, 403);
+  const invalidArchiveImport = await fetch(baseUrl + "/api/skills/import", {
+    method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/zip", "x-skill-name": "invalid-zip" }, body: Buffer.from("not a zip")
+  });
+  assert.equal(invalidArchiveImport.status, 400);
   const skillHash = "a".repeat(64);
   const importMetadata = await fetch(baseUrl + "/api/skills", {
     method: "POST", headers: { origin: baseUrl, cookie, "content-type": "application/json" },

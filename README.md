@@ -2,7 +2,7 @@
 
 A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mobile-friendly web interface, controlled NAS operations, and a reviewable Skill manager.
 
-> **Status: Phase 4 development.** The FPK app has password-based web authentication and an authenticated read-only diagnostics endpoint. NAS command execution, Skill execution, and model calls remain disabled. Treat this branch as unvalidated until CI and FPK checks pass.
+> **Status: Phase 6 in progress.** The app has password-based web authentication, read-only diagnostics, Skill inventory/review, and bounded ZIP quarantine import. Skill archives are not extracted or executed; the tool registry remains empty and `executionEnabled=false`. Require Node.js 24/26 CI and Node 26 FPK packaging before merge.
 
 ## Goals
 
@@ -48,6 +48,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 3 Skill Manager contract](docs/phase-3-skill-manager.md)
 - [Phase 3 web authentication](docs/phase-3-web-auth.md)
 - [Phase 5 Skill manager](docs/phase-5-skill-manager-api.md)
+- [Phase 6 safe Skill ZIP import](docs/phase-6-skill-archive-import.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
 
@@ -55,7 +56,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 
 1. **Specification** — architecture, risk tiers, Skill lifecycle, and tool contracts.
 2. **Core skeleton** — minimal Node.js HTTP service, mobile UI, configuration, and tests.
-3. **Skill manager** — safe ZIP import, quarantine, inventory, hashing, review, and lifecycle.
+3. **Skill manager** — inventory/review lifecycle and bounded ZIP import into quarantine (no extraction or execution).
 4. **fnOS adapter** — a small set of verified read-only operations.
 5. **Model adapter** — structured plans, schema validation, bounded retries, and token-saving routing.
 6. **FPK packaging** — GitHub Actions builds a test FPK; then validate install/start/stop/upgrade/uninstall on a test fnOS system.

@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, timingSafeEqual, createHash, scryptSync } from "node:crypto";
 import { createSkillStore, skillStates } from "./skills.mjs";
+import { MAX_ARCHIVE_BYTES } from "./skill-archives.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -78,6 +79,17 @@ async function loadSessions() {
 function sameOrigin(req) {
   if (!req.headers.origin || !req.headers.host) return false;
   return req.headers.origin === (req.socket.encrypted ? "https://" : "http://") + req.headers.host;
+}
+async function rawBody(req, maxBytes) {
+  const declared = Number(req.headers["content-length"] || 0);
+  if (Number.isFinite(declared) && declared > maxBytes) throw Object.assign(new Error("Payload too large"), { statusCode: 413 });
+  const chunks = []; let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxBytes) throw Object.assign(new Error("Payload too large"), { statusCode: 413 });
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
 }
 async function jsonBody(req) {
   const chunks = []; let size = 0;
@@ -230,6 +242,23 @@ const server = createServer(async (req, res) => {
         return reply(res, 201, { skill: record, note: "Metadata only; archive upload and execution are not implemented." });
       }
       return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, POST" });
+    }
+    if (url.pathname === "/api/skills/import") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!skillStore) return reply(res, 503, { error: "App data directory is not configured" });
+      const contentType = (req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+      if (contentType !== "application/zip" && contentType !== "application/octet-stream")
+        return reply(res, 415, { error: "Upload a ZIP file using application/zip" });
+      const name = typeof req.headers["x-skill-name"] === "string" ? req.headers["x-skill-name"].trim() : "";
+      const version = typeof req.headers["x-skill-version"] === "string" ? req.headers["x-skill-version"].trim() : "";
+      const sourceLabel = typeof req.headers["x-skill-source"] === "string" ? req.headers["x-skill-source"].trim() : "";
+      if (!name || name.length > 100 || version.length > 40 || sourceLabel.length > 100)
+        return reply(res, 400, { error: "Skill name is required; name/version/source lengths exceed limits" });
+      const archiveBuffer = await rawBody(req, MAX_ARCHIVE_BYTES);
+      const skill = await skillStore.importArchive({ name, version, sourceLabel }, archiveBuffer);
+      return reply(res, 201, { skill, note: "Archive stored in quarantine; no extraction or execution occurred." });
     }
     const transitionMatch = url.pathname.match(/^\/api\/skills\/([a-f0-9]{24})\/transition$/);
     if (transitionMatch) {

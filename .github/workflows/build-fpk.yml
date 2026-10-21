@@ -6,6 +6,24 @@ on:
       - phase-2/fpk-packaging
       - "phase-2/**"
       - "phase-3/**"
+      - "phase-5/**"
+      - "phase-6/**"
+      - "fix/**"
+      - "test/**"
+    paths:
+      - "apps/fnos-nas-agent/**"
+      - "scripts/generate-fpk-icons.py"
+      - "package.json"
+      - "src/**"
+      - "tests/**"
+      - ".github/workflows/build-fpk.yml"
+  pull_request:
+    branches:
+      - phase-2/fpk-packaging
+      - "phase-2/**"
+      - "phase-3/**"
+      - "phase-5/**"
+      - "phase-6/**"
       - "fix/**"
       - "test/**"
     paths:
@@ -62,6 +80,8 @@ jobs:
             bash -n "$script"
           done
           node --check "$app/app/server.mjs"
+          node --check "$app/app/skills.mjs"
+          node --check "$app/app/skill-archives.mjs"
 
       - name: Prepare app payload and icons
         if: matrix.node-version == '26.x'

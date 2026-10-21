@@ -1,4 +1,5 @@
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { saveQuarantinedArchive } from "./skill-archives.mjs";
 import { mkdir, readFile, writeFile, rename, chmod } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -43,6 +44,10 @@ export function createSkillStore(dataDir) {
         id: item.id, name: item.name, version: item.version,
         sourceLabel: item.sourceLabel, importedAt: item.importedAt,
         archiveSha256: item.archiveSha256, state: item.state,
+        quarantineFile: typeof item.quarantineFile === "string" ? item.quarantineFile : "",
+        archiveSizeBytes: Number.isSafeInteger(item.archiveSizeBytes) ? item.archiveSizeBytes : null,
+        archiveEntryCount: Number.isSafeInteger(item.archiveEntryCount) ? item.archiveEntryCount : null,
+        declaredUncompressedBytes: Number.isSafeInteger(item.declaredUncompressedBytes) ? item.declaredUncompressedBytes : null,
         declaredCapabilities: Array.isArray(item.declaredCapabilities) ? item.declaredCapabilities.slice(0, 20) : [],
         reviewNote: typeof item.reviewNote === "string" ? item.reviewNote.slice(0, MAX_NOTE) : "",
         reviewedAt: item.reviewedAt || null
@@ -76,6 +81,10 @@ export function createSkillStore(dataDir) {
       sourceLabel: typeof input.sourceLabel === "string" ? input.sourceLabel.slice(0, 100) : "",
       importedAt: new Date().toISOString(),
       archiveSha256: input.archiveSha256.toLowerCase(),
+      quarantineFile: typeof input.quarantineFile === "string" ? input.quarantineFile : "",
+      archiveSizeBytes: Number.isSafeInteger(input.archiveSizeBytes) ? input.archiveSizeBytes : null,
+      archiveEntryCount: Number.isSafeInteger(input.archiveEntryCount) ? input.archiveEntryCount : null,
+      declaredUncompressedBytes: Number.isSafeInteger(input.declaredUncompressedBytes) ? input.declaredUncompressedBytes : null,
       state: "pending_review",
       declaredCapabilities: caps,
       reviewNote: "",
@@ -84,6 +93,18 @@ export function createSkillStore(dataDir) {
     records.push(record);
     try { await persist(); } catch { records = records.filter(item => item.id !== record.id); throw Object.assign(new Error("Unable to save Skill metadata securely"), { statusCode: 500 }); }
     return { ...record, declaredCapabilities: [...record.declaredCapabilities] };
+  }
+
+  async function importArchive(input, buffer) {
+    const archive = await saveQuarantinedArchive(dataDir, buffer);
+    const record = await register({
+      name: input.name, version: input.version, sourceLabel: input.sourceLabel,
+      archiveSha256: archive.sha256, quarantineFile: archive.quarantineFile,
+      archiveSizeBytes: archive.sizeBytes, archiveEntryCount: archive.entryCount,
+      declaredUncompressedBytes: archive.declaredUncompressedBytes,
+      declaredCapabilities: input.declaredCapabilities
+    });
+    return { ...record, archiveEntries: archive.entries };
   }
 
   async function transition(id, input) {
@@ -103,7 +124,7 @@ export function createSkillStore(dataDir) {
     return { ...item, declaredCapabilities: [...item.declaredCapabilities] };
   }
 
-  return { load, list, register, transition };
+  return { load, list, register, importArchive, transition };
 }
 
 export const skillStates = [...STATES];
