@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { createReadStream } from "node:fs";
 import os from "node:os";
 import { statfs } from "node:fs/promises";
-import { readFile, writeFile, mkdir, rename, chmod, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename, chmod, readdir, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, timingSafeEqual, createHash, scryptSync } from "node:crypto";
@@ -25,6 +25,7 @@ import { createSkillInstaller } from "./skill-installer.mjs";
 import { fetchGitHubSkillArchive } from "./skill-remote-import.mjs";
 import { importGitHubSkillBatch } from "./skill-remote-import-batch.mjs";
 import { createActionApprovalService } from "./action-approval-service.mjs";
+import { createSerialWriteQueue } from "./serial-write-queue.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -43,7 +44,7 @@ const auditLogger = dataDir ? createAuditLogger({ dataDir }) : null;
 const SESSION_TTL = 8 * 60 * 60 * 1000;
 const REMEMBER_TTL = 30 * 24 * 60 * 60 * 1000;
 const MAX_BODY = 16 * 1024;
-let saveQueue = Promise.resolve();
+const enqueueSessionWrite = createSerialWriteQueue();
 
 function reply(res, status, body, type = "application/json; charset=utf-8", headers = {}) {
   res.writeHead(status, {
@@ -75,14 +76,19 @@ function sessionFor(req) {
 async function persistSessions() {
   if (!sessionFile) return;
   const snapshot = JSON.stringify([...sessions.entries()]);
-  saveQueue = saveQueue.then(async () => {
+  return enqueueSessionWrite(async () => {
     await mkdir(dataDir, { recursive: true, mode: 0o700 });
-    const tmp = sessionFile + ".tmp";
-    await writeFile(tmp, snapshot + "\n", { encoding: "utf8", mode: 0o600 });
-    await chmod(tmp, 0o600);
-    await rename(tmp, sessionFile);
+    const tmp = sessionFile + "." + randomBytes(8).toString("hex") + ".tmp";
+    try {
+      await writeFile(tmp, snapshot + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
+      await chmod(tmp, 0o600);
+      await rename(tmp, sessionFile);
+      await chmod(sessionFile, 0o600);
+    } catch (error) {
+      await rm(tmp, { force: true }).catch(() => {});
+      throw error;
+    }
   });
-  return saveQueue;
 }
 async function loadSessions() {
   if (!sessionFile) return;
