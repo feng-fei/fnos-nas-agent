@@ -354,8 +354,54 @@ a { color: var(--accent); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
-}</style></head>
+}
+.workspace-nav {
+  display: none;
+  grid-column: 1 / -1;
+  position: sticky;
+  top: 10px;
+  z-index: 20;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 7px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 6%);
+  backdrop-filter: blur(14px);
+  scrollbar-width: thin;
+}
+body:has(#status-card:not(.hidden)) .workspace-nav { display: flex; }
+.workspace-nav a {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 680;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 150ms ease, color 150ms ease;
+}
+.workspace-nav a:hover, .workspace-nav a:focus-visible {
+  outline-offset: -2px;
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+section[id] { scroll-margin-top: 94px; }
+</style></head>
 <body><main><h1>fnOS NAS Agent</h1><p class="muted">轻量 NAS 助手 · 安全验证测试版</p>
+<nav class="workspace-nav" aria-label="工作区快捷导航">
+  <a href="#status-card">运行概览</a>
+  <a href="#models-card">模型服务</a>
+  <a href="#files-card">文件管理</a>
+  <a href="#tools-card">NAS 工具</a>
+  <a href="#agent-card">智能助手</a>
+  <a href="#skills-card">Skill 管理</a>
+  <a href="#security-note">安全说明</a>
+</nav>
 <section class="card hidden" id="setup-card"><h2>首次安全设置</h2><p>首次使用请设置管理密码（至少 10 个字符）。以后只需输入密码即可登录。</p><p class="warning">首次设置期间，页面可由可信局域网访问。当前版本不执行任意系统命令，也不会运行导入的 Skill。请勿将端口转发到公网或在不可信网络中设置。</p><form id="setup-form"><label for="new-token">设置管理密码</label><input id="new-token" type="password" minlength="10" maxlength="128" autocomplete="new-password" required><button type="submit">保存密码</button></form><p id="setup-error" class="error" role="status"></p></section>
 <section class="card" id="login-card"><h2>登录验证</h2><p class="muted" id="login-help">输入管理密码登录。密码不会保存在浏览器本地存储中。</p><form id="login-form"><label for="token">管理密码</label><input id="token" name="token" type="password" autocomplete="current-password" minlength="10" required><label><input id="remember" type="checkbox" style="width:auto;margin-right:8px">在此设备保持登录 30 天</label><p class="muted">仅在个人可信设备上勾选；共享设备请勿勾选。</p><button type="submit">登录</button></form><p id="login-error" class="error" role="status"></p></section>
 <section class="card hidden" id="status-card"><h2>服务状态</h2><p id="status">正在检查…</p><p id="detail" class="muted">任意系统命令执行关闭；已登记文件工具按权限策略执行。</p><h3>只读系统诊断</h3><pre id="diagnostics">登录后加载诊断信息…</pre><button id="refresh" type="button">刷新状态</button> <button id="show-audit" type="button">查看操作记录</button><label for="audit-outcome">结果筛选</label><select id="audit-outcome"><option value="">全部结果</option><option value="success">成功</option><option value="rejected">已拒绝</option><option value="error">错误</option></select><label for="audit-route">接口筛选（可选）</label><input id="audit-route" maxlength="80" placeholder="例如 tasks.list"><button id="audit-apply" type="button">筛选记录</button><p id="audit-count" class="muted">尚未加载</p><button id="audit-prev" type="button" disabled>上一页</button> <button id="audit-next" type="button" disabled>下一页</button> <button id="logout" type="button">退出登录</button><pre id="audit-output" class="hidden">尚未加载操作记录。</pre></section>
@@ -416,7 +462,7 @@ a { color: var(--accent); }
 <button id="skill-remote-batch-submit" type="submit">批量下载并隔离</button>
 <p id="skill-remote-batch-status" class="muted" role="status">按行顺序导入；所有项目共享 25 MiB 累计下载上限。单项失败不会撤销已成功的隔离导入。</p>
 </form><details><summary>手动登记已有归档摘要（仅元数据）</summary><form id="skill-form"><label for="skill-name">Skill 名称</label><input id="skill-name" maxlength="100" required><label for="skill-version">版本（可选）</label><input id="skill-version" maxlength="40"><label for="skill-hash">归档 SHA-256</label><input id="skill-hash" minlength="64" maxlength="64" pattern="[a-fA-F0-9]{64}" required><label for="skill-source">来源备注（可选）</label><input id="skill-source" maxlength="100"><button type="submit">登记元数据</button></form></details><p id="skill-error" class="error" role="status"></p><div class="skill-filters"><label for="skill-search">搜索 Skill 名称、版本、来源、摘要或能力</label><input id="skill-search" maxlength="100" placeholder="输入关键词"><label for="skill-state-filter">状态筛选</label><select id="skill-state-filter"><option value="">全部状态</option><option value="pending_review">待审核</option><option value="approved">已批准</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="rejected">已拒绝</option></select><button id="skill-filter-apply" type="button">筛选</button><label><input id="skill-select-visible" type="checkbox">选择本页</label><label for="skill-batch-state">批量目标状态</label><select id="skill-batch-state"><option value="approved">批准</option><option value="enabled">启用</option><option value="disabled">停用</option><option value="rejected">拒绝</option></select><label for="skill-batch-note">批量审核备注（可选）</label><input id="skill-batch-note" maxlength="500" placeholder="统一备注"><button id="skill-batch-apply" type="button" disabled>执行批量变更</button><span id="skill-selected-count" class="muted">已选择 0 个</span><p id="skill-count" class="muted">尚未加载</p><button id="skill-page-prev" type="button" disabled>上一页</button> <button id="skill-page-next" type="button" disabled>下一页</button></div><div id="skill-list"><p class="muted">尚未加载</p></div></section>
-<section class="card"><h2>安全说明</h2><p class="muted">任意系统命令和导入 Skill 执行默认关闭。已登记的常规文件操作需通过有效会话及参数校验。HTTP 不加密传输内容，因此仅限可信局域网，不要暴露到公网。</p></section>
+<section class="card" id="security-note"><h2>安全说明</h2><p class="muted">任意系统命令和导入 Skill 执行默认关闭。已登记的常规文件操作需通过有效会话及参数校验。HTTP 不加密传输内容，因此仅限可信局域网，不要暴露到公网。</p></section>
 <script>
 const setupCard=document.querySelector("#setup-card"),loginCard=document.querySelector("#login-card"),statusCard=document.querySelector("#status-card"),errorEl=document.querySelector("#login-error"),tokenEl=document.querySelector("#token"),newTokenEl=document.querySelector("#new-token");
 async function api(path,options={}){return fetch(path,{cache:"no-store",credentials:"same-origin",...options});}
