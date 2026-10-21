@@ -1,0 +1,17 @@
+node_modules/
+coverage/
+dist/
+build/
+*.fpk
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.tmp/
+tmp/
+data/
+secrets/
