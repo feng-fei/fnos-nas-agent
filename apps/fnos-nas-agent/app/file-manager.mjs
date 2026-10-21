@@ -126,7 +126,7 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
   if (typeof content !== "string") fail(400, "Text content must be a string");
   const buffer = Buffer.from(content, "utf8");
   if (buffer.length > MAX_TEXT_CREATE_BYTES) fail(413, "Text files are limited to 1 MiB");
-  if (content.includes("\\0")) fail(400, "Text content cannot contain NUL characters");
+  if (content.includes("\0")) fail(400, "Text content cannot contain NUL characters");
   const target = await destination(directory, name);
   const parent = await openValidatedDirectory(target);
   const targetPath = join(parent.path, target.name);
