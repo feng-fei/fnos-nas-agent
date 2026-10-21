@@ -163,19 +163,31 @@ async function refreshModels(){
      if(!choices.length){document.querySelector("#model-provider-error").textContent="连接成功，但服务商未返回可用模型 ID。";return;}
      actions.querySelector(".model-catalog-picker")?.remove();
      const picker=document.createElement("div");picker.className="model-catalog-picker";
+     const search=document.createElement("input");search.type="search";search.maxLength=160;
+     search.placeholder="搜索模型 ID 或提供方";search.setAttribute("aria-label","搜索模型 ID 或提供方");
      const label=document.createElement("label");label.textContent="选择服务商模型";
      const select=document.createElement("select");select.setAttribute("aria-label","选择服务商模型");
-     for(const model of choices.slice(0,100)){
-      const option=document.createElement("option");option.value=model.id;
-      option.textContent=model.id+(model.owned_by?" — "+model.owned_by:"");
-      option.selected=model.id===item.model;select.append(option);
-     }
-     if(!choices.some(model=>model.id===item.model))select.selectedIndex=0;
-     label.append(select);picker.append(label);
+     const count=document.createElement("p");count.className="muted";
      const apply=document.createElement("button");apply.type="button";apply.textContent="使用所选模型";
+     const renderChoices=()=>{
+      const previous=select.value||item.model,query=search.value.trim().toLocaleLowerCase();
+      const filtered=choices.slice(0,100).filter(model=>(model.id+" "+(model.owned_by||"")).toLocaleLowerCase().includes(query));
+      select.replaceChildren();
+      for(const model of filtered){
+       const option=document.createElement("option");option.value=model.id;
+       option.textContent=model.id+(model.owned_by?" — "+model.owned_by:"");
+       option.selected=model.id===previous;select.append(option);
+      }
+      if(!filtered.some(model=>model.id===previous))select.selectedIndex=0;
+      count.textContent="显示 "+filtered.length+" / "+Math.min(choices.length,100)+" 个模型"+(choices.length>100?"（仅显示前 100 个）":"");
+      apply.disabled=filtered.length===0;
+    };
+     search.addEventListener("input",renderChoices);
+     label.append(select);picker.append(search,label,count,apply);
+     renderChoices();
      apply.addEventListener("click",()=>{
       const modelId=select.value;
-      if(!choices.some(model=>model.id===modelId)){document.querySelector("#model-provider-error").textContent="请选择目录中返回的模型。";return;}
+      if(!choices.slice(0,100).some(model=>model.id===modelId)){document.querySelector("#model-provider-error").textContent="请选择目录中返回的模型。";return;}
       document.querySelector("#model-provider-id").value=item.id;
       document.querySelector("#model-provider-name").value=item.name;
       document.querySelector("#model-provider-endpoint").value=item.endpoint;
