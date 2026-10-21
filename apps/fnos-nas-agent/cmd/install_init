@@ -1,0 +1,4 @@
+#!/bin/bash
+set -eu
+# No privileged preparation or system mutation is required by this status-only app.
+exit 0

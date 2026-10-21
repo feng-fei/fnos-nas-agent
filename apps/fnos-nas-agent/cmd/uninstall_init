@@ -1,0 +1,4 @@
+#!/bin/bash
+set -eu
+# Preserve app data by default; no destructive cleanup is performed here.
+exit 0
