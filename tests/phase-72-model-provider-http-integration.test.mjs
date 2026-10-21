@@ -71,7 +71,7 @@ test("model provider CRUD and presets work over authenticated HTTP without expos
     method: "POST",
     body: JSON.stringify({ name: "Integration Provider", endpoint: "https://provider.example/v1/chat/completions", model: "model-test", apiKey: secret, enabled: true, fallback: false })
   });
-  assert.equal(created.status, 201, await created.text());
+  assert.equal(created.status, 201);
   const provider = (await created.json()).provider;
   assert.equal(provider.name, "Integration Provider");
   assert.equal(provider.hasApiKey, true);
@@ -86,7 +86,7 @@ test("model provider CRUD and presets work over authenticated HTTP without expos
     method: "PUT",
     body: JSON.stringify({ name: "Updated Provider", endpoint: provider.endpoint, model: "model-test-2", apiKey: "", enabled: true, fallback: false })
   });
-  assert.equal(updated.status, 200, await updated.text());
+  assert.equal(updated.status, 200);
   assert.equal((await updated.json()).provider.hasApiKey, true);
 
   const setDefault = await request("/api/models/" + provider.id + "/default", { method: "POST", body: "{}" });
