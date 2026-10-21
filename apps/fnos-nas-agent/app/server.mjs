@@ -22,6 +22,7 @@ import { createFileManager } from "./file-manager.mjs";
 import { createTrimCliAdapter } from "./trim-cli-adapter.mjs";
 import { createTrimCliLoginCommand, validateTrimCliLoginInput } from "./trim-cli-setup.mjs";
 import { createSkillInstaller } from "./skill-installer.mjs";
+import { fetchGitHubSkillArchive } from "./skill-remote-import.mjs";
 import { createActionApprovalService } from "./action-approval-service.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -33,6 +34,7 @@ let passwordRecord = null;
 const sessions = new Map();
 const authLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
 const modelActionLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
+const skillRemoteImportLimiter = createFixedWindowLimiter({ limit: 5, windowMs: 60_000, maxKeys: 1000 });
 const MAX_SESSIONS = 1000;
 const skillStore = dataDir ? createSkillStore(dataDir) : null;
 const auditLogger = dataDir ? createAuditLogger({ dataDir }) : null;
@@ -210,7 +212,7 @@ function auditRoute(pathname, method) {
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
   if (/^\/api\/skills\/[a-f0-9]{24}$/.test(pathname)) return "skills.remove";
-  if (pathname === "/api/skills/import") return "skills.import";
+  if (pathname === "/api/skills/import" || pathname === "/api/skills/import-remote") return "skills.import";
   if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
   if (/^\/api\/skills\/([a-f0-9]{24})\/install-cli$/.test(pathname)) return "skills.install-cli";
   if (pathname === "/api/models/presets") return "models.presets";
@@ -431,6 +433,39 @@ const server = createServer(async (req, res) => {
       const archiveBuffer = await rawBody(req, MAX_ARCHIVE_BYTES);
       const skill = await skillStore.importArchive({ name, version, sourceLabel }, archiveBuffer);
       return reply(res, 201, { skill, note: "Archive stored in quarantine; no extraction or execution occurred." });
+    }
+    if (url.pathname === "/api/skills/import-remote") {
+      const activeSession = sessionFor(req);
+      if (!activeSession) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!skillStore) return reply(res, 503, { error: "App data directory is not configured" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      if (!skillRemoteImportLimiter.allow(activeSession.key))
+        return reply(res, 429, { error: "GitHub Skill imports are limited to 5 attempts per minute." }, "application/json; charset=utf-8", { "retry-after": "60" });
+      let body;
+      try { body = await jsonBody(req); }
+      catch (error) { return reply(res, Number.isInteger(error?.statusCode) ? error.statusCode : 400, { error: "Invalid JSON body" }); }
+      if (!body || typeof body !== "object" || Array.isArray(body))
+        return reply(res, 400, { error: "Expected a JSON object." });
+      const name = typeof body.name === "string" ? body.name.trim() : "";
+      const version = typeof body.version === "string" ? body.version.trim() : "";
+      if (!name || name.length > 100 || version.length > 40)
+        return reply(res, 400, { error: "Skill name is required; name or version exceeds its length limit." });
+      try {
+        const archive = await fetchGitHubSkillArchive(body.url, { maxBytes: MAX_ARCHIVE_BYTES });
+        const sourceLabel = ("GitHub: " + archive.repository).slice(0, 100);
+        const skill = await skillStore.importArchive({ name, version, sourceLabel }, archive.buffer);
+        return reply(res, 201, {
+          skill, repository: archive.repository, archiveBytes: archive.bytes,
+          redirects: archive.redirects,
+          note: "GitHub archive stored in quarantine; no extraction or execution occurred."
+        });
+      } catch (error) {
+        const status = Number.isInteger(error?.statusCode) ? error.statusCode : 502;
+        return reply(res, status, { error: status >= 500 ? (error?.code?.startsWith("SKILL_REMOTE_") ? error.message : "Unable to import GitHub Skill archive.") : error.message });
+      }
     }
     if (url.pathname === "/api/skills/transitions/batch") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
