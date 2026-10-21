@@ -231,7 +231,7 @@ const server = createServer(async (req, res) => {
       }
       return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, POST" });
     }
-    const transitionMatch = url.pathname.match(/^\\/api\\/skills\\/([a-f0-9]{24})\\/transition$/);
+    const transitionMatch = url.pathname.match(/^\/api\/skills\/([a-f0-9]{24})\/transition$/);
     if (transitionMatch) {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
