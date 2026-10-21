@@ -117,6 +117,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 100 — Skill Source Provenance](docs/phase-100-skill-source-provenance.md)
 - [Phase 101 — Expanded Official fnOS Read-only Operations](docs/phase-101-official-readonly-tools.md)
 - [Phase 102 — Immutable GitHub Skill Commit Pinning](docs/phase-102-pin-skill-commit.md)
+- [Phase 103 — Bounded Skill Source Static Review](docs/phase-103-skill-source-static-review.md)
 
 ### Foundations
 - [Architecture](docs/architecture.md)
