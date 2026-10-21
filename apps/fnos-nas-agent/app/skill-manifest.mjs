@@ -50,16 +50,18 @@ function parseFrontmatter(text) {
   const end = lines.indexOf("---", 1);
   if (end < 0) return { fields: {}, hasFrontmatter: false };
   const fields = {};
+  const duplicateFields = [];
   for (const line of lines.slice(1, end)) {
     const match = line.match(/^([A-Za-z][A-Za-z0-9_-]{0,39})\s*:\s*(.*?)\s*$/);
     if (!match) continue;
     const key = match[1].toLowerCase();
     if (key !== "name" && key !== "description") continue;
+    if (Object.hasOwn(fields, key) && !duplicateFields.includes(key)) duplicateFields.push(key);
     let value = match[2];
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
     fields[key] = value.slice(0, key === "description" ? MAX_DESCRIPTION : 100);
   }
-  return { fields, hasFrontmatter: true };
+  return { fields, duplicateFields, hasFrontmatter: true };
 }
 
 /**
@@ -110,12 +112,14 @@ export function inspectSkillManifest(buffer) {
       findings: ["manifest-not-valid-utf8"], archiveEntryCount: archive.entryCount
     });
   }
-  const { fields, hasFrontmatter } = parseFrontmatter(content);
+  const { fields, duplicateFields = [], hasFrontmatter } = parseFrontmatter(content);
   if (!hasFrontmatter) findings.push("missing-or-invalid-frontmatter");
+  if (duplicateFields.length) findings.push("duplicate-frontmatter-field");
+  if (/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]/.test(content)) findings.push("control-characters-in-manifest");
   if (!fields.name) findings.push("missing-name-field");
   if (!fields.description) findings.push("missing-description-field");
   if (/(?:\bsudo\b|\brm\s+-rf\b|\bcurl\b.{0,80}\|\s*(?:ba)?sh\b|\bwget\b.{0,80}\|\s*(?:ba)?sh\b|\bchmod\s+777\b)/i.test(content)) {
-    findings.push("potentially-dangerous-command-text");
+  if (/(?:\\bsudo\\b|\\brm\\s+-rf\\b|\\bcurl\\b.{0,80}\\|\\s*(?:ba)?sh\\b|\\bwget\\b.{0,80}\\|\\s*(?:ba)?sh\\b|\\bchmod\\s+777\\b|\\bbase64\\s+-d\\b|\\bnc\\s+-e\\b|\\b(?:python|node)\\s+-c\\b|\\/dev\\/tcp\\/)/i.test(content) {
   }
   if (/(?:\bexec\b|\bspawn\b|\bchild_process\b|\beval\s*\()/i.test(content)) findings.push("execution-related-text");
   return Object.freeze({
