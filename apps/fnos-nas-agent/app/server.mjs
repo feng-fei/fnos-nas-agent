@@ -458,8 +458,9 @@ const server = createServer(async (req, res) => {
         const sourceLabel = ("GitHub: " + archive.repository).slice(0, 100);
         const skill = await skillStore.importArchive({ name, version, sourceLabel }, archive.buffer);
         return reply(res, 201, {
-          skill, repository: archive.repository, archiveBytes: archive.bytes,
-          redirects: archive.redirects,
+          skill, repository: archive.repository, branch: archive.branch,
+          resolvedFromRepository: archive.resolvedFromRepository,
+          archiveBytes: archive.bytes, redirects: archive.redirects,
           note: "GitHub archive stored in quarantine; no extraction or execution occurred."
         });
       } catch (error) {
