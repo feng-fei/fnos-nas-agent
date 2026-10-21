@@ -14,13 +14,24 @@ async function unusedPort() {
   return port;
 }
 
-test("CLI OAuth command route uses the private profile context, never runs the command, and closes the read-only loop", async t => {
+test("CLI OAuth command route uses private profile context and closes the read-only recovery loop", async t => {
   const dataDir = await mkdtemp(join(tmpdir(), "fnos-agent-cli-setup-"));
   const port = await unusedPort();
   const origin = "http://127.0.0.1:" + port;
   const cliPath = join(dataDir, "stub trim-cli");
   const sentinel = join(dataDir, "cli-was-executed");
-  const script = "#!/bin/sh\nprintf '%s\\n' '{\"system\":\"fnOS-test\"}'\n: > " + JSON.stringify(sentinel) + "\nexit 0\n";
+  const authFailure = join(dataDir, "auth-failure");
+  const script = [
+    "#!/bin/sh",
+    "if [ -f " + JSON.stringify(authFailure) + " ]; then",
+    "  printf '%s\\n' '401 unauthorized refresh_token=NEVER_DISPLAY_THIS' >&2",
+    "  exit 1",
+    "fi",
+    "printf '%s\\n' '{\"system\":\"fnOS-test\"}'",
+    ": > " + JSON.stringify(sentinel),
+    "exit 0",
+    ""
+  ].join("\n");
   await writeFile(cliPath, script, { mode: 0o700 });
   await chmod(cliPath, 0o700);
   const serverPath = join(process.cwd(), "apps/fnos-nas-agent/app/server.mjs");
@@ -95,4 +106,26 @@ test("CLI OAuth command route uses the private profile context, never runs the c
   assert.equal(statusPayload.trimCli.connectionStatus, "connected", "status endpoint must preserve the latest successful probe");
   assert.equal(statusPayload.trimCli.authenticated, true);
   assert.equal(statusPayload.trimCli.command, "system.info");
+
+  await writeFile(authFailure, "trigger");
+  const expired = await request("/api/agent/trim-cli/test", { method: "POST", headers: { cookie }, body: "{}" });
+  assert.equal(expired.status, 401);
+  const expiredPayload = await expired.json();
+  assert.equal(expiredPayload.connectionStatus, "auth_required");
+  assert.equal(expiredPayload.authenticated, false);
+  assert.match(expiredPayload.nextAction, /refresh/);
+  assert.doesNotMatch(JSON.stringify(expiredPayload), /NEVER_DISPLAY_THIS|refresh_token/);
+
+  const failedStatus = await request("/api/agent/status", { headers: { cookie } });
+  const failedStatusPayload = await failedStatus.json();
+  assert.equal(failedStatusPayload.trimCli.connectionStatus, "auth_required");
+  assert.equal(failedStatusPayload.trimCli.authenticated, false);
+  assert.equal(failedStatusPayload.trimCli.errorCategory, "auth_required");
+
+  await rm(authFailure, { force: true });
+  const recovered = await request("/api/agent/trim-cli/test", { method: "POST", headers: { cookie }, body: "{}" });
+  assert.equal(recovered.status, 200);
+  assert.equal((await recovered.json()).connectionStatus, "connected");
+  const recoveredStatus = await request("/api/agent/status", { headers: { cookie } });
+  assert.equal((await recoveredStatus.json()).trimCli.connectionStatus, "connected");
 });
