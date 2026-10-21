@@ -444,7 +444,9 @@ const server = createServer(async (req, res) => {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
-      const before = await trimCli.status();
+      let before;
+      try { before = await trimCli.status(); }
+      catch { return reply(res, 503, { ok: false, connectionStatus: "not_ready", authenticated: null, errorCategory: "status_unavailable", error: "无法读取官方 CLI 状态。", nextAction: "检查 Agent 日志、Skill 启用状态和私有数据目录。" }); }
       if (!before.available) return reply(res, 503, {
         ok: false,
         connectionStatus: before.connectionStatus || "not_ready",
@@ -591,13 +593,21 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === "/api/tools") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
-      if (req.method === "GET") return reply(res, 200, {
-        tools: readOnlyTools.list(),
-        executionEnabled: false,
-        readOnlyExecutionEnabled: true,
-        routineWriteExecutionEnabled: true,
-        destructiveActionConfirmationEnabled: true
-      });
+      if (req.method === "GET") {
+        let cliAvailable = false;
+        try { cliAvailable = (await trimCli.status()).available; } catch { /* unavailable providers stay disabled in the UI */ }
+        const tools = readOnlyTools.list().map(tool =>
+          tool.id.startsWith("fnos.") ? { ...tool, providerAvailable: cliAvailable } : tool
+        );
+        return reply(res, 200, {
+          tools,
+          executionEnabled: false,
+          readOnlyExecutionEnabled: true,
+          routineWriteExecutionEnabled: true,
+          destructiveActionConfirmationEnabled: true,
+          trimCliProviderAvailable: cliAvailable
+        });
+      }
       return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
     }
     const toolRunMatch = url.pathname.match(/^\/api\/tools\/([a-z][a-z0-9.-]{0,63})\/run$/);
