@@ -8,6 +8,7 @@ on:
       - "phase-3/**"
       - "phase-5/**"
       - "phase-6/**"
+      - "phase-7/**"
       - "fix/**"
       - "test/**"
     paths:
@@ -24,6 +25,7 @@ on:
       - "phase-3/**"
       - "phase-5/**"
       - "phase-6/**"
+      - "phase-7/**"
       - "fix/**"
       - "test/**"
     paths:
@@ -82,6 +84,7 @@ jobs:
           node --check "$app/app/server.mjs"
           node --check "$app/app/skills.mjs"
           node --check "$app/app/skill-archives.mjs"
+          node --check "$app/app/read-only-tools.mjs"
 
       - name: Prepare app payload and icons
         if: matrix.node-version == '26.x'

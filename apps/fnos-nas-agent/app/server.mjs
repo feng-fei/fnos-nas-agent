@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { randomBytes, timingSafeEqual, createHash, scryptSync } from "node:crypto";
 import { createSkillStore, skillStates } from "./skills.mjs";
 import { MAX_ARCHIVE_BYTES } from "./skill-archives.mjs";
+import { createReadOnlyToolRegistry } from "./read-only-tools.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -148,6 +149,7 @@ async function readOnlyDiagnostics() {
     storage
   };
 }
+const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics });
 function limited(req) {
   const key = req.socket.remoteAddress || "unknown", now = Date.now();
   let item = attempts.get(key);
@@ -270,9 +272,24 @@ const server = createServer(async (req, res) => {
         return reply(res, 415, { error: "Expected application/json" });
       return reply(res, 200, { skill: await skillStore.transition(transitionMatch[1], await jsonBody(req)) });
     }
-    if (req.method === "GET" && url.pathname === "/api/tools") {
+    if (url.pathname === "/api/tools") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
-      return reply(res, 200, { tools: [], executionEnabled: false });
+      if (req.method === "GET") return reply(res, 200, {
+        tools: readOnlyTools.list(),
+        executionEnabled: false,
+        readOnlyExecutionEnabled: true
+      });
+      return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+    }
+    const toolRunMatch = url.pathname.match(/^\/api\/tools\/([a-z][a-z0-9.-]{0,63})\/run$/);
+    if (toolRunMatch) {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const args = await jsonBody(req);
+      return reply(res, 200, { tool: toolRunMatch[1], result: await readOnlyTools.invoke(toolRunMatch[1], args) });
     }
     return reply(res, 404, { error: "Not found" });
   } catch (error) {

@@ -2,7 +2,7 @@
 
 A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mobile-friendly web interface, controlled NAS operations, and a reviewable Skill manager.
 
-> **Status: Phase 6 in progress.** The app has password-based web authentication, read-only diagnostics, Skill inventory/review, and bounded ZIP quarantine import. Skill archives are not extracted or executed; the tool registry remains empty and `executionEnabled=false`. Require Node.js 24/26 CI and Node 26 FPK packaging before merge.
+> **Status: Phase 7 in progress.** The FPK app has password/session authentication, read-only diagnostics, Skill inventory/review, bounded ZIP quarantine import, and a code-defined allowlist of three read-only tools. Uploaded Skills are not extracted or executed; arbitrary command execution remains disabled. Require Node.js 24/26 CI and Node 26 FPK packaging before merge.
 
 ## Goals
 
@@ -31,7 +31,7 @@ npm test
 npm start
 ```
 
-Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, set a management password (only a salted scrypt hash is stored), then log in. Authenticated users can view a read-only diagnostics snapshot for OS, CPU, memory, network interfaces, and disk capacity. NAS command execution, Skill execution, and model calls remain disabled. See [Phase 3 web authentication](docs/phase-3-web-auth.md) and [Phase 4 read-only diagnostics](docs/phase-4-read-only-diagnostics.md). HTTP is unencrypted; do not expose the service to untrusted networks or the public internet.
+Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, set a management password (only a salted scrypt hash is stored), then log in. Authenticated users can view a read-only diagnostics snapshot and invoke three allowlisted read-only tools for system status, storage summary, and network interfaces. Arbitrary command execution, Skill execution, and model calls remain disabled. See [Phase 3 web authentication](docs/phase-3-web-auth.md) and [Phase 4 read-only diagnostics](docs/phase-4-read-only-diagnostics.md). HTTP is unencrypted; do not expose the service to untrusted networks or the public internet.
 
 ## Planned first capability
 
@@ -48,7 +48,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 3 Skill Manager contract](docs/phase-3-skill-manager.md)
 - [Phase 3 web authentication](docs/phase-3-web-auth.md)
 - [Phase 5 Skill manager](docs/phase-5-skill-manager-api.md)
-- [Phase 6 safe Skill ZIP import](docs/phase-6-skill-archive-import.md)
+- [Phase 6 safe Skill ZIP import](docs/phase-6-skill-archive-import.md)\n- [Phase 7 read-only tool registry](docs/phase-7-read-only-tool-registry.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
 
