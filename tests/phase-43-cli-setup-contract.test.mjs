@@ -70,7 +70,7 @@ test("CLI OAuth command route uses the private profile context and never execute
     method: "POST", headers: { cookie },
     body: JSON.stringify({ host: "nas.example.com", port: 443, scheme: "https" })
   });
-  assert.equal(result.status, 200, await result.text());
+  assert.equal(result.status, 200, "login command generation should succeed");
   const payload = await result.json();
   assert.match(payload.command, /^'sudo' '-u' '[a-zA-Z0-9_-]+' '--' 'env' /);
   assert.ok(payload.command.includes("'HOME=" + dataDir + "'"));
