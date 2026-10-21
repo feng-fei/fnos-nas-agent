@@ -68,6 +68,10 @@ const definitions = [
     inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, name: { type: "string", minLength: 1, maxLength: 255 }, contentBase64: { type: "string", maxLength: 1398104 } }, required: ["path", "name", "contentBase64"], additionalProperties: false }
   },
   {
+    id: "files.create-text", title: "创建文本文件", description: "在允许的存储卷内创建 UTF-8 文本文件；最大 1 MiB，不覆盖已有文件。", risk: "write",
+    inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, name: { type: "string", minLength: 1, maxLength: 255 }, content: { type: "string", maxLength: 1048576 } }, required: ["path", "name", "content"], additionalProperties: false }
+  },
+  {
     id: "files.delete", title: "删除文件或空文件夹", description: "删除一个文件或空文件夹；不可通过此工具删除存储卷根目录。需要用户对具体目标二次确认。", risk: "destructive",
     inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path"], additionalProperties: false }
   }
