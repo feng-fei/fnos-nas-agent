@@ -54,6 +54,7 @@ on:
       - "docs/phase-26-release-artifact-verification.md"
       - "docs/phase-27-build-provenance-attestation.md"
       - "docs/phase-114-build-provenance-attestation.md"
+      - "docs/phase-116-attestation-verification.md"
       - ".github/workflows/build-fpk.yml"
   pull_request:
     branches:
@@ -98,6 +99,7 @@ on:
       - "docs/phase-26-release-artifact-verification.md"
       - "docs/phase-27-build-provenance-attestation.md"
       - "docs/phase-114-build-provenance-attestation.md"
+      - "docs/phase-116-attestation-verification.md"
       - ".github/workflows/build-fpk.yml"
   workflow_dispatch:
 
@@ -268,3 +270,15 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: artifact/fnos-nas-agent-test-node-26.fpk
+
+      - name: Verify generated provenance attestation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh attestation verify \
+            artifact/fnos-nas-agent-test-node-26.fpk \
+            --repo feng-fei/fnos-nas-agent \
+            --signer-workflow feng-fei/fnos-nas-agent/.github/workflows/build-fpk.yml \
+            --source-ref refs/heads/main

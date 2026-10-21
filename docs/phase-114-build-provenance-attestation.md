@@ -27,11 +27,7 @@ node scripts/verify-release-artifact.mjs \
   release-manifest.json
 ```
 
-Verify its signed build provenance separately:
-
-```sh
-gh attestation verify fnos-nas-agent-test-node-26.fpk -R feng-fei/fnos-nas-agent
-```
+The main-only workflow now immediately verifies the newly created attestation against the expected repository, signer workflow, and `refs/heads/main` using `gh attestation verify`. See [Phase 116 — Post-signing Attestation Verification](phase-116-attestation-verification.md) for the stricter automated gate and manual equivalent.
 
 Review repository identity, workflow identity, source revision/ref and event against the trust policy in use. An attestation proves provenance claims for the digest; it does not prove that source code is safe, that the build is bug-free, or that the package works on a particular fnOS version.
 
