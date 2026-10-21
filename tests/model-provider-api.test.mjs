@@ -82,7 +82,7 @@ test("model management API enforces session/origin, persists provider settings, 
     body: JSON.stringify({ name, endpoint: "https://provider.example/v1/chat/completions", model, apiKey: secret, enabled: true })
   });
   const oneResponse = await create("Provider One", "model-one");
-  assert.equal(oneResponse.status, 201, await oneResponse.text());
+  assert.equal(oneResponse.status, 201, "provider creation should succeed");
   const oneBody = await oneResponse.json();
   const one = oneBody.provider;
   assert.ok(one.id);
@@ -91,19 +91,19 @@ test("model management API enforces session/origin, persists provider settings, 
   assert.equal(JSON.stringify(oneBody).includes(secret), false);
 
   const twoResponse = await create("Provider Two", "model-two");
-  assert.equal(twoResponse.status, 201, await twoResponse.text());
+  assert.equal(twoResponse.status, 201, "second provider creation should succeed");
   const two = (await twoResponse.json()).provider;
   assert.equal(two.isDefault, false);
 
   const choose = await request("/api/models/" + two.id + "/default", { method: "POST", headers: { cookie } });
-  assert.equal(choose.status, 200, await choose.text());
+  assert.equal(choose.status, 200, "default selection should succeed");
   assert.equal((await choose.json()).provider.isDefault, true);
 
   const update = await request("/api/models/" + one.id, {
     method: "PUT", headers: { cookie },
     body: JSON.stringify({ name: "Provider One Renamed", endpoint: one.endpoint, model: one.model, enabled: true })
   });
-  assert.equal(update.status, 200, await update.text());
+  assert.equal(update.status, 200, "provider update should succeed");
   assert.equal((await update.json()).provider.hasApiKey, true, "blank key keeps the encrypted key");
 
   const providers = await request("/api/models", { headers: { cookie } });
