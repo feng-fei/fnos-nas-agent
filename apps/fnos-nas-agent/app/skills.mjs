@@ -1,4 +1,5 @@
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { saveQuarantinedArchive } from "./skill-archives.mjs";
 import { mkdir, readFile, writeFile, rename, chmod } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -43,6 +44,10 @@ export function createSkillStore(dataDir) {
         id: item.id, name: item.name, version: item.version,
         sourceLabel: item.sourceLabel, importedAt: item.importedAt,
         archiveSha256: item.archiveSha256, state: item.state,
+        quarantineFile: typeof item.quarantineFile === "string" ? item.quarantineFile : "",
+        archiveSizeBytes: Number.isSafeInteger(item.archiveSizeBytes) ? item.archiveSizeBytes : null,
+        archiveEntryCount: Number.isSafeInteger(item.archiveEntryCount) ? item.archiveEntryCount : null,
+        declaredUncompressedBytes: Number.isSafeInteger(item.declaredUncompressedBytes) ? item.declaredUncompressedBytes : null,
         declaredCapabilities: Array.isArray(item.declaredCapabilities) ? item.declaredCapabilities.slice(0, 20) : [],
         reviewNote: typeof item.reviewNote === "string" ? item.reviewNote.slice(0, MAX_NOTE) : "",
         reviewedAt: item.reviewedAt || null
@@ -86,7 +91,7 @@ export function createSkillStore(dataDir) {
     return { ...record, declaredCapabilities: [...record.declaredCapabilities] };
   }
 
-  async function transition(id, input) {
+  async function importArchive(input, buffer) {\n    const archive = await saveQuarantinedArchive(dataDir, buffer);\n    const record = await register({\n      name: input.name, version: input.version, sourceLabel: input.sourceLabel,\n      archiveSha256: archive.sha256, quarantineFile: archive.quarantineFile,\n      archiveSizeBytes: archive.sizeBytes, archiveEntryCount: archive.entryCount,\n      declaredUncompressedBytes: archive.declaredUncompressedBytes,\n      declaredCapabilities: input.declaredCapabilities\n    });\n    return { ...record, archiveEntries: archive.entries };\n  }\n\n  async function transition(id, input) {
     const item = records.find(record => record.id === id);
     if (!item) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
     const target = input?.state;
@@ -103,7 +108,7 @@ export function createSkillStore(dataDir) {
     return { ...item, declaredCapabilities: [...item.declaredCapabilities] };
   }
 
-  return { load, list, register, transition };
+  return { load, list, register, importArchive, transition };
 }
 
 export const skillStates = [...STATES];
