@@ -1,6 +1,7 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
-import { access, constants } from "node:fs/promises";
+import { access, constants, mkdir } from "node:fs/promises";
+import { join } from "node:path";
 
 const execFile = promisify(execFileCallback);
 const MAX_OUTPUT_BYTES = 1024 * 1024;
@@ -88,7 +89,13 @@ export function createTrimCliAdapter({
         maxBuffer: MAX_OUTPUT_BYTES,
         encoding: "utf8",
         windowsHide: true,
-        env: { PATH: process.env.PATH || "/usr/bin:/bin", LANG: "C.UTF-8", LC_ALL: "C.UTF-8" }
+        env: {
+          PATH: process.env.PATH || "/usr/bin:/bin",
+          HOME: process.env.AGENT_DATA_DIR || process.env.HOME || "/tmp",
+          XDG_CONFIG_HOME: process.env.AGENT_DATA_DIR ? join(process.env.AGENT_DATA_DIR, ".config") : (process.env.XDG_CONFIG_HOME || ""),
+          LANG: "C.UTF-8",
+          LC_ALL: "C.UTF-8"
+        }
       });
       const stdout = String(result.stdout || "").trim();
       if (!stdout) return { command: id, data: null, output: "" };
