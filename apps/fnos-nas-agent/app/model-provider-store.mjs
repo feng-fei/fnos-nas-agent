@@ -175,7 +175,7 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
         if (!raw.providers.length) await persist();
       } catch (error) {
         masterKey = null; loaded = false; unavailable = true;
-        const safeCause = typeof error?.code === "string" && /^[A-Z0-9_]+$/.test(error.code) ? error.code : error?.name === "SyntaxError" ? "INVALID_JSON" : "INVALID_STORE";
+        const safeCause = typeof error?.code === "string" && /^[A-Z0-9_]+$/.test(error.code) ? error.code : error?.name === "SyntaxError" ? "INVALID_JSON" : typeof error?.message === "string" ? error.message.replace(/[^a-zA-Z0-9]+/g, "_").slice(0, 64).toUpperCase() : "INVALID_STORE";
         fail(503, "Model settings could not be loaded safely (" + safeCause + "). Verify the private settings and encryption key files.", "MODEL_STORE_UNAVAILABLE");
       }
       return true;
