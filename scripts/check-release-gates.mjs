@@ -89,8 +89,10 @@ assert.match(ui, /textContent="静态清单："/);
 
 const policy = createPermissionPolicy();
 assert.equal(policy.evaluate({ risk: "read-only" }).allowed, true);
-assert.equal(policy.evaluate({ risk: "write", approved: true }).allowed, false);
-assert.equal(policy.evaluate({ risk: "destructive", approved: true }).allowed, false);
+assert.equal(policy.evaluate({ risk: "write", approved: true }).allowed, true);
+assert.equal(policy.evaluate({ risk: "write" }).requiresApproval, true);
+assert.equal(policy.evaluate({ risk: "destructive", approved: true }).allowed, true);
+assert.equal(policy.evaluate({ risk: "destructive" }).requiresApproval, true);
 assert.equal(policy.snapshot().executionEnabled, false);
 
 const fileBrowserSource = await read("apps/fnos-nas-agent/app/file-browser.mjs");
