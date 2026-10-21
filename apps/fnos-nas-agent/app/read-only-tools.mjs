@@ -1,5 +1,5 @@
 const TRIM_CLI_TOOLS = [
-  ["fnos.system.info", "fnos.system.info", "读取 fnOS 系统信息。", {}],
+  ["fnos.system.info", "system.info", "读取 fnOS 系统信息。", {}],
   ["fnos.file.ls", "file.ls", "列出 fnOS 文件条目（只读）。", { path: { type: "string", minLength: 1, maxLength: 2048 } }, ["path"]],
   ["fnos.file.ls-dir", "file.ls-dir", "列出 fnOS 目录分段（只读）。", { path: { type: "string", minLength: 1, maxLength: 2048 } }, ["path"]],
   ["fnos.file.usage", "file.usage", "读取 fnOS 卷容量统计（只读）。", { volumeId: { type: "integer", minimum: 1, maximum: 10000 } }, ["volumeId"]],
