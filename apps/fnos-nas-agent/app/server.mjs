@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { createReadStream } from "node:fs";
 import os from "node:os";
 import { statfs } from "node:fs/promises";
 import { readFile, writeFile, mkdir, rename, chmod, readdir } from "node:fs/promises";
@@ -14,6 +15,7 @@ import { createTaskManager } from "./task-manager.mjs";
 import { createFixedWindowLimiter } from "./request-limiter.mjs";
 import { createAuditLogger } from "./audit-log.mjs";
 import { createFileBrowser } from "./file-browser.mjs";
+import { createFileManager } from "./file-manager.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -166,6 +168,7 @@ async function readOnlyDiagnostics() {
 }
 const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics });
 const fileBrowser = createFileBrowser();
+const fileManager = createFileManager();
 const modelAdapter = createModelAdapter();
 const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter });
 const taskManager = createTaskManager({ execute: input => agentCore.run(input), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "" });
@@ -176,7 +179,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/session") return method === "POST" ? "login" : "other_api";
   if (pathname === "/api/logout") return "logout";
   if (pathname === "/api/diagnostics") return "diagnostics";
-  if (pathname === "/api/files") return "files.list";
+  if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
   if (pathname === "/api/skills/import") return "skills.import";
   if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
@@ -271,6 +274,33 @@ const server = createServer(async (req, res) => {
         const status = [400, 403, 404].includes(error?.statusCode) ? error.statusCode : 500;
         return reply(res, status, { error: status === 403 ? "Path is outside configured storage roots" : status === 404 ? "Directory not found" : status === 400 ? "Invalid directory path" : "Unable to list directory" });
       }
+    }
+    if (url.pathname === "/api/files/preview") {
+      if (!sessionFor(req)) return reply(res,401,{error:"Unauthorized"});
+      if(req.method!=="GET")return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"GET"});
+      try{return reply(res,200,await fileManager.preview(url.searchParams.get("path")||""));}
+      catch(e){const s=[400,403,404,413,415].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"Unable to preview file":e.message});}
+    }
+    if (url.pathname === "/api/files/download") {
+      if (!sessionFor(req)) return reply(res,401,{error:"Unauthorized"});
+      if(req.method!=="GET")return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"GET"});
+      try{const item=await fileManager.download(url.searchParams.get("path")||"");res.writeHead(200,{"content-type":"application/octet-stream","content-length":item.sizeBytes,"content-disposition":"attachment; filename*=UTF-8''"+encodeURIComponent(item.name),"cache-control":"no-store","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; frame-ancestors 'none'","referrer-policy":"no-referrer"});const stream=createReadStream(item.path);stream.on("error",()=>{if(!res.headersSent)reply(res,500,{error:"Unable to download file"});else res.destroy();});stream.pipe(res);return;}
+      catch(e){const s=[400,403,404].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"Unable to download file":e.message});}
+    }
+    if (url.pathname === "/api/files/upload") {
+      if(req.method!=="POST")return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"POST"});
+      if(!sessionFor(req))return reply(res,401,{error:"Unauthorized"});if(!sameOrigin(req))return reply(res,403,{error:"Forbidden origin"});
+      if((req.headers["content-type"]||"").split(";")[0].trim().toLowerCase()!=="application/octet-stream")return reply(res,415,{error:"Upload requires application/octet-stream"});
+      let name;try{name=decodeURIComponent(url.searchParams.get("name")||"");}catch{return reply(res,400,{error:"Invalid file name"});}
+      try{const buffer=await rawBody(req,fileManager.limits.maxUploadBytes);return reply(res,201,await fileManager.upload(url.searchParams.get("path")||"",name,buffer));}
+      catch(e){const s=[400,403,404,409,413].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"Unable to upload file":e.message});}
+    }
+    if (url.pathname === "/api/files/operation") {
+      if(req.method!=="POST")return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"POST"});
+      if(!sessionFor(req))return reply(res,401,{error:"Unauthorized"});if(!sameOrigin(req))return reply(res,403,{error:"Forbidden origin"});
+      if(!(req.headers["content-type"]||"").toLowerCase().startsWith("application/json"))return reply(res,415,{error:"Expected application/json"});
+      try{return reply(res,200,await fileManager.operate(await jsonBody(req)));}
+      catch(e){const s=[400,403,404,409].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"File operation failed":e.message});}
     }
     if (req.method === "GET" && url.pathname === "/api/diagnostics") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });

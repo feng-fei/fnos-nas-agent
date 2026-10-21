@@ -2,7 +2,7 @@
 
 A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mobile-friendly web interface, controlled NAS operations, and a reviewable Skill manager.
 
-> **Status: Phase 27 build provenance attestation in progress.** Phases 2–26 are integrated on `main`; task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, allowlisted read-only tools, rules-first Agent routing, an optional server-configured model adapter, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Require Node.js 24/26 CI and Node.js 26 FPK packaging before merge.
+> **Status: Practical NAS functionality in progress.** Phases 2–26 are integrated on `main`; task metadata persistence and crash recovery are implemented, and release gates cover the safety boundary. CI success is not equivalent to validation on a real fnOS NAS. The service includes password/session authentication, read-only diagnostics, Skill inventory/review and quarantined ZIP import, allowlisted read-only tools, rules-first Agent routing, an optional server-configured model adapter, bounded asynchronous tasks, privacy-safe audit metadata, and FPK integrity/release checks. Task inputs, prompts, result payloads, and raw exceptions are never persisted in task history. Arbitrary command execution and imported Skill execution remain disabled. Require Node.js 24/26 CI and Node.js 26 FPK packaging before merge.
 
 ## Goals
 
@@ -69,6 +69,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 25 release manifest and build provenance](docs/phase-25-release-manifest-and-provenance.md)
 - [Phase 26 release artifact verification](docs/phase-26-release-artifact-verification.md)
 - [Phase 28 practical read-only file browser](docs/phase-28-practical-file-browser.md)
+- [Practical file management](docs/practical-file-management.md)
 - [Phase 27 build provenance attestation](docs/phase-27-build-provenance-attestation.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
