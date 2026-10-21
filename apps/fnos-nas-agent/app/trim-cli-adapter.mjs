@@ -1,6 +1,6 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
-import { access, constants, mkdir } from "node:fs/promises";
+import { access, constants } from "node:fs/promises";
 import { join } from "node:path";
 
 const execFile = promisify(execFileCallback);
@@ -49,6 +49,7 @@ export function createTrimCliAdapter({
   profile = process.env.TRIM_CLI_PROFILE || "home",
   execFileImpl = execFile,
   accessImpl = access,
+  env = process.env,
   timeoutMs = DEFAULT_TIMEOUT_MS
 } = {}) {
   if (typeof binaryPath !== "string" || binaryPath.length > 4096) throw new TypeError("Invalid trim-cli binary path");
@@ -90,9 +91,9 @@ export function createTrimCliAdapter({
         encoding: "utf8",
         windowsHide: true,
         env: {
-          PATH: process.env.PATH || "/usr/bin:/bin",
-          HOME: process.env.AGENT_DATA_DIR || process.env.HOME || "/tmp",
-          XDG_CONFIG_HOME: process.env.AGENT_DATA_DIR ? join(process.env.AGENT_DATA_DIR, ".config") : (process.env.XDG_CONFIG_HOME || ""),
+          PATH: env.PATH || "/usr/bin:/bin",
+          HOME: env.AGENT_DATA_DIR || env.HOME || "/tmp",
+          XDG_CONFIG_HOME: env.AGENT_DATA_DIR ? join(env.AGENT_DATA_DIR, ".config") : (env.XDG_CONFIG_HOME || ""),
           LANG: "C.UTF-8",
           LC_ALL: "C.UTF-8"
         }
