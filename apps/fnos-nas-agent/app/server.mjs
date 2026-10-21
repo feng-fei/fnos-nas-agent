@@ -341,6 +341,14 @@ const server = createServer(async (req, res) => {
       try{return reply(res,200,await fileManager.operate(await jsonBody(req)));}
       catch(e){const s=[400,403,404,409].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"File operation failed":e.message});}
     }
+    if (url.pathname === "/api/files/operations/batch") {
+      if (req.method !== "POST") return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"POST"});
+      if (!sessionFor(req)) return reply(res,401,{error:"Unauthorized"});
+      if (!sameOrigin(req)) return reply(res,403,{error:"Forbidden origin"});
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json")) return reply(res,415,{error:"Expected application/json"});
+      try { return reply(res,200,await fileManager.operateBatch(await jsonBody(req))); }
+      catch (e) { const s=[400,413].includes(e?.statusCode)?e.statusCode:500; return reply(res,s,{error:s===500?"Batch file operation request failed":e.message}); }
+    }
     if (req.method === "GET" && url.pathname === "/api/diagnostics") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       return reply(res, 200, await readOnlyDiagnostics());
