@@ -25,6 +25,20 @@ test("trim-cli adapter invokes only fixed argv arrays without a shell", async ()
   assert.equal(call[2].timeout, 15000);
 });
 
+test("trim-cli adapter keeps OAuth profile storage under the private app data directory", async () => {
+  let call;
+  const cli = createTrimCliAdapter({
+    binaryPath: "/opt/trim-cli",
+    env: { PATH: "/usr/bin:/bin", AGENT_DATA_DIR: "/private/fnos-agent-data" },
+    accessImpl: async () => {},
+    execFileImpl: async (...args) => { call = args; return { stdout: "{}" }; }
+  });
+  await cli.runReadOnly("system.info");
+  assert.equal(call[2].env.HOME, "/private/fnos-agent-data");
+  assert.equal(call[2].env.XDG_CONFIG_HOME, "/private/fnos-agent-data/.config");
+  assert.equal(call[2].env.AGENT_MODEL_API_KEY, undefined);
+});
+
 test("trim-cli adapter rejects arbitrary commands and invalid arguments before execution", async () => {
   let calls = 0;
   const cli = createTrimCliAdapter({ binaryPath: "/opt/trim-cli", accessImpl: async () => {}, execFileImpl: async () => { calls++; return { stdout: "{}" }; } });

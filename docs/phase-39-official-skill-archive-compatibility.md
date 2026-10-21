@@ -8,14 +8,16 @@ The supplied official fnOS Skill ZIP is approximately 17.7 MB compressed and dec
 
 - Raise the compressed ZIP limit to 25 MiB and the total declared uncompressed limit to 64 MiB.
 - Keep the 500-entry limit, 1 MiB central-directory limit, path traversal checks, duplicate-name rejection, symlink/special-file rejection, compression-method restrictions, and local/central header consistency checks.
-- Update the mobile Skill import UI to show the actual size limit and maintain the quarantine-only behavior.
+- Update the mobile Skill import UI to show the actual size limit.
 - Add a regression assertion that limits remain large enough for the supplied official package.
 - Update the Phase 6 documentation and release-gate source assertions.
 
 ## Safety boundary
 
-The archive remains in private quarantine. Import still does not extract files, install the CLI, invoke OAuth, execute Skill instructions, or grant capabilities. Increasing size limits only allows the package to reach static review; it does not mark the package trusted or enabled.
+The archive remains in private quarantine. Import does not extract files, install the CLI, invoke OAuth, execute Skill instructions, or grant capabilities. Increasing size limits only allows the package to reach static review; it does not mark the package trusted or enabled.
 
-## Next integration requirement
+## Acceptance
 
-A separate, explicit install flow is still needed to extract only the supported Linux CLI binary after review, verify its integrity, and configure the adapter. The complete Skill archive must never be blindly extracted or executed.
+- The official package can pass bounded archive inspection and static manifest review.
+- ZIP path/type/structure validation and SHA-256 verification remain enabled.
+- Node.js 26 core tests pass; packaging checks are restored before release.

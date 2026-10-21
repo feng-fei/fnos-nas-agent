@@ -144,3 +144,11 @@ assert.match(fileManagerSource, /content\.includes\("\\0"\)/);
 assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\.upload/);
 const agentWriteToolTests = await read("tests/phase-33-practical-file-write-tools.test.mjs");
 assert.match(agentWriteToolTests, /Agent upload tool is a bounded routine write/);
+
+const skillInstallerSource = await read("apps/fnos-nas-agent/app/skill-installer.mjs");
+assert.match(skillInstallerSource, /extractZipEntry/);
+assert.match(skillInstallerSource, /Only a quarantined official fnOS Skill archive can provide the CLI/);
+assert.match(skillInstallerSource, /validateElf/);
+assert.match(await read("apps/fnos-nas-agent/app/server.mjs"), /skills\.install-cli/);
+assert.match(await read("apps/fnos-nas-agent/app/audit-log.mjs"), /"skills\.install-cli"/);
+assert.match(await read("apps/fnos-nas-agent/app/trim-cli-adapter.mjs"), /binaryPathProvider/);

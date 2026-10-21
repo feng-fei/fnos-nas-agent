@@ -17,6 +17,7 @@ import { createAuditLogger } from "./audit-log.mjs";
 import { createFileBrowser } from "./file-browser.mjs";
 import { createFileManager } from "./file-manager.mjs";
 import { createTrimCliAdapter } from "./trim-cli-adapter.mjs";
+import { createSkillInstaller } from "./skill-installer.mjs";
 import { createActionApprovalService } from "./action-approval-service.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -171,7 +172,16 @@ async function readOnlyDiagnostics() {
 }
 const fileBrowser = createFileBrowser();
 const fileManager = createFileManager();
-const trimCli = createTrimCliAdapter();
+const skillInstaller = dataDir ? createSkillInstaller({ dataDir }) : null;
+const trimCli = createTrimCliAdapter({
+  binaryPathProvider: async () => {
+    if (process.env.TRIM_CLI_PATH) return process.env.TRIM_CLI_PATH;
+    if (!skillStore) return "";
+    const enabled = skillStore.list({ limit: 500, state: "enabled" }).skills;
+    const official = enabled.find(item => item.name.toLowerCase() === "fnos" && item.manifestReview?.name?.toLowerCase() === "fnos");
+    return official ? join(dataDir, "skill-tools", official.id, "trim-cli") : "";
+  }
+});
 const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics, fileBrowser, fileManager, trimCli });
 const modelAdapter = createModelAdapter();
 const actionApprovals = createActionApprovalService({ tools: readOnlyTools });
@@ -190,6 +200,7 @@ function auditRoute(pathname, method) {
   if (/^\/api\/skills\/[a-f0-9]{24}$/.test(pathname)) return "skills.remove";
   if (pathname === "/api/skills/import") return "skills.import";
   if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
+  if (/^\/api\/skills\/([a-f0-9]{24})\/install-cli$/.test(pathname)) return "skills.install-cli";
   if (pathname === "/api/agent/status") return "agent.status";
   if (pathname === "/api/agent/message") return "agent.message";
   if (pathname === "/api/tasks/status") return "tasks.status";
@@ -380,6 +391,22 @@ const server = createServer(async (req, res) => {
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
       return reply(res, 200, { skill: await skillStore.transition(transitionMatch[1], await jsonBody(req)) });
+    }
+    const installCliMatch = url.pathname.match(/^\/api\/skills\/([a-f0-9]{24})\/install-cli$/);
+    if (installCliMatch) {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!skillStore || !skillInstaller) return reply(res, 503, { error: "App data directory is not configured" });
+      const record = skillStore.list({ limit: 500 }).skills.find(item => item.id === installCliMatch[1]);
+      if (!record) return reply(res, 404, { error: "Skill not found" });
+      try {
+        const installation = await skillInstaller.installCli(record);
+        return reply(res, 200, { installation, note: "仅提取了匹配当前 Linux 架构的 CLI 二进制；没有解压其他归档内容，也没有执行 Skill 指令。启用 Skill 后才会使用此 CLI。" });
+      } catch (error) {
+        const status = [400, 404, 409, 413].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 500 ? "Unable to install the official CLI binary safely" : error.message });
+      }
     }
     const skillDeleteMatch = url.pathname.match(/^\/api\/skills\/([a-f0-9]{24})$/);
     if (skillDeleteMatch) {

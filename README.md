@@ -77,6 +77,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 37 natural-language operations](docs/phase-37-natural-language-operations.md)
 - [Phase 38 core integration and fast feedback](docs/phase-38-core-integration-fast-feedback.md)
 - [Phase 39 official fnOS Skill archive compatibility](docs/phase-39-official-skill-archive-compatibility.md)
+- [Phase 40 reviewed official CLI installation](docs/phase-40-reviewed-cli-install.md)
 - [Phase 30 fnOS CLI path traversal guard](docs/phase-30-trim-cli-path-traversal-guard.md)
 - [Phase 29 mobile fnOS read-only tool usability](docs/phase-29-mobile-fnos-tools.md)
 - [Practical file management](docs/practical-file-management.md)
