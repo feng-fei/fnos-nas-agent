@@ -68,6 +68,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Skill lifecycle](docs/skill-lifecycle.md)
 - [Skill archive upload progress and cancellation](docs/phase-80-skill-archive-upload-progress.md)
 - [Sequential multi-Skill ZIP import](docs/phase-81-multi-skill-upload.md)
+- [Mobile file navigation breadcrumbs](docs/phase-82-file-breadcrumbs.md)
 - [Skill and task management UX](docs/skill-and-task-management-ux.md)
 - [fnOS tool mapping](docs/fnos-tool-mapping.md)
 - [Phase 45 — Model Provider Management](docs/phase-45-model-provider-manager.md)
