@@ -74,8 +74,18 @@ export function createSkillStore(dataDir) {
     }
   }
 
-  function list({ limit = 50, offset = 0, state } = {}) {
-    const filtered = state ? records.filter(item => item.state === state) : records;
+  function list({ limit = 50, offset = 0, state, q = "" } = {}) {
+    const query = typeof q === "string" ? q.trim().slice(0, 100).toLocaleLowerCase() : "";
+    const filtered = records.filter(item => {
+      if (state && item.state !== state) return false;
+      if (!query) return true;
+      const searchable = [
+        item.name, item.version, item.sourceLabel, item.archiveSha256, item.reviewNote,
+        item.manifestReview?.name, item.manifestReview?.description,
+        ...(item.declaredCapabilities || [])
+      ].filter(value => typeof value === "string").join("\\n").toLocaleLowerCase();
+      return searchable.includes(query);
+    });
     return { total: filtered.length, limit, offset, skills: filtered.slice(offset, offset + limit).map(item => ({ ...item, declaredCapabilities: [...item.declaredCapabilities] })) };
   }
 
