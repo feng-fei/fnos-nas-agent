@@ -41,7 +41,7 @@ export function validateGitHubRepositoryUrl(value) {
       url.port || url.search || url.hash)
     throw invalid("Only plain HTTPS github.com repository URLs are allowed.");
   const match = url.pathname.match(/^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/?$/);
-  if (!match || url.pathname.includes("..") || url.pathname.includes("\\\\"))
+  if (!match || url.pathname.includes("..") || url.pathname.includes("\\"))
     throw invalid("Use the repository root URL: https://github.com/OWNER/REPOSITORY.");
   return { url: "https://github.com/" + match[1] + "/" + match[2], repository: match[1] + "/" + match[2] };
 }
@@ -51,7 +51,7 @@ function validDefaultBranch(value) {
       !/^[A-Za-z0-9._/-]+$/.test(value) || value.startsWith("/") || value.endsWith("/") ||
       value.includes("..") || value.includes("//")) return false;
   return value.split("/").every(segment =>
-    segment && segment !== "." && segment !== ".." && !segment.endsWith(".") && !/\\.lock$/i.test(segment)
+    segment && segment !== "." && segment !== ".." && !segment.endsWith(".") && !/\.lock$/i.test(segment)
   );
 }
 
