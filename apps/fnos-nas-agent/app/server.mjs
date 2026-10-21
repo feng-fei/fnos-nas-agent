@@ -357,17 +357,27 @@ const server = createServer(async (req, res) => {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
       if (!auditLogger) return reply(res, 503, { error: "Audit logging is not configured" });
-      const requested = Number(url.searchParams.get("limit") || 50);
-      const limit = Number.isInteger(requested) ? Math.max(1, Math.min(100, requested)) : 50;
+      const requested = Number(url.searchParams.get("limit") || 20);
+      const requestedOffset = Number(url.searchParams.get("offset") || 0);
+      const outcome = url.searchParams.get("outcome") || undefined;
+      const routeFilter = url.searchParams.get("route") || undefined;
+      const limit = Number.isInteger(requested) ? Math.max(1, Math.min(50, requested)) : 20;
+      if (!Number.isInteger(requestedOffset) || requestedOffset < 0 || requestedOffset > 1000)
+        return reply(res, 400, { error: "Invalid audit pagination" });
+      if (outcome && !["success", "rejected", "error"].includes(outcome))
+        return reply(res, 400, { error: "Invalid audit outcome filter" });
+      if (routeFilter && (routeFilter.length > 80 || !/^[a-z][a-z0-9.-]*$/.test(routeFilter)))
+        return reply(res, 400, { error: "Invalid audit route filter" });
       const readAudit = async path => { try { return await readFile(path, "utf8"); } catch (e) { if (e.code === "ENOENT") return ""; throw e; } };
       try {
         const currentPath = auditLogger.filePath();
         const [rotated, current] = await Promise.all([readAudit(currentPath + ".1"), readAudit(currentPath)]);
-        const events = (rotated + "\n" + current).split("\n").filter(Boolean).slice(-limit).map(line => {
+        const allEvents = (rotated + "\n" + current).split("\n").filter(Boolean).map(line => {
           try { const item = JSON.parse(line); return { at: item.at, method: item.method, route: item.route, statusCode: item.statusCode, outcome: item.outcome }; }
           catch { return null; }
-        }).filter(Boolean);
-        return reply(res, 200, { events, limit });
+        }).filter(Boolean).reverse().filter(item => (!outcome || item.outcome === outcome) && (!routeFilter || item.route === routeFilter));
+        const events = allEvents.slice(requestedOffset, requestedOffset + limit);
+        return reply(res, 200, { events, total: allEvents.length, limit, offset: requestedOffset, outcome: outcome || null, route: routeFilter || null });
       } catch { return reply(res, 500, { error: "Unable to read audit history" }); }
     }
     if (url.pathname === "/api/skills") {
