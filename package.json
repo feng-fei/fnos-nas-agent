@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node src/server.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "check:release": "node scripts/check-release-gates.mjs"
   }
 }
