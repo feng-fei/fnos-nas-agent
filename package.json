@@ -8,7 +8,7 @@
     "node": ">=26"
   },
   "scripts": {
-    "start": "node src/server.mjs",
+    "start": "node apps/fnos-nas-agent/app/server.mjs",
     "test": "node --test",
     "check:release": "node scripts/check-release-gates.mjs",
     "verify:release-artifact": "node scripts/verify-release-artifact.mjs"
