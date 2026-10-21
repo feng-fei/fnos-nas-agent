@@ -202,6 +202,7 @@ function auditRoute(pathname, method) {
   if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
   if (/^\/api\/skills\/([a-f0-9]{24})\/install-cli$/.test(pathname)) return "skills.install-cli";
   if (pathname === "/api/agent/status") return "agent.status";
+  if (pathname === "/api/agent/trim-cli/test") return "agent.trim-cli-test";
   if (pathname === "/api/agent/message") return "agent.message";
   if (pathname === "/api/tasks/status") return "tasks.status";
   if (pathname === "/api/tasks") return "tasks.list";
@@ -421,9 +422,50 @@ const server = createServer(async (req, res) => {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
       let trimCliStatus;
-      try { trimCliStatus = await trimCli.status(); }
-      catch { trimCliStatus = { configured: false, available: false, reason: "Status unavailable" }; }
+      try {
+        const raw = await trimCli.status();
+        trimCliStatus = {
+          ...raw,
+          installationStatus: raw.available ? "installed" : raw.configured ? "unavailable" : "not_installed",
+          connectionStatus: "not_tested",
+          authenticated: null,
+          note: raw.available
+            ? "CLI 可执行，但尚未验证 OAuth 授权和 NAS API 连通性。"
+            : raw.configured ? "已配置 CLI 路径，但当前无法执行。" : "尚未找到已安装的官方 CLI。"
+        };
+      } catch {
+        trimCliStatus = { configured: false, available: false, installationStatus: "unknown", connectionStatus: "unknown", authenticated: null, reason: "Status unavailable" };
+      }
       return reply(res, 200, { ...agentCore.status(), trimCli: trimCliStatus });
+    }
+    if (url.pathname === "/api/agent/trim-cli/test") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      const before = await trimCli.status();
+      if (!before.available) return reply(res, 503, {
+        ok: false, connectionStatus: "not_ready",
+        error: before.reason || "官方 CLI 未安装或不可执行。"
+      });
+      try {
+        const result = await trimCli.runReadOnly("system.info");
+        return reply(res, 200, {
+          ok: true, connectionStatus: "connected", authenticated: true,
+          checkedAt: new Date().toISOString(), command: result.command,
+          data: result.data,
+          note: "只读探测成功；已验证 CLI 能访问 fnOS API。"
+        });
+      } catch (error) {
+        const status = [400, 401, 403, 404, 408, 429, 502, 503, 504].includes(error?.statusCode) ? error.statusCode : 502;
+        return reply(res, status, {
+          ok: false, connectionStatus: status === 504 ? "timeout" : "failed",
+          authenticated: false,
+          error: status === 504 ? "连接探测超时，请检查 NAS 网络和 CLI 状态。" :
+            status === 503 ? "CLI 尚不可用，请先安装官方 CLI。" :
+            "连接探测失败。请检查官方 CLI 的 OAuth profile、授权是否过期及 NAS API 连通性；敏感 CLI 输出已隐藏。",
+          code: error?.code || "TRIM_CLI_PROBE_FAILED"
+        });
+      }
     }
     if (url.pathname === "/api/agent/message") {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });

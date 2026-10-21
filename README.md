@@ -109,3 +109,4 @@ Phase 11 reads only a bounded `SKILL.md` manifest from a validated archive for s
 ## Development notes
 
 - [Phase 41 — Dynamic CLI Provider Integration Fix](docs/phase-41-trim-cli-provider-fix.md)
+- [Phase 42 — CLI Connection Health](docs/phase-42-cli-connection-health.md)

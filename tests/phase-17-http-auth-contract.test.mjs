@@ -84,6 +84,23 @@ test("HTTP auth contract: setup, session, origin checks and logout", async t => 
   assert.equal(agentStatusPayload.trimCli.configured, false);
   assert.match(agentStatusPayload.trimCli.reason, /TRIM_CLI_PATH is not configured/);
 
+  const cliStatus = await request("/api/agent/status", { headers: { cookie } });
+  assert.equal(cliStatus.status, 200);
+  const cliStatusPayload = await cliStatus.json();
+  assert.equal(cliStatusPayload.trimCli.connectionStatus, "not_tested");
+  assert.equal(cliStatusPayload.trimCli.authenticated, null);
+  assert.equal(cliStatusPayload.trimCli.installationStatus, "not_installed");
+
+  const cliTestWrongOrigin = await request("/api/agent/trim-cli/test", {
+    method: "POST", headers: { cookie, origin: "http://attacker.invalid" }, body: "{}"
+  });
+  assert.equal(cliTestWrongOrigin.status, 403, "CLI connection test must enforce same-origin");
+
+  const cliTestMissingBinary = await request("/api/agent/trim-cli/test", {
+    method: "POST", headers: { cookie }, body: "{}"
+  });
+  assert.equal(cliTestMissingBinary.status, 503, "connection test must distinguish a missing CLI");
+
   const missingSkillInstall = await request("/api/skills/aaaaaaaaaaaaaaaaaaaaaaaa/install-cli", {
     method: "POST", headers: { cookie }
   });
