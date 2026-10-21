@@ -242,7 +242,7 @@ async function refreshTools(){
     input.placeholder=input.required?"必填":"可选";
     label.append(input);form.append(label);
    }
-   const btn=document.createElement("button");btn.type="submit";btn.textContent=item.risk==="write"?"执行文件操作":item.risk==="destructive"?"请通过助手请求确认":"运行只读查询";if(item.risk==="destructive")btn.disabled=true;form.append(btn);
+   const btn=document.createElement("button");btn.type="submit";btn.textContent=item.risk==="write"?"执行文件操作":item.risk==="destructive"?"请通过助手请求确认":"运行只读查询";if(item.risk==="destructive")btn.disabled=true;if(item.providerAvailable===false){btn.disabled=true;btn.textContent="先安装官方 CLI";const availability=document.createElement("p");availability.className="muted";availability.textContent="此工具需要已审核、已安装并启用的官方 fnOS CLI；其他本地只读工具仍可使用。";row.append(availability);}form.append(btn);
    form.addEventListener("submit",async event=>{
     event.preventDefault();if(!form.reportValidity())return;
     const args={};
