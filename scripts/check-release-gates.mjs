@@ -114,3 +114,9 @@ assert.match(fileManagerTests, /requires explicit confirmation before deletion/)
 assert.match(server, /\/api\/files\/upload/);
 assert.match(server, /\/api\/files\/preview/);
 assert.match(ui, /file-upload-button/);
+
+assert.match(server, /\/api\/audit/);
+assert.match(server, /for \(const volume of await fileManager\.getRoots\(\)\)/);
+assert.match(await read("apps/fnos-nas-agent/app/audit-log.mjs"), /"files\.manage"/);
+assert.match(await read("apps/fnos-nas-agent/app/audit-log.mjs"), /"audit\.list"/);
+assert.match(ui, /show-audit/);

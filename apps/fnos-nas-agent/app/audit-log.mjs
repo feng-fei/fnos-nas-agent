@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const ROUTES = new Set([
-  "setup", "login", "logout", "diagnostics", "skills.list", "skills.register",
+  "setup", "login", "logout", "diagnostics", "audit.list", "files.list", "files.manage", "skills.list", "skills.register",
   "skills.import", "skills.transition", "agent.status", "agent.message",
   "tasks.status", "tasks.list", "tasks.cancel", "tasks.get", "tools.list",
   "tools.run", "other_api"
