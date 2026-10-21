@@ -55,6 +55,7 @@ on:
       - "docs/phase-27-build-provenance-attestation.md"
       - "docs/phase-114-build-provenance-attestation.md"
       - "docs/phase-116-attestation-verification.md"
+      - "docs/phase-123-fpk-bundled-runtime-smoke.md"
       - ".github/workflows/build-fpk.yml"
   pull_request:
     branches:
@@ -100,6 +101,7 @@ on:
       - "docs/phase-27-build-provenance-attestation.md"
       - "docs/phase-114-build-provenance-attestation.md"
       - "docs/phase-116-attestation-verification.md"
+      - "docs/phase-123-fpk-bundled-runtime-smoke.md"
       - ".github/workflows/build-fpk.yml"
   workflow_dispatch:
 
