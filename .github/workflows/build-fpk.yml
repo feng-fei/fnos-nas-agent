@@ -19,6 +19,7 @@ on:
       - "phase-15/**"
       - "phase-16/**"
       - "phase-17/**"
+      - "phase-18/**"
       - "fix/**"
       - "test/**"
     paths:
@@ -115,6 +116,7 @@ jobs:
           node --check "$app/app/skill-manifest.mjs"
           node --check "$app/app/request-limiter.mjs"
           node --check "$app/app/approval-ledger.mjs"
+          node --check scripts/verify-fpk-artifact.mjs
 
       - name: Prepare app payload and icons
         if: matrix.node-version == '26.x'
@@ -182,10 +184,8 @@ jobs:
           test -s dist/fnos-nas-agent-test.fpk
           sha256sum dist/fnos-nas-agent-test.fpk | tee dist/fnos-nas-agent-test.fpk.sha256
           file dist/fnos-nas-agent-test.fpk
+          node scripts/verify-fpk-artifact.mjs dist/fnos-nas-agent-test.fpk
           tar -tzf dist/fnos-nas-agent-test.fpk > dist/fpk-contents.txt
-          grep -qx "manifest" dist/fpk-contents.txt
-          grep -q "app.tgz" dist/fpk-contents.txt
-          grep -q "cmd/main" dist/fpk-contents.txt
           ls -lh dist/fnos-nas-agent-test.fpk*
 
       - name: Upload Node.js 26 test FPK
