@@ -38,7 +38,7 @@ function validateInput(id, input) {
 export function createTrimCliAdapter({
   binaryPath = process.env.TRIM_CLI_PATH || "",
   profile = process.env.TRIM_CLI_PROFILE || "home",
-  execFileImpl = execFile,,
+  execFileImpl = execFile,
   accessImpl = access,
   timeoutMs = DEFAULT_TIMEOUT_MS
 } = {}) {
