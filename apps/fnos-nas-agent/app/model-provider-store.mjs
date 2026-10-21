@@ -38,7 +38,7 @@ function idValue(value) {
 function publicProvider(item, activeProviderId) {
   return Object.freeze({
     id: item.id, name: item.name, endpoint: item.endpoint, model: item.model,
-    enabled: item.enabled, hasApiKey: Boolean(item.apiKey), isDefault: item.id === activeProviderId,
+    enabled: item.enabled, fallback: item.fallback === true, hasApiKey: Boolean(item.apiKey), isDefault: item.id === activeProviderId,
     createdAt: item.createdAt, updatedAt: item.updatedAt, lastTest: item.lastTest ? { ...item.lastTest } : null
   });
 }
@@ -68,9 +68,9 @@ async function responseText(response) {
   return Buffer.concat(chunks, size).toString("utf8");
 }
 
-export function validateModelProviderInput(input, { creating = false, currentHasKey = false } = {}) {
+export function validateModelProviderInput(input, { creating = false, currentHasKey = false, currentFallback = false } = {}) {
   if (!input || typeof input !== "object" || Array.isArray(input)) fail(400, "Request body must be an object.", "MODEL_INVALID_BODY");
-  const allowed = new Set(["name", "endpoint", "model", "apiKey", "enabled", "clearApiKey"]);
+  const allowed = new Set(["name", "endpoint", "model", "apiKey", "enabled", "clearApiKey", "fallback"]);
   if (Object.keys(input).some(key => !allowed.has(key))) fail(400, "Unknown model provider field.", "MODEL_UNKNOWN_FIELD");
   const name = text(input.name, "Provider name", 80);
   const apiEndpoint = endpoint(input.endpoint);
@@ -78,10 +78,11 @@ export function validateModelProviderInput(input, { creating = false, currentHas
   const apiKey = input.apiKey === undefined ? "" : text(input.apiKey, "API key", MAX_API_KEY_LENGTH, true);
   if (creating && !apiKey) fail(400, "API key is required when adding a provider.", "MODEL_KEY_REQUIRED");
   if (input.enabled !== undefined && typeof input.enabled !== "boolean") fail(400, "enabled must be boolean.", "MODEL_INVALID_FIELD");
+  if (input.fallback !== undefined && typeof input.fallback !== "boolean") fail(400, "fallback must be boolean.", "MODEL_INVALID_FIELD");
   if (input.clearApiKey !== undefined && typeof input.clearApiKey !== "boolean") fail(400, "clearApiKey must be boolean.", "MODEL_INVALID_FIELD");
   if (input.clearApiKey && apiKey) fail(400, "Send either a replacement API key or clearApiKey, not both.", "MODEL_INVALID_FIELD");
   if (!creating && !apiKey && !currentHasKey && !input.clearApiKey) fail(400, "This provider has no saved API key; enter one before enabling it.", "MODEL_KEY_REQUIRED");
-  return Object.freeze({ name, endpoint: apiEndpoint, model, apiKey, enabled: input.enabled ?? true, clearApiKey: input.clearApiKey === true });
+  return Object.freeze({ name, endpoint: apiEndpoint, model, apiKey, enabled: input.enabled ?? true, fallback: input.fallback ?? (creating ? false : currentFallback), clearApiKey: input.clearApiKey === true });
 }
 
 export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () => new Date().toISOString(), timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
@@ -161,7 +162,7 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
           const apiKey = item.apiKeyEncrypted ? decrypt(item.apiKeyEncrypted) : "";
           return {
             id: item.id, name: item.name, endpoint: endpoint(item.endpoint), model: item.model,
-            apiKey, enabled: item.enabled && Boolean(apiKey), createdAt: item.createdAt, updatedAt: item.updatedAt,
+            apiKey, enabled: item.enabled && Boolean(apiKey), fallback: item.fallback === true, createdAt: item.createdAt, updatedAt: item.updatedAt,
             lastTest: item.lastTest && typeof item.lastTest === "object" ? {
               ok: item.lastTest.ok === true, at: typeof item.lastTest.at === "string" ? item.lastTest.at : "",
               message: typeof item.lastTest.message === "string" ? item.lastTest.message.slice(0, 240) : ""
@@ -189,6 +190,16 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
     if (!item) return { enabled: false, endpoint: null, apiKey: null, model: null, timeoutMs: 15_000, providerId: null, providerName: null };
     return { enabled: true, endpoint: item.endpoint, apiKey: item.apiKey, model: item.model, timeoutMs: 15_000, providerId: item.id, providerName: item.name };
   }
+  function runtimeFallbackConfigs() {
+    if (!loaded || unavailable || !masterKey) return [];
+    return providers
+      .filter(provider => provider.id !== activeProviderId && provider.enabled && provider.apiKey && provider.fallback)
+      .slice(0, 3)
+      .map(item => ({
+        enabled: true, endpoint: item.endpoint, apiKey: item.apiKey, model: item.model,
+        timeoutMs: 15_000, providerId: item.id, providerName: item.name
+      }));
+  }
   async function add(input) {
     return series(async () => {
       ready(); const value = validateModelProviderInput(input, { creating: true });
@@ -205,9 +216,9 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
     return series(async () => {
       ready(); const id = idValue(idInput), existing = providers.find(item => item.id === id);
       if (!existing) fail(404, "Model provider not found.", "MODEL_PROVIDER_NOT_FOUND");
-      const value = validateModelProviderInput(input, { currentHasKey: Boolean(existing.apiKey) });
+      const value = validateModelProviderInput(input, { currentHasKey: Boolean(existing.apiKey), currentFallback: existing.fallback === true });
       const apiKey = value.clearApiKey ? "" : value.apiKey || existing.apiKey;
-      const updated = { ...existing, name: value.name, endpoint: value.endpoint, model: value.model, apiKey,
+      const updated = { ...existing, name: value.name, endpoint: value.endpoint, model: value.model, apiKey, fallback: value.fallback,
         enabled: value.enabled && Boolean(apiKey), updatedAt: now(),
         lastTest: existing.endpoint === value.endpoint && existing.model === value.model && !value.apiKey && !value.clearApiKey ? existing.lastTest : null };
       const oldProviders = providers, oldActive = activeProviderId;
@@ -273,7 +284,7 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
       return { provider: publicProvider(updated, activeProviderId), test: { ...result, durationMs: Math.max(0, Date.now() - started) } };
     });
   }
-  return Object.freeze({ load, list, runtimeConfig, add, update, remove, setDefault, test, status() {
+  return Object.freeze({ load, list, runtimeConfig, runtimeFallbackConfigs, add, update, remove, setDefault, test, status() {
     return { configured: loaded && !unavailable, providerCount: providers.length, activeProviderId };
   } });
 }
