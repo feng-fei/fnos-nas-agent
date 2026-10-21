@@ -5,6 +5,24 @@
 <section class="card hidden" id="setup-card"><h2>首次安全设置</h2><p>首次使用请设置管理密码（至少 10 个字符）。以后只需输入密码即可登录。</p><p class="warning">首次设置期间，页面可由可信局域网访问。当前版本不执行任意系统命令，也不会运行导入的 Skill。请勿将端口转发到公网或在不可信网络中设置。</p><form id="setup-form"><label for="new-token">设置管理密码</label><input id="new-token" type="password" minlength="10" maxlength="128" autocomplete="new-password" required><button type="submit">保存密码</button></form><p id="setup-error" class="error" role="status"></p></section>
 <section class="card" id="login-card"><h2>登录验证</h2><p class="muted" id="login-help">输入管理密码登录。密码不会保存在浏览器本地存储中。</p><form id="login-form"><label for="token">管理密码</label><input id="token" name="token" type="password" autocomplete="current-password" minlength="10" required><label><input id="remember" type="checkbox" style="width:auto;margin-right:8px">在此设备保持登录 30 天</label><p class="muted">仅在个人可信设备上勾选；共享设备请勿勾选。</p><button type="submit">登录</button></form><p id="login-error" class="error" role="status"></p></section>
 <section class="card hidden" id="status-card"><h2>服务状态</h2><p id="status">正在检查…</p><p id="detail" class="muted">任意系统命令执行关闭；已登记文件工具按权限策略执行。</p><h3>只读系统诊断</h3><pre id="diagnostics">登录后加载诊断信息…</pre><button id="refresh" type="button">刷新状态</button> <button id="show-audit" type="button">查看操作记录</button> <button id="logout" type="button">退出登录</button><pre id="audit-output" class="hidden">尚未加载操作记录。</pre></section>
+<section class="card hidden" id="models-card"><h2>大模型管理</h2>
+<p class="muted">添加并管理 OpenAI 兼容的 Chat Completions 服务商。API Key 只在提交时发送到本服务，并在 NAS 私有数据目录中加密保存；页面只显示是否已保存，不会再次读取密钥。</p>
+<form id="model-provider-form">
+<input id="model-provider-id" type="hidden">
+<label for="model-provider-name">服务商名称</label><input id="model-provider-name" maxlength="80" placeholder="例如 OpenAI、硅基流动、DeepSeek" required>
+<label for="model-provider-endpoint">API Endpoint（完整地址）</label><input id="model-provider-endpoint" type="url" maxlength="2048" placeholder="https://api.example.com/v1/chat/completions" required>
+<label for="model-provider-model">模型 ID</label><input id="model-provider-model" maxlength="160" placeholder="例如 gpt-4.1-mini" required>
+<label for="model-provider-key">API Key</label><input id="model-provider-key" type="password" maxlength="2048" autocomplete="new-password" placeholder="添加时必填；编辑时留空表示保留已保存密钥">
+<label><input id="model-provider-enabled" type="checkbox" style="width:auto;margin-right:8px" checked>启用此服务商</label>
+<label><input id="model-provider-clear-key" type="checkbox" style="width:auto;margin-right:8px">清除已保存的 API Key（需重新输入才能启用）</label>
+<button id="model-provider-save" type="submit">添加模型服务商</button>
+<button id="model-provider-reset" type="button">清空表单</button>
+</form>
+<p id="model-provider-error" class="error" role="status"></p>
+<p id="model-provider-status" class="muted">正在读取模型配置…</p>
+<button id="model-provider-refresh" type="button">刷新模型列表</button>
+<div id="model-provider-list"><p class="muted">登录后加载。</p></div>
+</section>
 <section class="card hidden" id="files-card"><h2>文件浏览</h2><p class="muted">支持浏览、文本预览、下载、上传、建文件夹、重命名、移动和删除。上传上限 25 MiB；删除需要确认。</p><div id="file-roots"></div><form id="file-form"><label for="file-path">当前目录</label><input id="file-path" maxlength="2048" placeholder="选择一个存储卷" autocomplete="off"><button type="submit">打开目录</button><button id="file-parent" type="button" disabled>上一级</button></form><div class="file-actions"><button id="file-mkdir" type="button">新建文件夹</button><label for="file-upload">上传文件（最大 25 MiB）</label><input id="file-upload" type="file"><button id="file-upload-button" type="button">上传所选文件</button></div><pre id="file-preview" class="hidden"></pre><p id="file-error" class="error" role="status"></p><div id="file-list"><p class="muted">登录后加载目录。</p></div></section>
 <section class="card hidden" id="tools-card"><h2>NAS 工具</h2><p class="muted">只读查询可直接执行；创建文件夹、重命名和移动属于常规文件操作。删除、系统配置变更和任意命令执行仍未开放。</p><div id="tool-list"><p class="muted">登录后加载工具清单…</p></div><pre id="tool-result">选择工具后显示结果。</pre></section>
 <section class="card hidden" id="agent-card"><h2>NAS 智能助手</h2><p class="muted" id="agent-status">规则优先；模型仅可请求已登记且参数校验通过的工具。</p><button id="trim-cli-test" type="button">检测官方 CLI 连接</button><p id="trim-cli-test-result" class="muted" role="status">尚未执行连接检测。CLI 可执行不代表 OAuth 已授权。</p>
