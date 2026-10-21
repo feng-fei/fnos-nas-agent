@@ -84,3 +84,25 @@ test("task history queries filter by status and paginate without exposing inputs
   assert.equal(JSON.stringify(all).includes("do-not-return"), false);
   assert.equal(JSON.stringify(manager.query({ status: "failed" })).includes("private input"), false);
 });
+
+test("clearTerminal removes only terminal tasks and preserves queued/running work", async () => {
+  let release;
+  const blocker = new Promise(resolve => { release = resolve; });
+  const manager = createTaskManager({
+    concurrency: 1,
+    execute: async input => { if (input.block) await blocker; return { ok: true }; },
+    id: (() => { let n = 0; return () => "clear-task-" + (++n); })()
+  });
+  const completed = manager.submit({});
+  for (let i = 0; i < 30 && manager.get(completed.taskId)?.status !== "completed"; i++) await tick();
+  const running = manager.submit({ block: true });
+  const queued = manager.submit({});
+  await tick();
+  const result = await manager.clearTerminal();
+  assert.equal(result.removed, 1);
+  assert.equal(result.retained, 2);
+  assert.equal(manager.get(completed.taskId), null);
+  assert.equal(manager.get(running.taskId).status, "running");
+  assert.equal(manager.get(queued.taskId).status, "queued");
+  release();
+});

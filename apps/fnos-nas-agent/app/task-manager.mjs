@@ -133,6 +133,17 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
       return { total: filtered.length, limit: bounded, offset: skipped, status: status || null,
         tasks: filtered.slice(skipped, skipped + bounded).map(publicTask) };
     },
+    async clearTerminal() {
+      await ready;
+      const removed = [...tasks.values()].filter(task => TERMINAL.has(task.status));
+      for (const task of removed) tasks.delete(task.taskId);
+      try { await persist(); }
+      catch {
+        for (const task of removed) tasks.set(task.taskId, task);
+        throw Object.assign(new Error("Unable to persist task history cleanup"), { statusCode: 500 });
+      }
+      return { removed: removed.length, retained: tasks.size };
+    },
     stats() { return { queued: queue.length, running: active, retained: tasks.size, concurrency }; }
   });
 }
