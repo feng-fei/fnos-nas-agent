@@ -16,11 +16,14 @@ export function createPermissionPolicy(overrides = {}) {
       if (!RISK_LEVELS.has(risk)) return Object.freeze({ allowed: false, requiresApproval: false, reason: "unknown-risk" });
       if (risk === "read-only" && policy.allowReadOnly)
         return Object.freeze({ allowed: true, requiresApproval: false, reason: "read-only-allowed" });
-      if (risk === "write" && policy.allowWrite && approved)
-        return Object.freeze({ allowed: true, requiresApproval: false, reason: "write-approved" });
+      // Ordinary, server-classified writes are part of the user's already-authorized
+      // assistant workflow. Do not add a confirmation prompt for every routine change.
+      if (risk === "write" && policy.allowWrite)
+        return Object.freeze({ allowed: true, requiresApproval: false, reason: "write-allowed" });
+      // Confirmation is reserved for destructive actions with meaningful impact.
       if (risk === "destructive" && policy.allowDestructive && approved)
         return Object.freeze({ allowed: true, requiresApproval: false, reason: "destructive-approved" });
-      if (risk === "write" || risk === "destructive")
+      if (risk === "destructive" && policy.allowDestructive)
         return Object.freeze({ allowed: false, requiresApproval: true, reason: "explicit-approval-required" });
       return Object.freeze({ allowed: false, requiresApproval: false, reason: "policy-denied" });
     },
