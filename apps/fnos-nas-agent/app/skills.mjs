@@ -169,7 +169,7 @@ export function createSkillStore(dataDir) {
     const { archive } = await readQuarantinedArchive(item);
     const files = archive.entries
       .filter(entry => !entry.name.endsWith("/") && isPreviewableSkillTextPath(entry.name))
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
       .map(entry => ({
         path: entry.name,
         sizeBytes: entry.uncompressedSize,
