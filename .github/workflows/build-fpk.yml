@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - phase-2/fpk-packaging
+      - "phase-2/**"
       - "fix/**"
       - "test/**"
     paths:
@@ -24,7 +25,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build and inspect x86 FPK (Node ${{ matrix.node-version }})
+    name: Validate and package (Node ${{ matrix.node-version }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -40,7 +41,7 @@ jobs:
       - name: Set up Node.js runtime
         uses: actions/setup-node@v4
         with:
-          # Compare maintained Node.js 24 LTS with Node.js 26 Current.
+          # Node 26 is the default packaged runtime; Node 24 remains a test-only regression line.
           node-version: ${{ matrix.node-version }}
 
       - name: Show Node.js runtime version
@@ -49,7 +50,20 @@ jobs:
       - name: Run core tests
         run: npm test
 
+      - name: Validate app scripts and entry syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="apps/fnos-nas-agent"
+          test -s "$app/app/server.mjs"
+          for script in "$app"/cmd/*; do
+            test -f "$script"
+            bash -n "$script"
+          done
+          node --check "$app/app/server.mjs"
+
       - name: Prepare app payload and icons
+        if: matrix.node-version == '26.x'
         shell: bash
         run: |
           set -euo pipefail
@@ -59,18 +73,13 @@ jobs:
           chmod 755 "$app/app/bin/node"
           python3 scripts/generate-fpk-icons.py "$app"
 
-          # fnpack validates these native package metadata files before archiving.
           test -s "$app/config/privilege"
           test -s "$app/config/resource"
           test -d "$app/wizard"
           python3 -m json.tool "$app/config/privilege" >/dev/null
           python3 -m json.tool "$app/config/resource" >/dev/null
 
-          for script in "$app"/cmd/*; do
-            test -f "$script"
-            chmod 755 "$script"
-            bash -n "$script"
-          done
+          for script in "$app"/cmd/*; do chmod 755 "$script"; done
           test -x "$app/cmd/main"
           test -x "$app/cmd/install_init"
           test -x "$app/cmd/install_callback"
@@ -84,6 +93,7 @@ jobs:
           "$app/app/bin/node" --check "$app/app/server.mjs"
 
       - name: Download and verify official fnpack
+        if: matrix.node-version == '26.x'
         shell: bash
         run: |
           set -euo pipefail
@@ -95,6 +105,7 @@ jobs:
           "$RUNNER_TEMP/fnpack" --help
 
       - name: Build FPK
+        if: matrix.node-version == '26.x'
         shell: bash
         run: |
           set -euo pipefail
@@ -110,6 +121,7 @@ jobs:
           cp "${packages[0]}" ../../dist/fnos-nas-agent-test.fpk
 
       - name: Inspect package and checksum
+        if: matrix.node-version == '26.x'
         shell: bash
         run: |
           set -euo pipefail
@@ -122,10 +134,11 @@ jobs:
           grep -q "cmd/main" dist/fpk-contents.txt
           ls -lh dist/fnos-nas-agent-test.fpk*
 
-      - name: Upload test FPK
+      - name: Upload Node.js 26 test FPK
+        if: matrix.node-version == '26.x'
         uses: actions/upload-artifact@v4
         with:
-          name: fnos-nas-agent-test-fpk-node-${{ matrix.node-version }}
+          name: fnos-nas-agent-test-fpk-node-26.x
           path: |
             dist/fnos-nas-agent-test.fpk
             dist/fnos-nas-agent-test.fpk.sha256
