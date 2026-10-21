@@ -6,7 +6,7 @@ import { createPermissionPolicy } from "../apps/fnos-nas-agent/app/permission-po
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = path => readFile(join(root, path), "utf8");
-const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs, releaseVerifier, releaseVerifierTests, releaseVerifierDocs] = await Promise.all([
+const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs, releaseVerifier, releaseVerifierTests, releaseVerifierDocs, provenanceDocs] = await Promise.all([
   read("package.json"),
   read(".github/workflows/build-fpk.yml"),
   read("apps/fnos-nas-agent/app/server.mjs"),
@@ -23,7 +23,8 @@ const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, audit
   read("docs/phase-25-release-manifest-and-provenance.md"),
   read("scripts/verify-release-artifact.mjs"),
   read("tests/phase-26-release-artifact-verification.test.mjs"),
-  read("docs/phase-26-release-artifact-verification.md")
+  read("docs/phase-26-release-artifact-verification.md"),
+  read("docs/phase-27-build-provenance-attestation.md")
 ].map(async promise => promise));
 const packageJson = JSON.parse(pkg);
 
@@ -50,6 +51,14 @@ assert.match(releaseVerifier, /checksum filename does not match/);
 assert.match(releaseVerifierTests, /rejects an artifact changed/);
 assert.match(releaseVerifierTests, /rejects a manifest with an incorrect size/);
 assert.match(releaseVerifierDocs, /not publisher identity/);
+assert.match(workflow, /actions\/attest-build-provenance@v2/);
+assert.match(workflow, /id-token: write/);
+assert.match(workflow, /attestations: write/);
+assert.match(workflow, /if: github\.event_name != 'pull_request'/);
+assert.match(workflow, /Verify artifact bundle before attestation/);
+assert.match(provenanceDocs, /gh attestation verify/);
+assert.match(provenanceDocs, /does not prove that the source code is safe/);
+assert.match(readme, /\[Phase 27 build provenance attestation\]\(docs\/phase-27-build-provenance-attestation\.md\)/);
 assert.doesNotMatch(readme, /\\\\n- \[Phase 21/);
 assert.match(readme, /\[Phase 21 task persistence and crash recovery\]\(docs\/phase-21-task-persistence-recovery\.md\)/);
 assert.match(readme, /\[Phase 22 release-candidate acceptance\]\(docs\/phase-22-release-candidate-acceptance\.md\)/);

@@ -35,6 +35,8 @@ on:
       - "phase-25-*"
       - "phase-26/**"
       - "phase-26-*"
+      - "phase-27/**"
+      - "phase-27-*"
       - "fix/**"
       - "test/**"
     paths:
@@ -45,6 +47,8 @@ on:
       - "tests/**"
       - "scripts/**"
       - "docs/phase-25-release-manifest-and-provenance.md"
+      - "docs/phase-26-release-artifact-verification.md"
+      - "docs/phase-27-build-provenance-attestation.md"
       - ".github/workflows/build-fpk.yml"
   pull_request:
     branches:
@@ -72,6 +76,10 @@ on:
       - "phase-24-*"
       - "phase-25/**"
       - "phase-25-*"
+      - "phase-26/**"
+      - "phase-26-*"
+      - "phase-27/**"
+      - "phase-27-*"
       - "fix/**"
       - "test/**"
     paths:
@@ -82,6 +90,8 @@ on:
       - "tests/**"
       - "scripts/**"
       - "docs/phase-25-release-manifest-and-provenance.md"
+      - "docs/phase-26-release-artifact-verification.md"
+      - "docs/phase-27-build-provenance-attestation.md"
       - ".github/workflows/build-fpk.yml"
   workflow_dispatch:
 
@@ -233,3 +243,39 @@ jobs:
             dist/release-manifest.json
           if-no-files-found: error
           retention-days: 14
+
+  attest:
+    name: Attest FPK build provenance
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout source for verifier
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download verified Node.js 26 FPK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fnos-nas-agent-test-fpk-node-26.x
+          path: dist
+
+      - name: Verify artifact bundle before attestation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist/fnos-nas-agent-test.fpk
+          test -s dist/fnos-nas-agent-test.fpk.sha256
+          test -s dist/release-manifest.json
+          node scripts/verify-release-artifact.mjs dist/fnos-nas-agent-test.fpk dist/fnos-nas-agent-test.fpk.sha256 dist/release-manifest.json
+
+      - name: Generate GitHub build provenance attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/fnos-nas-agent-test.fpk
