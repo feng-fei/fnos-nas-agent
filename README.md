@@ -41,6 +41,10 @@ Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, set a management 
 
 The project aims to minimize runtime dependencies and primarily uses Node.js built-ins. Review `package.json` for the current scripts.
 
+## Remote access from a phone
+
+For access away from the local network, prefer a private VPN such as Tailscale or WireGuard. Do not port-forward the Agent's HTTP port directly to the public internet. See [Private remote access](docs/private-remote-access.md).
+
 ## Official fnOS CLI setup
 
 The reviewed official fnOS Skill archive can provide a platform-matched `trim-cli` binary. The Agent exposes only registered read-only CLI operations. OAuth uses the official interactive Authorization Code + PKCE flow: sign in through your own browser and paste the one-time code directly into the CLI terminal. The Agent does not collect passwords, authorization codes, or tokens.
@@ -87,6 +91,9 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Task result details](docs/phase-67-task-result-details.md)
 - [Gemini and Groq presets](docs/phase-68-gemini-groq-presets.md)
 - [Bounded task result retention](docs/phase-69-bounded-task-results.md)
+- [Model action rate limiting](docs/phase-76-model-action-rate-limit.md)
+- [Mobile upload progress](docs/phase-77-mobile-upload-progress.md)
+- [Mobile upload cancellation](docs/phase-78-cancel-file-upload.md)
 
 ### Foundations
 - [Architecture](docs/architecture.md)
