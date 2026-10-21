@@ -3,13 +3,13 @@
 ## Scope
 
 - Display bounded Skill manifest metadata and static review findings in the existing mobile-first Skill list.
-- Allow authenticated users to cancel queued tasks through a same-origin POST endpoint.
-- Keep cancellation semantics honest: queued tasks are removed before execution; running work cannot be force-stopped by this endpoint.
+- Allow authenticated users to cancel queued tasks or request cooperative cancellation of running tasks through a same-origin POST endpoint.
+- Queued tasks are removed before execution. For running tasks, the current operation is allowed to finish and the Agent must not start follow-up tool steps; the API returns HTTP 202 to distinguish a cancellation request from a completed cancellation.
 - Treat cancelled tasks as terminal history entries and show cancellation status in the Agent conversation.
 
 ## Safety
 
-Cancellation never interrupts a running operation and does not grant additional permissions. The task engine remains limited to existing read-only tools. Static Skill findings are advisory and are rendered as text, not HTML. The approval ledger remains separate and does not enable execution.
+Cancellation never kills an in-flight operating-system operation and does not grant additional permissions. A running cancellation is cooperative: the active operation finishes, then the Agent stops before any follow-up tool call. The task engine remains limited to existing read-only tools. Static Skill findings are advisory and are rendered as text, not HTML. The approval ledger remains separate and does not enable execution.
 
 ## Validation
 
