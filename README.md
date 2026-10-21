@@ -39,6 +39,7 @@ Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, set a management 
 The official fnOS Skill is the first capability pack. Its reviewed archive can provide a platform-matched trim-cli binary, which the Agent exposes only through an allowlisted read-only adapter. OAuth uses the official interactive Authorization Code + PKCE flow: the user signs in and pastes the one-time code directly into the CLI terminal. The Agent never collects credentials or executes arbitrary Skill instructions. See [Phase 40 reviewed CLI installation](docs/phase-40-reviewed-cli-install.md), [Phase 42 connection health](docs/phase-42-cli-connection-health.md), and [Phase 43 guided OAuth setup](docs/phase-43-guided-oauth-setup.md).
 
 ## Design documents\n\n- [Phase 49 — Bounded Batch File Operations](docs/phase-49-batch-file-operations.md)
+- [Phase 52 — Mobile Batch File Actions](docs/phase-52-mobile-batch-files.md)
 - [Phase 51 — Authenticated Batch File Operations API](docs/phase-51-batch-files-api.md)
 - [Phase 50 — Mobile Task Progress UI](docs/phase-50-mobile-task-progress-ui.md)
 
