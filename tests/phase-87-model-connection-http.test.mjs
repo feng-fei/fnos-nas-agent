@@ -82,7 +82,7 @@ test("model connection tests use the configured endpoint and sanitize provider f
         model: "mock-model", apiKey: "integration-secret-key", enabled: true, fallback: false
       })
     });
-    assert.equal(response.status, 201);
+    assert.equal(response.status, 201, await response.clone().text());
     return (await response.json()).provider;
   };
 
