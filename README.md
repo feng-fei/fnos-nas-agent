@@ -72,6 +72,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Sequential mobile multi-file upload](docs/phase-83-mobile-multi-file-upload.md)
 - [File browser pagination](docs/phase-84-file-browser-pagination.md)
 - [File transfer HTTP integration](docs/phase-85-file-transfer-http-integration.md)
+- [Skill import HTTP integration](docs/phase-86-skill-import-http-integration.md)
 - [Skill and task management UX](docs/skill-and-task-management-ux.md)
 - [fnOS tool mapping](docs/fnos-tool-mapping.md)
 - [Phase 45 — Model Provider Management](docs/phase-45-model-provider-manager.md)
