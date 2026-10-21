@@ -71,6 +71,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 28 practical read-only file browser](docs/phase-28-practical-file-browser.md)
 - [Practical file management](docs/practical-file-management.md)
 - [Skill and task management UX](docs/skill-and-task-management-ux.md)
+- AI can browse allowed file metadata and preview bounded text files through validated read-only tools.
 - [Phase 27 build provenance attestation](docs/phase-27-build-provenance-attestation.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
