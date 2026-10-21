@@ -66,7 +66,7 @@ assert.doesNotMatch(readme, /\\\\n- \[Phase 21/);
 assert.match(readme, /\[Phase 21 task persistence and crash recovery\]\(docs\/phase-21-task-persistence-recovery\.md\)/);
 assert.match(readme, /\[Phase 22 release-candidate acceptance\]\(docs\/phase-22-release-candidate-acceptance\.md\)/);
 assert.match(readme, /\[Phase 112 — FPK CI Build and Artifact Verification\]\(docs\/phase-112-fpk-ci-build-and-artifact-verification\.md\)/);
-assert.match(readme, /FPK test artifact is built in GitHub Actions/);
+assert.match(readme, /GitHub Actions builds an unsigned x86 CI test FPK/);
 assert.match(workflow, /node --check "\$file"/);
 assert.match(workflow, /node --check \/tmp\/fnos-agent-ui-check\.mjs/);
 
