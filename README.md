@@ -2,7 +2,7 @@
 
 A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mobile-friendly web interface, controlled NAS operations, and a reviewable Skill manager.
 
-> **Status: Phase 2 skeleton.** A minimal Node.js HTTP service, mobile status page, configuration validation, and deny-by-default tool registry are present. No NAS commands are executed, no Skill code is executed, and no FPK has been built. Tests are written but have not been run in this GitHub-only workflow.
+> **Status: Phase 4 development.** The FPK app has password-based web authentication and an authenticated read-only diagnostics endpoint. NAS command execution, Skill execution, and model calls remain disabled. Treat this branch as unvalidated until CI and FPK checks pass.
 
 ## Goals
 
@@ -31,7 +31,7 @@ npm test
 npm start
 ```
 
-Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, configure an access token in the setup screen; the token is stored in the private app data directory. The current FPK has no NAS command execution, Skill execution, or model-call capability. See [Phase 3 web authentication](docs/phase-3-web-auth.md) for setup and plain-HTTP limitations. Do not expose it to untrusted networks or the public internet.
+Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, set a management password (only a salted scrypt hash is stored), then log in. Authenticated users can view a read-only diagnostics snapshot for OS, CPU, memory, network interfaces, and disk capacity. NAS command execution, Skill execution, and model calls remain disabled. See [Phase 3 web authentication](docs/phase-3-web-auth.md) and [Phase 4 read-only diagnostics](docs/phase-4-read-only-diagnostics.md). HTTP is unencrypted; do not expose the service to untrusted networks or the public internet.
 
 ## Planned first capability
 
