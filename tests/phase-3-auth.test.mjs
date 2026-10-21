@@ -113,11 +113,11 @@ test("first-run setup stores only a salted password hash and protects session en
   assert.ok(toolCatalogue.tools.filter(tool => tool.risk === "write").every(tool => ["files.create-folder", "files.rename", "files.move"].includes(tool.id)));
 
   const pendingWithoutSession = await fetch(baseUrl + "/api/actions/pending");
-  assert.equal(pendingWithoutSession.status, 401); console.log("confirmation queue unauthenticated GET passed");
+  assert.equal(pendingWithoutSession.status, 401);
   const confirmWithoutSession = await fetch(baseUrl + "/api/actions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/confirm", {
-    method: "POST", headers: { origin: baseUrl, "content-type": "application/json" }, body: "{}"
+    method: "POST", headers: { origin: baseUrl, "content-type": "application/json" }
   });
-  assert.equal(confirmWithoutSession.status, 401); console.log("confirmation endpoint unauthenticated POST passed");
+  assert.equal(confirmWithoutSession.status, 401);
   const hiddenToolRun = await fetch(baseUrl + "/api/tools/system.status/run", {
     method: "POST", headers: { "content-type": "application/json" }, body: "{}"
   });
@@ -129,10 +129,10 @@ test("first-run setup stores only a salted password hash and protects session en
   const directDestructiveRun = await fetch(baseUrl + "/api/tools/files.delete/run", {
     method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: JSON.stringify({ path: "/vol1/never-delete.txt" })
   });
-  assert.equal(directDestructiveRun.status, 409); console.log("direct destructive invocation blocked");
+  assert.equal(directDestructiveRun.status, 409);
   const pendingActions = await fetch(baseUrl + "/api/actions/pending", { headers: { cookie } });
   assert.equal(pendingActions.status, 200);
-  assert.deepEqual((await pendingActions.json()).actions, []); console.log("authenticated pending queue passed");
+  assert.deepEqual((await pendingActions.json()).actions, []);
   const statusToolRun = await fetch(baseUrl + "/api/tools/system.status/run", {
     method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: "{}"
   });
