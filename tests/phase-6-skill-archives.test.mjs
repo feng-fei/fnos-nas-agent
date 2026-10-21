@@ -4,8 +4,17 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { inspectZipArchive, saveQuarantinedArchive, MAX_ARCHIVE_BYTES, MAX_DECLARED_UNCOMPRESSED_BYTES } from "../apps/fnos-nas-agent/app/skill-archives.mjs";
+import { inspectZipArchive, extractZipEntry, saveQuarantinedArchive, MAX_ARCHIVE_BYTES, MAX_DECLARED_UNCOMPRESSED_BYTES } from "../apps/fnos-nas-agent/app/skill-archives.mjs";
 import { createSkillStore } from "../apps/fnos-nas-agent/app/skills.mjs";
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
 
 function makeZip(name = "SKILL.md", data = "review me") {
   const nameBytes = Buffer.from(name);
@@ -15,7 +24,7 @@ function makeZip(name = "SKILL.md", data = "review me") {
   local.writeUInt16LE(20, 4);
   local.writeUInt16LE(0, 6);
   local.writeUInt16LE(0, 8);
-  local.writeUInt32LE(0, 14);
+  local.writeUInt32LE(crc32(dataBytes), 14);
   local.writeUInt32LE(dataBytes.length, 18);
   local.writeUInt32LE(dataBytes.length, 22);
   local.writeUInt16LE(nameBytes.length, 26);
@@ -28,7 +37,7 @@ function makeZip(name = "SKILL.md", data = "review me") {
   central.writeUInt16LE(20, 6);
   central.writeUInt16LE(0, 8);
   central.writeUInt16LE(0, 10);
-  central.writeUInt32LE(0, 16);
+  central.writeUInt32LE(crc32(dataBytes), 16);
   central.writeUInt32LE(dataBytes.length, 20);
   central.writeUInt32LE(dataBytes.length, 24);
   central.writeUInt16LE(nameBytes.length, 28);
@@ -59,6 +68,13 @@ test("ZIP inspection rejects unsafe paths and accepts a small ordinary archive",
   assert.throws(() => inspectZipArchive(makeZip("../outside.txt")), { statusCode: 400 });
   assert.throws(() => inspectZipArchive(makeZip("/absolute.txt")), { statusCode: 400 });
   assert.throws(() => inspectZipArchive(Buffer.from("not a zip")), { statusCode: 400 });
+});
+
+test("single-entry extraction verifies exact path, size and CRC without writing files", () => {
+  const archive = makeZip("fnos/SKILL.md", "review me");
+  assert.deepEqual(extractZipEntry(archive, "fnos/SKILL.md"), Buffer.from("review me"));
+  assert.throws(() => extractZipEntry(archive, "fnos/bin/trim-cli"), { statusCode: 404 });
+  assert.throws(() => extractZipEntry(archive, "fnos/SKILL.md", 2), { statusCode: 413 });
 });
 
 test("quarantine import computes digest from bytes and stores archive privately", async t => {
