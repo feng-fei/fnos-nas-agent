@@ -104,3 +104,8 @@ No license has been selected yet. Until one is added, do not assume this reposit
 ## Current safety boundary
 
 Phase 11 reads only a bounded `SKILL.md` manifest from a validated archive for static review. It does not extract or execute imported content. Manifest findings are advisory. Routine file writes include registered folder creation, text-file creation, rename, move, and bounded Base64 upload tools. Deleting a single file or empty directory requires a target-bound, one-time confirmation; arbitrary shell execution and imported Skill execution remain disabled.
+
+
+## Development notes
+
+- [Phase 41 — Dynamic CLI Provider Integration Fix](docs/phase-41-trim-cli-provider-fix.md)

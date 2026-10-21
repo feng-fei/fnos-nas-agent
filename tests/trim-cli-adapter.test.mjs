@@ -8,6 +8,25 @@ test("trim-cli adapter refuses to run when no executable is configured", async (
   await assert.rejects(cli.runReadOnly("system.info"), { statusCode: 503 });
 });
 
+test("trim-cli adapter resolves an enabled Skill-managed binary through the provider", async () => {
+  let calls = 0;
+  const cli = createTrimCliAdapter({
+    binaryPathProvider: async () => "/private/skill-tools/fnos/trim-cli",
+    accessImpl: async (path) => { assert.equal(path, "/private/skill-tools/fnos/trim-cli"); },
+    execFileImpl: async (path, args) => {
+      calls++;
+      assert.equal(path, "/private/skill-tools/fnos/trim-cli");
+      assert.deepEqual(args, ["--profile", "home", "system", "info"]);
+      return { stdout: '{"system":"fnOS"}' };
+    }
+  });
+  assert.deepEqual(await cli.status(), { configured: true, available: true, profile: "home" });
+  assert.deepEqual(await cli.runReadOnly("system.info"), {
+    command: "system.info", data: { system: "fnOS" }
+  });
+  assert.equal(calls, 1);
+});
+
 test("trim-cli adapter invokes only fixed argv arrays without a shell", async () => {
   let call;
   const cli = createTrimCliAdapter({
