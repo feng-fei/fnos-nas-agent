@@ -55,6 +55,7 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
     let raw;
     try { raw = await readFile(storageFile, "utf8"); }
     catch (error) { if (error.code === "ENOENT") return; throw error; }
+    await chmod(storageFile, 0o600);
     const parsed = JSON.parse(raw);
     if (parsed?.version !== 1 || !Array.isArray(parsed.tasks)) throw new Error("Invalid task persistence format");
     for (const saved of parsed.tasks.slice(-historyLimit)) {
@@ -78,11 +79,11 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
 
   function pump() {
     while (active < concurrency && queue.length) {
-      const task = queue.shift(); active++; task.status = "running"; task.startedAt = now(); void persist();
+      const task = queue.shift(); active++; task.status = "running"; task.startedAt = now(); void persist().catch(() => {});
       Promise.resolve().then(() => execute(task.input)).then(
         result => { task.status = "completed"; task.result = result; },
         error => { task.status = "failed"; task.error = error?.statusCode === 400 ? "请求参数无效。" : "任务执行失败；未执行任意系统命令。"; }
-      ).finally(() => { task.completedAt = now(); active--; prune(); void persist(); pump(); });
+      ).finally(() => { task.completedAt = now(); active--; prune(); void persist().catch(() => {}); pump(); });
     }
   }
 
@@ -92,7 +93,7 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
     submit(input) {
       if (queue.length >= queueLimit) throw Object.assign(new Error("Task queue is full"), { statusCode: 429 });
       const task = { taskId: id(), createdAt: now(), startedAt: null, completedAt: null, status: "queued", input, result: null, error: null };
-      tasks.set(task.taskId, task); queue.push(task); void persist(); pump(); return publicTask(task);
+      tasks.set(task.taskId, task); queue.push(task); void persist().catch(() => {}); pump(); return publicTask(task);
     },
     get(taskId) { const task = tasks.get(taskId); return task ? publicTask(task) : null; },
     cancel(taskId) {
@@ -103,7 +104,7 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
       if (index < 0) return { cancelled: false, task: publicTask(task) };
       queue.splice(index, 1);
       task.status = "cancelled"; task.completedAt = now(); task.error = "任务已取消。";
-      prune(); void persist();
+      prune(); void persist().catch(() => {});
       return { cancelled: true, task: publicTask(task) };
     },
     list({ limit = 20 } = {}) {
