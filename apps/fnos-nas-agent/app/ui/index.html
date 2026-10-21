@@ -25,6 +25,8 @@
 <p id="model-provider-status" class="muted">正在读取模型配置…</p>
 <p id="model-provider-metrics" class="muted">模型调用统计仅在当前进程内汇总；服务重启后清零。</p>
 <button id="model-provider-refresh" type="button">刷新模型列表</button>
+<button id="model-provider-test-batch" type="button">批量测试连接（每批最多 5 个）</button>
+<p id="model-provider-test-batch-status" class="muted" role="status">可按批次测试已启用且已配置密钥的模型；每批最多 5 个，避免触发连接测试限流。</p>
 <div id="model-provider-list"><p class="muted">登录后加载。</p></div>
 </section>
 <section class="card hidden" id="files-card"><h2>文件浏览</h2><p class="muted">支持浏览、文本预览、下载、上传、建文件夹、重命名、移动和删除。上传上限 25 MiB；删除需要确认。</p><div id="file-roots"></div><nav id="file-breadcrumbs" aria-label="目录路径"></nav><form id="file-form"><label for="file-path">当前目录</label><input id="file-path" maxlength="2048" placeholder="选择一个存储卷" autocomplete="off"><button type="submit">打开目录</button><button id="file-parent" type="button" disabled>上一级</button></form><div class="file-list-controls"><label for="file-search">搜索当前目录</label><input id="file-search" type="search" maxlength="160" placeholder="按文件名筛选…" autocomplete="off"><label for="file-type-filter">类型</label><select id="file-type-filter"><option value="all">全部</option><option value="directory">文件夹</option><option value="file">文件</option></select><label for="file-sort">排序</label><select id="file-sort"><option value="name-asc">名称 A–Z</option><option value="name-desc">名称 Z–A</option><option value="size-desc">大小从大到小</option><option value="modified-desc">最近修改</option></select></div><div class="file-pagination"><p id="file-page-info" class="muted">正在读取目录…</p><button id="file-page-prev" type="button" disabled>上一页</button> <button id="file-page-next" type="button" disabled>下一页</button></div><div class="file-actions"><button id="file-mkdir" type="button">新建文件夹</button><label for="file-upload">上传文件（最大 25 MiB）</label><input id="file-upload" type="file" multiple><button id="file-upload-button" type="button">上传所选文件</button> <button id="file-upload-cancel" type="button" disabled>取消上传</button><progress id="file-upload-progress" max="100" value="0" class="hidden"></progress><p id="file-upload-status" class="muted" role="status"></p></div><pre id="file-preview" class="hidden"></pre><p id="file-error" class="error" role="status"></p><div id="file-list"><p class="muted">登录后加载目录。</p></div></section>
@@ -262,6 +264,40 @@ document.querySelector("#model-provider-form").addEventListener("submit",async e
  }catch(error){document.querySelector("#model-provider-error").textContent=error.message||"保存模型配置失败";}
  finally{save.disabled=false;}
 });
+let modelBatchTestOffset = 0;
+async function runModelProviderBatchTest(){
+ const button=document.querySelector("#model-provider-test-batch");
+ const status=document.querySelector("#model-provider-test-batch-status");
+ button.disabled=true;
+ try{
+  const response=await api("/api/models"),data=await response.json();
+  if(!response.ok)throw Error(data.error||"读取模型配置失败");
+  const enabled=(data.providers||[]).filter(item=>item.enabled&&item.hasApiKey);
+  if(!enabled.length){status.textContent="没有可测试的模型；请先添加模型并启用、配置 API Key。";return;}
+  const start=modelBatchTestOffset>=enabled.length?0:modelBatchTestOffset;
+  const batch=enabled.slice(start,start+5);
+  const results=[];
+  for(let index=0;index<batch.length;index++){
+   const item=batch[index];
+   status.textContent="正在测试第 "+(index+1)+" / "+batch.length+" 个模型："+item.name+"…";
+   try{
+    const result=await api("/api/models/"+encodeURIComponent(item.id)+"/test",{method:"POST"});
+    const payload=await result.json();
+    if(!result.ok)throw Error(payload.error||"连接测试请求失败");
+    results.push({name:item.name,ok:payload.test?.ok===true,message:payload.test?.message||"未返回测试结果"});
+   }catch(error){results.push({name:item.name,ok:false,message:error.message||"连接测试请求失败"});}
+  }
+  modelBatchTestOffset=start+batch.length>=enabled.length?0:start+batch.length;
+  await refreshModels();
+  const passed=results.filter(item=>item.ok).length;
+  const failed=results.length-passed;
+  const details=results.map(item=>(item.ok?"✓ ":"✗ ")+item.name+"："+item.message).join("；");
+  const remaining=enabled.length-(start+batch.length);
+  status.textContent="本批完成：成功 "+passed+"，失败 "+failed+"。"+(remaining>0?"还有 "+remaining+" 个未测试，继续点击测试下一批。":"已覆盖当前所有启用模型。")+(details?" "+details:"");
+ }catch(error){status.textContent=error.message||"批量连接测试失败。";}
+ finally{button.disabled=false;}
+}
+document.querySelector("#model-provider-test-batch").addEventListener("click",runModelProviderBatchTest);
 document.querySelector("#model-provider-reset").addEventListener("click",clearModelProviderForm);
 document.querySelector("#model-provider-refresh").addEventListener("click",refreshModels);
 let generatedTrimCliCommand = "";
