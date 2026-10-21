@@ -1,5 +1,5 @@
 import test from "node:test";
-import assert from "node:assert/strict";
+import assert from "node:assert/strict";\nimport { mkdtemp, rm } from "node:fs/promises";\nimport { tmpdir } from "node:os";\nimport { join } from "node:path";\nimport { createSkillStore } from "../apps/fnos-nas-agent/app/skills.mjs";
 import { inspectSkillManifest } from "../apps/fnos-nas-agent/app/skill-manifest.mjs";
 import { inspectZipArchive } from "../apps/fnos-nas-agent/app/skill-archives.mjs";
 
@@ -49,4 +49,16 @@ test("oversized manifest is not decompressed", () => {
 });
 test("manifest parser relies on the archive structural validator", () => {
   assert.throws(() => inspectSkillManifest(Buffer.from("not zip")), { statusCode: 400 });
+});
+
+test("quarantine import persists manifest findings for the authenticated review workflow", async t => {
+  const dir = await mkdtemp(join(tmpdir(), "fnos-agent-manifest-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const store = createSkillStore(dir);
+  await store.load();
+  const skill = await store.importArchive({ name: "uploaded-label" }, makeZip());
+  assert.equal(skill.state, "pending_review");
+  assert.equal(skill.manifestReview.name, "example");
+  assert.equal(skill.manifestReview.status, "manifest_parsed");
+  assert.equal(store.list().skills[0].manifestReview.description, "Safe read-only helper");
 });
