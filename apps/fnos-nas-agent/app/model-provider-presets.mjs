@@ -32,6 +32,30 @@ const PRESETS = [
     docsUrl: "https://help.aliyun.com/en/model-studio/compatibility-of-openai-with-dashscope"
   },
   {
+    id: "moonshot",
+    name: "月之暗面 Moonshot AI",
+    endpoint: "https://api.moonshot.cn/v1/chat/completions",
+    modelPlaceholder: "填写 Moonshot 控制台中可用的模型 ID",
+    description: "Moonshot AI 官方 OpenAI 兼容接口",
+    docsUrl: "https://platform.moonshot.cn/docs/api/chat"
+  },
+  {
+    id: "zhipu",
+    name: "智谱 AI BigModel",
+    endpoint: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+    modelPlaceholder: "填写 BigModel 控制台中可用的模型 ID",
+    description: "智谱 AI 官方 OpenAI 兼容接口",
+    docsUrl: "https://open.bigmodel.cn/dev/api"
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    modelPlaceholder: "例如 openai/gpt-4.1-mini；以账户可用列表为准",
+    description: "多模型聚合服务，模型 ID 通常包含提供商前缀",
+    docsUrl: "https://openrouter.ai/docs/api-reference/overview"
+  },
+  {
     id: "custom",
     name: "自定义 OpenAI 兼容接口",
     endpoint: "",
