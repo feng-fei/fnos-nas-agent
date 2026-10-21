@@ -119,12 +119,12 @@ jobs:
         node-version: ["26.x"]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
 
       - name: Set up Node.js runtime
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           # Node 26 is the sole supported development and test runtime.
           node-version: ${{ matrix.node-version }}
@@ -216,7 +216,7 @@ jobs:
           node scripts/verify-release-artifact.mjs "$artifact" "$artifact.sha256" dist/release-manifest.json
 
       - name: Upload test FPK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fnos-nas-agent-test-fpk-node-26.x
           path: |
@@ -240,17 +240,17 @@ jobs:
       artifact-metadata: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
 
       - name: Set up Node.js runtime
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "26.x"
 
       - name: Download test FPK artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: fnos-nas-agent-test-fpk-node-26.x
           path: artifact
@@ -265,6 +265,6 @@ jobs:
             artifact/release-manifest.json
 
       - name: Generate build provenance attestation
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: artifact/fnos-nas-agent-test-node-26.fpk
