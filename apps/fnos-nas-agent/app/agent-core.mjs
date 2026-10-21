@@ -6,7 +6,7 @@ const DIRECT_INTENTS = [
   { pattern: /^(?:查看|查询|列出|显示)?\s*(?:所有|全部)\s*(?:Docker\s*)?容器(?:列表)?\s*[。！!？?]?$/i, tool: "fnos.docker.container-list-all", message: "正在列出所有 Docker 容器，包括已停止的容器。" },
   { pattern: /^(?:查看|查询|列出|显示)?\s*(?:Docker\s*)?容器(?:列表)?\s*[。！!？?]?$/i, tool: "fnos.docker.container-list", message: "正在列出运行中的 Docker 容器。" },
   { pattern: /^(?:查看|查询|显示)?\s*(?:Docker\s*)?(?:资源)?统计(?:情况)?\s*[。！!？?]?$/i, tool: "fnos.docker.stats", message: "正在读取 Docker 总体资源统计。" },
-  { pattern: /^(?:查看|查询|列出|显示)?\s*(?:Docker\s*)?(?:Compose|compose)(?:项目|列表)?\s*[。！!？?]?$/i, tool: "fnos.docker.compose-list", message: "正在列出 Docker Compose 项目。" },
+  { pattern: /^(?:查看|查询|列出|显示)?\s*(?:Docker\s*)?(?:Compose|compose)\s*(?:项目|列表)?\s*[。！!？?]?$/i, tool: "fnos.docker.compose-list", message: "正在列出 Docker Compose 项目。" },
   { pattern: /^(?:查看|查询|显示|检查)?\s*(?:系统)?内存(?:监控|使用情况|使用率)?\s*[。！!？?]?$/i, tool: "fnos.monitor.memory", message: "正在读取内存使用时间序列。" },
   { pattern: /^(?:查看|查询|显示|检查)?\s*(?:系统)?网络(?:监控|流量|速率)?\s*[。！!？?]?$/i, tool: "fnos.monitor.network", message: "正在读取网络运行态指标。" },
   { pattern: /^(?:查看|查询|显示|检查)?\s*(?:系统)?磁盘(?:监控|I\/O|读写情况)?\s*[。！!？?]?$/i, tool: "fnos.monitor.disk", message: "正在读取磁盘运行态指标。" },
