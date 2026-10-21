@@ -11,15 +11,15 @@ The repository builds the native x86 FPK on GitHub Actions; no build tools are i
 
 The workflow tests two runtime lines in separate jobs:
 
-- **Node.js 24.x LTS** — the stable baseline and preferred default until another version proves suitable.
-- **Node.js 26.x Current** — a compatibility candidate; do not assume it is faster or more suitable just because it is newer.
+- **Node.js 24.x LTS** — supported compatibility baseline.
+- **Node.js 26.x** — preferred runtime candidate after the user confirmed that a Node.js 26 build runs normally on the target fnOS device.
 
-Each job prints the exact resolved Node.js version and independently runs the core tests, syntax checks, FPK packaging, package inspection, and SHA-256 generation. Each produces a separately named 14-day artifact:
+The workflow's latest matrix run passed for both versions, including core tests, syntax checks, FPK packaging, package inspection, and SHA-256 generation. Each job prints the exact resolved Node.js version and produces a separately named 14-day artifact:
 
 - `fnos-nas-agent-test-fpk-node-24.x`
 - `fnos-nas-agent-test-fpk-node-26.x`
 
-A green result means the current test suite and packaging checks pass for that runtime. It does **not** establish comparative runtime performance, nor prove installation and lifecycle behavior on a real fnOS device. The FPK embeds the Node.js executable resolved by that matrix job.
+The Node.js 26 device smoke test and green CI make 26 a reasonable candidate for the next test FPK. This does **not** prove that 26 is faster or uses less memory than 24, nor does a successful smoke test prove every app-center lifecycle path. Keep the 24.x matrix job as a compatibility regression check.
 
 ## What the workflow does
 
@@ -31,7 +31,7 @@ A green result means the current test suite and packaging checks pass for that r
 
 ## Download the artifacts
 
-Open the successful workflow run in the repository's **Actions** tab and download the artifact corresponding to the Node.js version you want to inspect.
+Open the successful workflow run in the repository's **Actions** tab and download the artifact corresponding to the Node.js version you want to inspect. For the next fnOS test package, use the **Node 26.x** artifact; keep the Node 24.x artifact available as a fallback comparison.
 
 ## Network and safety boundary
 
@@ -41,4 +41,4 @@ The current test app is status-page-only and binds to `0.0.0.0` so computers and
 
 ## Follow-up real-device validation
 
-On a test fnOS device, validate install, start, status, stop, restart, and uninstall through the app center. Also confirm that the service listens on the intended interfaces and that `/api/health` returns HTTP 200 from a LAN client. Do not treat a green CI build as a substitute for lifecycle testing on the target fnOS version.
+Before treating an FPK as production-ready, validate install, start, status, stop, restart, and uninstall through the app center. Also confirm that the service listens on the intended interfaces and that `/api/health` returns HTTP 200 from a LAN client. A green CI build and a successful startup smoke test do not replace full lifecycle testing on the target fnOS version.
