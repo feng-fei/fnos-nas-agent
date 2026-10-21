@@ -34,6 +34,6 @@ test("queued cancellations remain immediate while missing IDs remain 404", () =>
   const end = server.indexOf("const taskMatch = url.pathname.match", start);
   const route = server.slice(start, end);
   assert.match(route, /if \(!result\) return reply\(res, 404, \{ error: "Task not found" \}\)/);
-  assert.match(route, /if \(result\.cancelled\) return/);
+  assert.match(route, /if \(!result\.cancelled\) return reply\(res, 409/);
   assert.match(taskManagerTests, /queued tasks/);
 });
