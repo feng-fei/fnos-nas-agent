@@ -1,17 +1,20 @@
 import { createServer } from "node:http";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename, chmod } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual, createHash } from "node:crypto";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
 const dataDir = process.env.AGENT_DATA_DIR || "";
+const sessionFile = dataDir ? join(dataDir, "sessions.json") : "";
 let accessToken = process.env.AGENT_ACCESS_TOKEN || "";
 const sessions = new Map();
 const attempts = new Map();
 const SESSION_TTL = 8 * 60 * 60 * 1000;
+const REMEMBER_TTL = 30 * 24 * 60 * 60 * 1000;
 const MAX_BODY = 4096;
+let saveQueue = Promise.resolve();
 
 function reply(res, status, body, type = "application/json; charset=utf-8", headers = {}) {
   res.writeHead(status, {
@@ -29,15 +32,43 @@ function cookies(header = "") {
   }
   return result;
 }
+function sessionKey(id) { return createHash("sha256").update(id).digest("hex"); }
 function sessionFor(req) {
   const id = cookies(req.headers.cookie).nas_agent_session;
-  const session = id && sessions.get(id);
+  const key = id && sessionKey(id);
+  const session = key && sessions.get(key);
   if (!session || session.expiresAt <= Date.now()) {
-    if (id) sessions.delete(id);
+    if (key && sessions.delete(key)) void persistSessions();
     return null;
   }
-  session.expiresAt = Date.now() + SESSION_TTL;
-  return { id, session };
+  return { key, session };
+}
+async function persistSessions() {
+  if (!sessionFile) return;
+  const snapshot = JSON.stringify([...sessions.entries()]);
+  saveQueue = saveQueue.then(async () => {
+    await mkdir(dataDir, { recursive: true, mode: 0o700 });
+    const tmp = sessionFile + ".tmp";
+    await writeFile(tmp, snapshot + "\n", { encoding: "utf8", mode: 0o600 });
+    await chmod(tmp, 0o600);
+    await rename(tmp, sessionFile);
+  });
+  return saveQueue;
+}
+async function loadSessions() {
+  if (!sessionFile) return;
+  try {
+    const raw = JSON.parse(await readFile(sessionFile, "utf8"));
+    if (!Array.isArray(raw)) return;
+    const now = Date.now();
+    for (const item of raw) {
+      if (!Array.isArray(item) || typeof item[0] !== "string" || !item[1] || !Number.isFinite(item[1].expiresAt)) continue;
+      if (item[1].expiresAt > now) sessions.set(item[0], { createdAt: item[1].createdAt, expiresAt: item[1].expiresAt });
+    }
+    if (sessions.size !== raw.length) await persistSessions();
+  } catch (error) {
+    if (error.code !== "ENOENT") console.error("Session store could not be loaded; starting with no active sessions.");
+  }
 }
 function sameOrigin(req) {
   if (!req.headers.origin || !req.headers.host) return false;
@@ -104,17 +135,25 @@ const server = createServer(async (req, res) => {
         return reply(res, 415, { error: "Expected application/json" });
       const body = await jsonBody(req);
       if (!tokenValid(body.token)) return reply(res, 401, { error: "Invalid access token" });
+      const remember = body.remember === true;
+      const ttl = remember ? REMEMBER_TTL : SESSION_TTL;
       const id = randomBytes(32).toString("base64url");
-      sessions.set(id, { createdAt: Date.now(), expiresAt: Date.now() + SESSION_TTL });
+      const key = sessionKey(id);
+      sessions.set(key, { createdAt: Date.now(), expiresAt: Date.now() + ttl });
+      try { await persistSessions(); }
+      catch {
+        sessions.delete(key);
+        return reply(res, 500, { error: "Unable to persist session securely" });
+      }
       attempts.delete(req.socket.remoteAddress || "unknown");
-      return reply(res, 200, { authenticated: true }, "application/json; charset=utf-8", {
-        "set-cookie": `nas_agent_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800`
+      return reply(res, 200, { authenticated: true, remembered: remember }, "application/json; charset=utf-8", {
+        "set-cookie": `nas_agent_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(ttl / 1000)}`
       });
     }
     if (req.method === "POST" && url.pathname === "/api/logout") {
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
       const active = sessionFor(req);
-      if (active) sessions.delete(active.id);
+      if (active) { sessions.delete(active.key); await persistSessions(); }
       return reply(res, 200, { authenticated: false }, "application/json; charset=utf-8", {
         "set-cookie": "nas_agent_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"
       });
@@ -128,8 +167,9 @@ const server = createServer(async (req, res) => {
     return reply(res, error.statusCode || 500, { error: error.statusCode ? error.message : "Internal server error" });
   }
 });
+await loadSessions();
 // First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
 server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; execution disabled`));
-function shutdown() { sessions.clear(); server.close(() => process.exit(0)); }
+function shutdown() { server.close(() => process.exit(0)); }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
