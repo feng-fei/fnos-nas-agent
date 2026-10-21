@@ -248,7 +248,8 @@ const server = createServer(async (req, res) => {
       if (sessions.size >= MAX_SESSIONS) return reply(res, 503, { error: "Session capacity is full; try again later." });
       const id = randomBytes(32).toString("base64url");
       const key = sessionKey(id);
-      sessions.set(key, { createdAt: Date.now(), expiresAt: Date.now() + ttl });
+      const createdAt = Date.now();
+      sessions.set(key, { createdAt, expiresAt: createdAt + ttl });
       try { await persistSessions(); }
       catch {
         sessions.delete(key);
