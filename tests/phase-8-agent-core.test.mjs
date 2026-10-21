@@ -8,12 +8,13 @@ function fixture({ enabled = false, plan = null } = {}) {
   const tools = {
     list: () => [
       { id: "system.status", title: "系统状态", description: "只读", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
-      { id: "storage.summary", title: "存储概况", description: "只读", inputSchema: { type: "object", properties: {}, additionalProperties: false } }
+      { id: "storage.summary", title: "存储概况", description: "只读", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+      { id: "files.list", title: "浏览文件目录", description: "只读", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, limit: { type: "integer", minimum: 1, maximum: 200 } }, additionalProperties: false } }
     ],
     async invoke(id, args) {
       calls.push({ id, args });
-      if (!["system.status", "storage.summary"].includes(id)) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
-      if (Object.keys(args).length) throw Object.assign(new Error("Invalid args"), { statusCode: 400 });
+      if (!["system.status", "storage.summary", "files.list"].includes(id)) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
+      if (id === "files.list" ? Object.keys(args).some(k => !["path", "limit"].includes(k)) : Object.keys(args).length) throw Object.assign(new Error("Invalid args"), { statusCode: 400 });
       return { ok: true, id };
     }
   };
@@ -51,6 +52,20 @@ test("model plans can invoke only registered tools with empty args", async () =>
   const result = await f.agent.run({ text: "帮我看看状态" });
   assert.equal(result.mode, "model");
   assert.equal(result.results[0].tool, "system.status");
+});
+
+test("model plans can use validated arguments for scoped read-only tools", async () => {
+  const f = fixture({ enabled: true, plan: { message: "正在浏览", toolCalls: [{ id: "files.list", args: { path: "/vol1", limit: 10 } }] } });
+  const result = await f.agent.run({ text: "列出文件" });
+  assert.equal(result.status, "completed");
+  assert.deepEqual(f.calls, [{ id: "files.list", args: { path: "/vol1", limit: 10 } }]);
+});
+
+test("direct file-list questions use the local tool without model configuration", async () => {
+  const f = fixture();
+  const result = await f.agent.run({ text: "列出文件" });
+  assert.equal(result.mode, "rules");
+  assert.equal(result.results[0].tool, "files.list");
 });
 
 test("unknown tool proposed by model is rejected without arbitrary execution", async () => {
