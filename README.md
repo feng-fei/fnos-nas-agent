@@ -68,6 +68,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 24 release hygiene and fnOS smoke checks](docs/phase-24-release-hygiene-and-smoke-checks.md)
 - [Phase 25 release manifest and build provenance](docs/phase-25-release-manifest-and-provenance.md)
 - [Phase 26 release artifact verification](docs/phase-26-release-artifact-verification.md)
+- [Phase 28 practical read-only file browser](docs/phase-28-practical-file-browser.md)
 - [Phase 27 build provenance attestation](docs/phase-27-build-provenance-attestation.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)

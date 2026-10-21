@@ -13,6 +13,7 @@ import { createAgentCore } from "./agent-core.mjs";
 import { createTaskManager } from "./task-manager.mjs";
 import { createFixedWindowLimiter } from "./request-limiter.mjs";
 import { createAuditLogger } from "./audit-log.mjs";
+import { createFileBrowser } from "./file-browser.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -164,6 +165,7 @@ async function readOnlyDiagnostics() {
   };
 }
 const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics });
+const fileBrowser = createFileBrowser();
 const modelAdapter = createModelAdapter();
 const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter });
 const taskManager = createTaskManager({ execute: input => agentCore.run(input), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "" });
@@ -174,6 +176,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/session") return method === "POST" ? "login" : "other_api";
   if (pathname === "/api/logout") return "logout";
   if (pathname === "/api/diagnostics") return "diagnostics";
+  if (pathname === "/api/files") return "files.list";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
   if (pathname === "/api/skills/import") return "skills.import";
   if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
@@ -256,6 +259,18 @@ const server = createServer(async (req, res) => {
       return reply(res, 200, { authenticated: false }, "application/json; charset=utf-8", {
         "set-cookie": `nas_agent_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${req.socket.encrypted ? "; Secure" : ""}`
       });
+    }
+    if (url.pathname === "/api/files") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      try {
+        const rawLimit = Number(url.searchParams.get("limit") || 100);
+        const result = await fileBrowser.list(url.searchParams.get("path") || "", rawLimit);
+        return reply(res, 200, result);
+      } catch (error) {
+        const status = [400, 403, 404].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 403 ? "Path is outside configured storage roots" : status === 404 ? "Directory not found" : status === 400 ? "Invalid directory path" : "Unable to list directory" });
+      }
     }
     if (req.method === "GET" && url.pathname === "/api/diagnostics") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
