@@ -131,3 +131,9 @@ assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\.
 assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\.preview/);
 assert.match(await read("apps/fnos-nas-agent/app/agent-core.mjs"), /argsMatchSchema/);
 assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /task-stats/);
+
+assert.match(await read("apps/fnos-nas-agent/app/server.mjs"), /\/api\/settings\/model/);
+assert.match(await read("apps/fnos-nas-agent/app/server.mjs"), /persistModelSettings/);
+assert.match(await read("apps/fnos-nas-agent/app/model-adapter.mjs"), /getConfiguration/);
+assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /model-settings-form/);
+assert.match(await read("apps/fnos-nas-agent/app/audit-log.mjs"), /"settings\.model"/);

@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { createReadStream } from "node:fs";
 import os from "node:os";
 import { statfs } from "node:fs/promises";
-import { readFile, writeFile, mkdir, rename, chmod, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename, chmod, readdir, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, timingSafeEqual, createHash, scryptSync } from "node:crypto";
@@ -22,6 +22,7 @@ const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
 const dataDir = process.env.AGENT_DATA_DIR || "";
 const sessionFile = dataDir ? join(dataDir, "sessions.json") : "";
 const passwordFile = dataDir ? join(dataDir, "password.json") : "";
+const modelSettingsFile = dataDir ? join(dataDir, "model-settings.json") : "";
 let passwordRecord = null;
 const sessions = new Map();
 const authLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
@@ -30,7 +31,7 @@ const skillStore = dataDir ? createSkillStore(dataDir) : null;
 const auditLogger = dataDir ? createAuditLogger({ dataDir }) : null;
 const SESSION_TTL = 8 * 60 * 60 * 1000;
 const REMEMBER_TTL = 30 * 24 * 60 * 60 * 1000;
-const MAX_BODY = 4096;
+const MAX_BODY = 8192;
 let saveQueue = Promise.resolve();
 
 function reply(res, status, body, type = "application/json; charset=utf-8", headers = {}) {
@@ -123,6 +124,30 @@ function makePasswordRecord(password) {
   const salt = randomBytes(16);
   return { algorithm: "scrypt", salt: salt.toString("hex"), hash: scryptSync(password, salt, 64).toString("hex") };
 }
+async function persistModelSettings() {
+  if (!modelSettingsFile) throw Object.assign(new Error("App data directory is not configured"), { statusCode: 503 });
+  await mkdir(dataDir, { recursive: true, mode: 0o700 });
+  const temp = modelSettingsFile + "." + randomBytes(8).toString("hex") + ".tmp";
+  try {
+    await writeFile(temp, JSON.stringify(modelAdapter.getConfiguration()) + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
+    await chmod(temp, 0o600);
+    await rename(temp, modelSettingsFile);
+    await chmod(modelSettingsFile, 0o600);
+  } catch (error) {
+    await rm(temp, { force: true }).catch(() => {});
+    throw error;
+  }
+}
+async function loadModelSettings() {
+  if (!modelSettingsFile) return;
+  try {
+    const saved = JSON.parse(await readFile(modelSettingsFile, "utf8"));
+    modelAdapter.configure(saved);
+  } catch (error) {
+    if (error.code !== "ENOENT") console.error("Model settings could not be loaded; model integration remains disabled until reconfigured.");
+  }
+}
+
 async function loadPassword() {
   if (!passwordFile) return;
   try {
@@ -181,6 +206,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/logout") return "logout";
   if (pathname === "/api/diagnostics") return "diagnostics";
   if (pathname === "/api/audit") return "audit.list";
+  if (pathname === "/api/settings/model") return "settings.model";
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
   if (/^\/api\/skills\/[a-f0-9]{24}$/.test(pathname)) return "skills.remove";
@@ -383,6 +409,26 @@ const server = createServer(async (req, res) => {
       try { return reply(res, 200, await skillStore.remove(skillDeleteMatch[1])); }
       catch (error) { const status = [404, 409].includes(error?.statusCode) ? error.statusCode : 500; return reply(res, status, { error: status === 500 ? "Unable to remove Skill record" : error.message }); }
     }
+    if (url.pathname === "/api/settings/model") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method === "GET") return reply(res, 200, { settings: modelAdapter.settings() });
+      if (req.method !== "PUT") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, PUT" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json")) return reply(res, 415, { error: "Expected application/json" });
+      if (!modelSettingsFile) return reply(res, 503, { error: "App data directory is not configured" });
+      const body = await jsonBody(req);
+      const previous = modelAdapter.getConfiguration();
+      try {
+        const apiKey = typeof body?.apiKey === "string" && body.apiKey.trim() ? body.apiKey : previous.apiKey;
+        const settings = modelAdapter.configure({ enabled: body?.enabled === true, endpoint: body?.endpoint, model: body?.model, apiKey });
+        try { await persistModelSettings(); }
+        catch { modelAdapter.configure(previous); return reply(res, 500, { error: "Unable to save model settings securely" }); }
+        return reply(res, 200, { settings });
+      } catch (error) {
+        const status = error?.statusCode === 400 ? 400 : 500;
+        return reply(res, status, { error: status === 400 ? error.message : "Invalid model settings" });
+      }
+    }
     if (url.pathname === "/api/agent/status") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
@@ -459,6 +505,7 @@ const server = createServer(async (req, res) => {
 });
 await loadPassword();
 await loadSessions();
+await loadModelSettings();
 if (skillStore) await skillStore.load();
 await taskManager.ready;
 // First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
