@@ -90,6 +90,8 @@ on:
       - "tests/**"
       - "scripts/**"
       - "docs/phase-25-release-manifest-and-provenance.md"
+      - "docs/phase-26-release-artifact-verification.md"
+      - "docs/phase-27-build-provenance-attestation.md"
       - ".github/workflows/build-fpk.yml"
   workflow_dispatch:
 
@@ -253,6 +255,11 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      - name: Checkout source for verifier
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Download verified Node.js 26 FPK artifact
         uses: actions/download-artifact@v4
         with:
