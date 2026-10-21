@@ -391,16 +391,40 @@ body:has(#status-card:not(.hidden)) .workspace-nav { display: flex; }
   color: var(--accent-hover);
 }
 section[id] { scroll-margin-top: 94px; }
+
+/* Independent feature pages with persistent navigation and shared controls */
+body.auth-screen main,body:not(.authenticated) main{display:flex;flex-direction:column;justify-content:center;align-items:stretch;width:min(calc(100% - 32px),520px);min-height:100vh;margin:0 auto;padding:36px 0 28px;gap:18px}
+body.auth-screen main>h1,body.auth-screen main>p:first-of-type,body.auth-screen .workspace-nav,body.auth-screen .app-topbar,body.auth-screen .page-panel,body:not(.authenticated) main>h1,body:not(.authenticated) main>p:first-of-type,body:not(.authenticated) .workspace-nav,body:not(.authenticated) .app-topbar,body:not(.authenticated) .page-panel{display:none!important}
+body.auth-screen #login-card,body.auth-screen #setup-card,body:not(.authenticated) #login-card,body:not(.authenticated) #setup-card{display:block;width:100%;margin:0;grid-column:auto;padding:25px}
+body.auth-screen #security-note,body:not(.authenticated) #security-note{display:none!important}
+body.authenticated main.workspace-root{display:block;width:auto;max-width:none;min-height:100vh;margin:0 0 0 250px;padding:0 0 50px}
+body.authenticated main.workspace-root>h1,body.authenticated main.workspace-root>p:first-of-type{display:none}
+body.authenticated .workspace-nav{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;position:fixed;left:0;top:0;bottom:0;z-index:50;width:232px;height:100vh;padding:24px 14px;gap:5px;overflow-y:auto;overflow-x:hidden;border:0;border-right:1px solid var(--border);border-radius:0;background:var(--surface);box-shadow:4px 0 24px rgb(15 23 42 / 3%);backdrop-filter:none}
+body.authenticated .workspace-nav::before{content:"FNOS NAS AGENT";display:block;padding:3px 10px 25px;margin-bottom:6px;color:var(--text);font-size:.98rem;font-weight:800;letter-spacing:-.025em}
+body.authenticated .workspace-nav::after{content:"安全的本地管理控制台";display:block;margin-top:auto;padding:16px 10px 2px;border-top:1px solid var(--border);color:var(--muted);font-size:.76rem}
+body.authenticated .workspace-nav a{flex:0 0 auto;padding:11px 12px;border-radius:10px;color:var(--muted);font-size:.88rem;font-weight:620;text-decoration:none;white-space:nowrap}
+body.authenticated .workspace-nav a:hover,body.authenticated .workspace-nav a[aria-current="page"]{background:var(--accent-soft);color:var(--accent-hover)}
+.app-topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:76px;padding:14px clamp(20px,3vw,42px);border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(14px)}
+.topbar-context{display:grid;gap:2px}.topbar-eyebrow{color:var(--muted);font-size:.68rem;font-weight:760;letter-spacing:.11em}.topbar-context strong{font-size:1.12rem;letter-spacing:-.025em}.topbar-actions{display:flex;align-items:center;gap:12px}.session-indicator{color:var(--muted);font-size:.8rem;white-space:nowrap}.session-indicator .online-dot{margin-right:7px}
+body.authenticated .page-panel{display:block;width:min(100%,1450px);margin:0 auto;padding:28px clamp(20px,3vw,42px) 55px}
+body.authenticated .page-panel>.card{display:none;width:100%;margin:0;padding:clamp(20px,2vw,30px);border-radius:16px}
+body.authenticated .page-panel>.card.active-page{display:block}
+body.authenticated .page-panel>.card.hidden{display:none!important}
+body.authenticated .page-panel h2{font-size:1.18rem}body.authenticated #logout{margin:0}
+@media(max-width:850px){body.authenticated main.workspace-root{margin-left:205px}body.authenticated .workspace-nav{width:190px;padding:20px 10px}body.authenticated .page-panel{padding:22px 18px 38px}body.authenticated .app-topbar{padding:12px 20px}}
+@media(max-width:640px){body.authenticated main.workspace-root{margin:0;padding-top:117px}body.authenticated .workspace-nav{top:0;bottom:auto;width:100%;height:auto;max-height:116px;padding:10px 12px 8px;flex-direction:row;align-items:center;gap:4px;overflow-x:auto;overflow-y:hidden;border-right:0;border-bottom:1px solid var(--border);box-shadow:0 5px 18px rgb(15 23 42 / 5%)}body.authenticated .workspace-nav::before{flex:0 0 auto;padding:7px 9px;margin:0 4px 0 0;font-size:.78rem}body.authenticated .workspace-nav::after{display:none}body.authenticated .workspace-nav a{flex:0 0 auto;padding:8px 10px;font-size:.8rem}body.authenticated .app-topbar{position:relative;min-height:60px;padding:10px 15px}body.authenticated .topbar-context strong{font-size:1rem}body.authenticated .topbar-eyebrow{font-size:.6rem}body.authenticated .session-indicator{display:none}body.authenticated .topbar-actions button{min-height:34px;padding:6px 9px;font-size:.8rem}body.authenticated .page-panel{padding:18px 12px 32px}body.authenticated .page-panel>.card{padding:16px;border-radius:13px}body.auth-screen main,body:not(.authenticated) main{width:min(calc(100% - 24px),520px);padding:24px 0}body.auth-screen #login-card,body.auth-screen #setup-card,body:not(.authenticated) #login-card,body:not(.authenticated) #setup-card{padding:19px}}
+
 </style></head>
 <body><main><h1>fnOS NAS Agent</h1><p class="muted">轻量 NAS 助手 · 安全验证测试版</p>
 <nav class="workspace-nav" aria-label="工作区快捷导航">
-  <a href="#status-card">运行概览</a>
-  <a href="#models-card">模型服务</a>
-  <a href="#files-card">文件管理</a>
-  <a href="#tools-card">NAS 工具</a>
-  <a href="#agent-card">智能助手</a>
-  <a href="#skills-card">Skill 管理</a>
-  <a href="#security-note">安全说明</a>
+  <a href="#status-card" data-page="status-card">运行概览</a>
+  <a href="#models-card" data-page="models-card">模型服务</a>
+  <a href="#files-card" data-page="files-card">文件管理</a>
+  <a href="#tools-card" data-page="tools-card">NAS 工具</a>
+  <a href="#agent-card" data-page="agent-card">智能助手</a>
+  <a href="#skills-card" data-page="skills-card">Skill 管理</a>
+  <a href="#audit-card" data-page="audit-card">操作审计</a>
+  <a href="#security-note" data-page="security-note">安全说明</a>
 </nav>
 <section class="card hidden" id="setup-card"><h2>首次安全设置</h2><p>首次使用请设置管理密码（至少 10 个字符）。以后只需输入密码即可登录。</p><p class="warning">首次设置期间，页面可由可信局域网访问。当前版本不执行任意系统命令，也不会运行导入的 Skill。请勿将端口转发到公网或在不可信网络中设置。</p><form id="setup-form"><label for="new-token">设置管理密码</label><input id="new-token" type="password" minlength="10" maxlength="128" autocomplete="new-password" required><button type="submit">保存密码</button></form><p id="setup-error" class="error" role="status"></p></section>
 <section class="card" id="login-card"><h2>登录验证</h2><p class="muted" id="login-help">输入管理密码登录。密码不会保存在浏览器本地存储中。</p><form id="login-form"><label for="token">管理密码</label><input id="token" name="token" type="password" autocomplete="current-password" minlength="10" required><label><input id="remember" type="checkbox" style="width:auto;margin-right:8px">在此设备保持登录 30 天</label><p class="muted">仅在个人可信设备上勾选；共享设备请勿勾选。</p><button type="submit">登录</button></form><p id="login-error" class="error" role="status"></p></section>
@@ -462,15 +486,15 @@ section[id] { scroll-margin-top: 94px; }
 <button id="skill-remote-batch-submit" type="submit">批量下载并隔离</button>
 <p id="skill-remote-batch-status" class="muted" role="status">按行顺序导入；所有项目共享 25 MiB 累计下载上限。单项失败不会撤销已成功的隔离导入。</p>
 </form><details><summary>手动登记已有归档摘要（仅元数据）</summary><form id="skill-form"><label for="skill-name">Skill 名称</label><input id="skill-name" maxlength="100" required><label for="skill-version">版本（可选）</label><input id="skill-version" maxlength="40"><label for="skill-hash">归档 SHA-256</label><input id="skill-hash" minlength="64" maxlength="64" pattern="[a-fA-F0-9]{64}" required><label for="skill-source">来源备注（可选）</label><input id="skill-source" maxlength="100"><button type="submit">登记元数据</button></form></details><p id="skill-error" class="error" role="status"></p><div class="skill-filters"><label for="skill-search">搜索 Skill 名称、版本、来源、摘要或能力</label><input id="skill-search" maxlength="100" placeholder="输入关键词"><label for="skill-state-filter">状态筛选</label><select id="skill-state-filter"><option value="">全部状态</option><option value="pending_review">待审核</option><option value="approved">已批准</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="rejected">已拒绝</option></select><button id="skill-filter-apply" type="button">筛选</button><label><input id="skill-select-visible" type="checkbox">选择本页</label><label for="skill-batch-state">批量目标状态</label><select id="skill-batch-state"><option value="approved">批准</option><option value="enabled">启用</option><option value="disabled">停用</option><option value="rejected">拒绝</option></select><label for="skill-batch-note">批量审核备注（可选）</label><input id="skill-batch-note" maxlength="500" placeholder="统一备注"><button id="skill-batch-apply" type="button" disabled>执行批量变更</button><span id="skill-selected-count" class="muted">已选择 0 个</span><p id="skill-count" class="muted">尚未加载</p><button id="skill-page-prev" type="button" disabled>上一页</button> <button id="skill-page-next" type="button" disabled>下一页</button></div><div id="skill-list"><p class="muted">尚未加载</p></div></section>
-<section class="card" id="security-note"><h2>安全说明</h2><p class="muted">任意系统命令和导入 Skill 执行默认关闭。已登记的常规文件操作需通过有效会话及参数校验。HTTP 不加密传输内容，因此仅限可信局域网，不要暴露到公网。</p></section>
+<section class="card hidden" id="security-note"><h2>安全说明</h2><p class="muted">任意系统命令和导入 Skill 执行默认关闭。已登记的常规文件操作需通过有效会话及参数校验。HTTP 不加密传输内容，因此仅限可信局域网，不要暴露到公网。</p></section>
 <script>
 const setupCard=document.querySelector("#setup-card"),loginCard=document.querySelector("#login-card"),statusCard=document.querySelector("#status-card"),errorEl=document.querySelector("#login-error"),tokenEl=document.querySelector("#token"),newTokenEl=document.querySelector("#new-token");
 async function api(path,options={}){return fetch(path,{cache:"no-store",credentials:"same-origin",...options});}
 async function refresh(){const s=document.querySelector("#status"),d=document.querySelector("#detail"),out=document.querySelector("#diagnostics");try{const r=await api("/api/health");if(!r.ok)throw Error();const h=await r.json();s.textContent=h.ok?"运行正常":"状态异常";d.textContent="版本 "+h.version+"；任意系统命令执行："+(h.executionEnabled?"已启用":"关闭")+"；已登记的常规文件工具可用。";const dr=await api("/api/diagnostics");if(!dr.ok)throw Error("诊断读取失败（HTTP "+dr.status+"）");const x=await dr.json();const gib=n=>(n/1024**3).toFixed(2)+" GiB";out.textContent=["系统："+x.system.platform+" "+x.system.release+" / "+x.system.arch,"Node.js："+x.system.nodeVersion+"；运行时间："+Math.floor(x.system.uptimeSeconds/3600)+" 小时","CPU："+x.cpu.model+"（逻辑核心 "+x.cpu.logicalCores+"）；负载 "+x.cpu.loadAverage.map(n=>n.toFixed(2)).join(" / "),"内存：已用 "+gib(x.memory.usedBytes)+" / "+gib(x.memory.totalBytes)+"（可用 "+gib(x.memory.freeBytes)+"）","网络："+(x.network.flatMap(n=>n.addresses.map(a=>n.name+" "+a.address)).join("；")||"未发现非回环地址"),"存储："+x.storage.map(v=>v.available?v.label+" 已用 "+gib(v.usedBytes)+" / "+gib(v.totalBytes)+"（可用 "+gib(v.freeBytes)+"）":v.label+" 无法读取").join("；")].join("\n");}catch(e){out.textContent=e.message||"诊断信息暂不可用";if(!s.textContent)s.textContent="无法连接服务";}}
-async function init(){try{const r=await api("/api/session");const x=await r.json();if(x.authenticated){loginCard.classList.add("hidden");setupCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#models-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#files-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshModelPresets();await refreshModels();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();await refreshPendingActions();}else if(x.setupRequired){loginCard.classList.add("hidden");setupCard.classList.remove("hidden");}}catch{}}
+async function init(){try{const r=await api("/api/session");const x=await r.json();if(x.authenticated){showWorkspace();await refresh();await refreshSkills();await refreshModelPresets();await refreshModels();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();await refreshPendingActions();}else if(x.setupRequired){loginCard.classList.add("hidden");setupCard.classList.remove("hidden");}}catch{}}
 
 document.querySelector("#setup-form").addEventListener("submit",async e=>{e.preventDefault();document.querySelector("#setup-error").textContent="";try{const token=newTokenEl.value;const r=await api("/api/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:token})});const x=await r.json();if(!r.ok)throw Error(x.error||"设置失败");tokenEl.value=token;setupCard.classList.add("hidden");loginCard.classList.remove("hidden");document.querySelector("#login-help").textContent="密码已设置，请登录。";newTokenEl.value="";tokenEl.focus();}catch(e){document.querySelector("#setup-error").textContent=e.message||"设置失败";}});
-document.querySelector("#login-form").addEventListener("submit",async e=>{e.preventDefault();errorEl.textContent="";try{const r=await api("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:tokenEl.value,remember:document.querySelector("#remember").checked})});const x=await r.json();if(!r.ok)throw Error(x.error||"登录失败");tokenEl.value="";loginCard.classList.add("hidden");statusCard.classList.remove("hidden");document.querySelector("#skills-card").classList.remove("hidden");document.querySelector("#models-card").classList.remove("hidden");document.querySelector("#tools-card").classList.remove("hidden");document.querySelector("#files-card").classList.remove("hidden");document.querySelector("#agent-card").classList.remove("hidden");await refresh();await refreshSkills();await refreshModels();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();}catch(e){errorEl.textContent=e.message||"登录失败";}});
+document.querySelector("#login-form").addEventListener("submit",async e=>{e.preventDefault();errorEl.textContent="";try{const r=await api("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:tokenEl.value,remember:document.querySelector("#remember").checked})});const x=await r.json();if(!r.ok)throw Error(x.error||"登录失败");tokenEl.value="";showWorkspace("status-card");await refresh();await refreshSkills();await refreshModels();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();}catch(e){errorEl.textContent=e.message||"登录失败";}});
 function clearModelProviderForm(){
  const form=document.querySelector("#model-provider-form");
  form.reset();
@@ -1298,6 +1322,68 @@ document.querySelector("#audit-prev").addEventListener("click",()=>{auditOffset=
 document.querySelector("#audit-next").addEventListener("click",()=>{auditOffset+=20;refreshAudit();});
 document.querySelector("#audit-route").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();auditOffset=0;refreshAudit();}});
 
-document.querySelector("#logout").addEventListener("click",async()=>{await api("/api/logout",{method:"POST"});statusCard.classList.add("hidden");document.querySelector("#skills-card").classList.add("hidden");document.querySelector("#tools-card").classList.add("hidden");document.querySelector("#files-card").classList.add("hidden");document.querySelector("#agent-card").classList.add("hidden");loginCard.classList.remove("hidden");});
+document.querySelector("#logout").addEventListener("click",async()=>{await api("/api/logout",{method:"POST"});showAuth();tokenEl.focus();});
+
+function buildWorkspaceLayout(){
+ const main=document.querySelector("main"),status=document.querySelector("#status-card");
+ if(!main||!status||document.querySelector("#page-panel"))return;
+ const pagePanel=document.createElement("div");pagePanel.id="page-panel";pagePanel.className="page-panel";
+ for(const id of ["status-card","models-card","files-card","tools-card","agent-card","skills-card","security-note"]){const el=document.getElementById(id);if(el)pagePanel.appendChild(el);}
+ const audit=document.createElement("section");audit.id="audit-card";audit.className="card hidden";
+ const title=document.createElement("h2");title.textContent="操作审计";
+ const intro=document.createElement("p");intro.className="muted";intro.textContent="查看近期请求结果与安全拒绝记录。筛选和分页只影响显示，不会改变审计日志。";
+ audit.append(title,intro);
+ const statusPanel=document.querySelector("#status-card");
+ const get=id=>document.getElementById(id);
+ const outcomeLabel=statusPanel.querySelector('label[for="audit-outcome"]');
+ const routeLabel=statusPanel.querySelector('label[for="audit-route"]');
+ if(get("show-audit")){get("show-audit").textContent="刷新操作记录";audit.appendChild(get("show-audit"));}
+ if(outcomeLabel)audit.appendChild(outcomeLabel);
+ if(get("audit-outcome"))audit.appendChild(get("audit-outcome"));
+ if(routeLabel)audit.appendChild(routeLabel);
+ if(get("audit-route"))audit.appendChild(get("audit-route"));
+ for(const id of ["audit-apply","audit-count","audit-prev","audit-next","audit-output"])if(get(id))audit.appendChild(get(id));
+ pagePanel.appendChild(audit);
+ const header=document.createElement("header");header.className="app-topbar";
+ const context=document.createElement("div");context.className="topbar-context";
+ const eyebrow=document.createElement("span");eyebrow.className="topbar-eyebrow";eyebrow.textContent="FNOS NAS AGENT";
+ const heading=document.createElement("strong");heading.id="page-heading";heading.textContent="运行概览";
+ context.append(eyebrow,heading);
+ const actions=document.createElement("div");actions.className="topbar-actions";
+ const session=document.createElement("span");session.className="session-indicator";session.innerHTML='<span class="online-dot"></span>已验证会话';actions.appendChild(session);
+ const logout=get("logout");if(logout)actions.appendChild(logout);
+ header.append(context,actions);
+ main.insertBefore(header,main.querySelector("#setup-card"));main.appendChild(pagePanel);main.classList.add("workspace-root");
+}
+const workspacePages=[["status-card","运行概览"],["files-card","文件管理"],["agent-card","智能助手"],["tools-card","NAS 工具"],["models-card","模型服务"],["skills-card","Skill 管理"],["audit-card","操作审计"],["security-note","安全说明"]];
+function setWorkspacePage(requestedId,updateHistory=true){
+ const id=workspacePages.some(([p])=>p===requestedId)?requestedId:"status-card";
+ for(const [pageId,label] of workspacePages){
+  const el=document.getElementById(pageId);if(el){el.classList.toggle("hidden",pageId!==id);el.classList.toggle("active-page",pageId===id);}
+  const link=document.querySelector('.workspace-nav a[data-page="'+pageId+'"]');
+  if(link){if(pageId===id)link.setAttribute("aria-current","page");else link.removeAttribute("aria-current");}
+  if(pageId===id){const heading=document.querySelector("#page-heading");if(heading)heading.textContent=label;}
+ }
+ if(updateHistory&&location.hash!=="#"+id)history.pushState(null,"","#"+id);
+ if(id==="audit-card")refreshAudit();
+}
+function showWorkspace(requestedId){
+ document.body.classList.add("authenticated");document.body.classList.remove("auth-screen");
+ const login=document.querySelector("#login-card"),setup=document.querySelector("#setup-card");
+ if(login)login.classList.add("hidden");if(setup)setup.classList.add("hidden");
+ buildWorkspaceLayout();
+ let target=requestedId; if(!target){try{target=decodeURIComponent(location.hash.slice(1));}catch{target="status-card";}}
+ setWorkspacePage(target||"status-card",false);
+}
+function showAuth(){
+ document.body.classList.remove("authenticated");document.body.classList.add("auth-screen");
+ for(const id of ["status-card","models-card","files-card","tools-card","agent-card","skills-card","audit-card","security-note"]){const el=document.getElementById(id);if(el)el.classList.add("hidden");}
+ const login=document.querySelector("#login-card"),setup=document.querySelector("#setup-card");if(login)login.classList.remove("hidden");if(setup)setup.classList.add("hidden");
+ history.replaceState(null,"",location.pathname+location.search);
+}
+document.querySelectorAll(".workspace-nav a[data-page]").forEach(link=>link.addEventListener("click",event=>{event.preventDefault();setWorkspacePage(link.getAttribute("data-page"),true);}));
+window.addEventListener("popstate",()=>{if(document.body.classList.contains("authenticated")){let target="status-card";try{target=decodeURIComponent(location.hash.slice(1))||target;}catch{}setWorkspacePage(target,false);}});
+
+buildWorkspaceLayout();
 init();
 </script></main></body></html>
