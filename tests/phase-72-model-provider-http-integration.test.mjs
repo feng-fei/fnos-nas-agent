@@ -104,6 +104,22 @@ test("model provider CRUD and presets work over authenticated HTTP without expos
   });
   assert.equal(wrongOriginCatalog.status, 403);
 
+  const closedPort = await unusedPort();
+  const localProviderResponse = await request("/api/models", {
+    method: "POST",
+    body: JSON.stringify({ name: "Local Rate Limit Test", endpoint: `https://127.0.0.1:${closedPort}/v1/chat/completions`, model: "local-test", apiKey: "local-test-key", enabled: true, fallback: false })
+  });
+  assert.equal(localProviderResponse.status, 201);
+  const localProvider = (await localProviderResponse.json()).provider;
+  for (let i = 0; i < 10; i++) {
+    const response = await request("/api/models/" + localProvider.id + "/catalog", { method: "POST" });
+    assert.notEqual(response.status, 429, "the first ten catalog attempts are allowed");
+  }
+  const limited = await request("/api/models/" + localProvider.id + "/catalog", { method: "POST" });
+  assert.equal(limited.status, 429);
+  assert.equal(limited.headers.get("retry-after"), "60");
+  await request("/api/models/" + localProvider.id, { method: "DELETE" });
+
   const removed = await request("/api/models/" + provider.id, { method: "DELETE" });
   assert.equal(removed.status, 200, await removed.text());
   assert.equal((await (await request("/api/models")).json()).providers.length, 0);
