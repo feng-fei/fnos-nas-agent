@@ -45,5 +45,6 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
     }
     return { total: input.operations.length, succeeded, failed, results };
   }
-\n return Object.freeze({getRoots,preview,download,upload,createText,operate,operateBatch,limits:{maxUploadBytes:MAX_UPLOAD_BYTES,maxPreviewBytes:MAX_PREVIEW_BYTES,maxTextCreateBytes:MAX_TEXT_CREATE_BYTES}});
+
+ return Object.freeze({getRoots,preview,download,upload,createText,operate,operateBatch,limits:{maxUploadBytes:MAX_UPLOAD_BYTES,maxPreviewBytes:MAX_PREVIEW_BYTES,maxTextCreateBytes:MAX_TEXT_CREATE_BYTES}});
 }
