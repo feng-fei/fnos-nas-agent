@@ -22,7 +22,7 @@ A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mob
 - `tests/` — Node built-in test runner tests.
 - `docs/phase-2.md` — current implementation boundary and acceptance checks.
 
-No third-party runtime dependencies are required. Node.js 20 or newer is required.
+No third-party runtime dependencies are required. **Node.js 26.x is the default packaged runtime** (latest patch in the 26.x line); Node.js 24.x is retained as a CI regression line. Upgrade to a newer major only after CI and fnOS validation.
 
 ## Run locally
 
@@ -31,7 +31,7 @@ npm test
 npm start
 ```
 
-Open `http://127.0.0.1:8787`. The service binds to loopback by default. Non-loopback binding requires a long `AGENT_ACCESS_TOKEN`, but the current web page does not yet implement token entry. Do not expose it to a LAN or the public internet until an appropriate client authentication flow is implemented.
+Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, configure an access token in the setup screen; the token is stored in the private app data directory. The current FPK has no NAS command execution, Skill execution, or model-call capability. See [Phase 3 web authentication](docs/phase-3-web-auth.md) for setup and plain-HTTP limitations. Do not expose it to untrusted networks or the public internet.
 
 ## Planned first capability
 
@@ -45,6 +45,8 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [fnOS tool mapping](docs/fnos-tool-mapping.md)
 - [Development plan](docs/development.md)
 - [Phase 2 skeleton boundaries](docs/phase-2.md)
+- [Phase 3 Skill Manager contract](docs/phase-3-skill-manager.md)
+- [Phase 3 web authentication](docs/phase-3-web-auth.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
 
