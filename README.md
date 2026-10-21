@@ -129,6 +129,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 108 — File SHA-256 Checksum](docs/phase-108-file-sha256-checksum.md)
 - [Phase 118 — File Read Descriptor Confinement](docs/phase-118-file-read-descriptor-confinement.md)
 - [Phase 120 — File Browser Directory Descriptor Confinement](docs/phase-120-file-browser-directory-descriptor-confinement.md)
+- [Phase 122 — File Mutation Directory Descriptor Confinement](docs/phase-122-file-mutation-directory-confinement.md)
 - [Phase 110 — Approval Queue Revocation Consistency](docs/phase-110-approval-queue-consistency.md)
 - [Phase 111 — Task Snapshot Persistence Retry](docs/phase-111-task-persistence-retry.md)
 - [Phase 112 — FPK CI Build and Artifact Verification](docs/phase-112-fpk-ci-build-and-artifact-verification.md)
