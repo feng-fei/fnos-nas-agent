@@ -31,7 +31,7 @@ async function waitForHealth(url) {
   throw new Error("packaged server did not become healthy");
 }
 
-test("first-run setup persists a private token and protects session endpoints", async t => {
+test("first-run setup stores only a salted password hash and protects session endpoints", async t => {
   dataDir = await mkdtemp(join(tmpdir(), "fnos-agent-auth-"));
   const port = await freePort();
   baseUrl = `http://127.0.0.1:${port}`;
@@ -55,41 +55,117 @@ test("first-run setup persists a private token and protects session endpoints", 
   const state = await (await fetch(baseUrl + "/api/session")).json();
   assert.equal(state.setupRequired, true);
 
-  const token = "a".repeat(64);
+  const password = "CorrectHorseBatteryStaple!";
   const setup = await fetch(baseUrl + "/api/setup", {
     method: "POST",
     headers: { origin: baseUrl, "content-type": "application/json" },
-    body: JSON.stringify({ token })
+    body: JSON.stringify({ password })
   });
   assert.equal(setup.status, 201);
-  assert.equal(await readFile(join(dataDir, "access-token"), "utf8"), token + "\n");
-  assert.equal((await stat(join(dataDir, "access-token"))).mode & 0o777, 0o600);
+  const passwordPath = join(dataDir, "password.json");
+  const passwordRecord = JSON.parse(await readFile(passwordPath, "utf8"));
+  assert.equal(passwordRecord.algorithm, "scrypt");
+  assert.notEqual(passwordRecord.hash, password);
+  assert.equal((await stat(passwordPath)).mode & 0o777, 0o600);
 
   const repeatSetup = await fetch(baseUrl + "/api/setup", {
     method: "POST",
     headers: { origin: baseUrl, "content-type": "application/json" },
-    body: JSON.stringify({ token: "b".repeat(64) })
+    body: JSON.stringify({ password: "AnotherPassword!123" })
   });
   assert.equal(repeatSetup.status, 409);
 
   const badOrigin = await fetch(baseUrl + "/api/session", {
     method: "POST",
     headers: { origin: "http://attacker.invalid", "content-type": "application/json" },
-    body: JSON.stringify({ token })
+    body: JSON.stringify({ password })
   });
   assert.equal(badOrigin.status, 403);
 
   const login = await fetch(baseUrl + "/api/session", {
     method: "POST",
     headers: { origin: baseUrl, "content-type": "application/json" },
-    body: JSON.stringify({ token })
+    body: JSON.stringify({ password, remember: true })
   });
   assert.equal(login.status, 200);
-  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const setCookie = login.headers.get("set-cookie");
+  assert.match(setCookie, /Max-Age=2592000/);
+  const cookie = setCookie.split(";")[0];
+  const sessionPath = join(dataDir, "sessions.json");
+  assert.equal((await stat(sessionPath)).mode & 0o777, 0o600);
+  const storedSessions = JSON.parse(await readFile(sessionPath, "utf8"));
+  assert.equal(storedSessions.length, 1);
+  assert.equal(storedSessions[0][1].expiresAt - storedSessions[0][1].createdAt, 30 * 24 * 60 * 60 * 1000);
 
   const noSession = await fetch(baseUrl + "/api/tools");
   assert.equal(noSession.status, 401);
+  const protectedDiagnostics = await fetch(baseUrl + "/api/diagnostics");
+  assert.equal(protectedDiagnostics.status, 401);
   const tools = await fetch(baseUrl + "/api/tools", { headers: { cookie } });
   assert.equal(tools.status, 200);
   assert.deepEqual(await tools.json(), { tools: [], executionEnabled: false });
+  const diagnosticResponse = await fetch(baseUrl + "/api/diagnostics", { headers: { cookie } });
+  assert.equal(diagnosticResponse.status, 200);
+  const diagnostics = await diagnosticResponse.json();
+  assert.equal(typeof diagnostics.system.nodeVersion, "string");
+  assert.ok(diagnostics.cpu.logicalCores > 0);
+  assert.ok(diagnostics.memory.totalBytes > 0);
+  assert.ok(Array.isArray(diagnostics.network));
+  assert.ok(Array.isArray(diagnostics.storage));
+  assert.ok(diagnostics.storage.some(item => item.label === "root" && item.available));
+
+  const hiddenSkills = await fetch(baseUrl + "/api/skills");
+  assert.equal(hiddenSkills.status, 401);
+  const hiddenArchiveImport = await fetch(baseUrl + "/api/skills/import", {
+    method: "POST", headers: { "content-type": "application/zip" }, body: Buffer.from("not a zip")
+  });
+  assert.equal(hiddenArchiveImport.status, 401);
+  const wrongOriginArchiveImport = await fetch(baseUrl + "/api/skills/import", {
+    method: "POST", headers: { cookie, origin: "http://attacker.invalid", "content-type": "application/zip", "x-skill-name": "test" }, body: Buffer.from("not a zip")
+  });
+  assert.equal(wrongOriginArchiveImport.status, 403);
+  const invalidArchiveImport = await fetch(baseUrl + "/api/skills/import", {
+    method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/zip", "x-skill-name": "invalid-zip" }, body: Buffer.from("not a zip")
+  });
+  assert.equal(invalidArchiveImport.status, 400);
+  const skillHash = "a".repeat(64);
+  const importMetadata = await fetch(baseUrl + "/api/skills", {
+    method: "POST", headers: { origin: baseUrl, cookie, "content-type": "application/json" },
+    body: JSON.stringify({ name: "fnos-official", version: "1.0", sourceLabel: "official skill archive", archiveSha256: skillHash, declaredCapabilities: ["read-only"] })
+  });
+  assert.equal(importMetadata.status, 201);
+  const skill = (await importMetadata.json()).skill;
+  assert.equal(skill.state, "pending_review");
+  assert.equal(skill.archiveSha256, skillHash);
+  assert.equal("payload" in skill, false);
+  assert.equal((await stat(join(dataDir, "skills.json"))).mode & 0o777, 0o600);
+
+  const listSkills = await fetch(baseUrl + "/api/skills?state=pending_review", { headers: { cookie } });
+  assert.equal(listSkills.status, 200);
+  assert.equal((await listSkills.json()).total, 1);
+  const invalidTransition = await fetch(baseUrl + "/api/skills/" + skill.id + "/transition", {
+    method: "POST", headers: { origin: baseUrl, cookie, "content-type": "application/json" },
+    body: JSON.stringify({ state: "enabled", note: "skip review" })
+  });
+  assert.equal(invalidTransition.status, 409);
+  const approve = await fetch(baseUrl + "/api/skills/" + skill.id + "/transition", {
+    method: "POST", headers: { origin: baseUrl, cookie, "content-type": "application/json" },
+    body: JSON.stringify({ state: "approved", note: "metadata reviewed; archive not uploaded" })
+  });
+  assert.equal(approve.status, 200);
+  const enable = await fetch(baseUrl + "/api/skills/" + skill.id + "/transition", {
+    method: "POST", headers: { origin: baseUrl, cookie, "content-type": "application/json" },
+    body: JSON.stringify({ state: "enabled", note: "still not executable" })
+  });
+  assert.equal(enable.status, 200);
+  assert.equal((await enable.json()).skill.state, "enabled");
+  assert.equal((await readFile(join(dataDir, "skills.json"), "utf8")).includes("payload"), false);
+
+  const logout = await fetch(baseUrl + "/api/logout", {
+    method: "POST", headers: { origin: baseUrl, cookie }
+  });
+  assert.equal(logout.status, 200);
+  assert.equal(JSON.parse(await readFile(sessionPath, "utf8")).length, 0);
+  const revoked = await fetch(baseUrl + "/api/tools", { headers: { cookie } });
+  assert.equal(revoked.status, 401);
 });
