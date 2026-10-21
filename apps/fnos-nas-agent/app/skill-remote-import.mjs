@@ -31,6 +31,93 @@ export function validateGitHubArchiveUrl(value) {
   return { url: url.toString(), repository: match[1] + "/" + match[2] };
 }
 
+
+export function validateGitHubRepositoryUrl(value) {
+  if (typeof value !== "string" || value.length > 2048)
+    throw invalid("Provide a valid GitHub repository URL.");
+  let url;
+  try { url = new URL(value); } catch { throw invalid("Provide a valid GitHub repository URL."); }
+  if (url.protocol !== "https:" || url.hostname !== "github.com" || url.username || url.password ||
+      url.port || url.search || url.hash)
+    throw invalid("Only plain HTTPS github.com repository URLs are allowed.");
+  const match = url.pathname.match(/^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/?$/);
+  if (!match || url.pathname.includes("..") || url.pathname.includes("\\\\"))
+    throw invalid("Use the repository root URL: https://github.com/OWNER/REPOSITORY.");
+  return { url: "https://github.com/" + match[1] + "/" + match[2], repository: match[1] + "/" + match[2] };
+}
+
+function validDefaultBranch(value) {
+  if (typeof value !== "string" || value.length < 1 || value.length > 200 ||
+      !/^[A-Za-z0-9._/-]+$/.test(value) || value.startsWith("/") || value.endsWith("/") ||
+      value.includes("..") || value.includes("//")) return false;
+  return value.split("/").every(segment =>
+    segment && segment !== "." && segment !== ".." && !segment.endsWith(".") && !/\\.lock$/i.test(segment)
+  );
+}
+
+async function readBoundedBody(response, maxBytes, code, message) {
+  const declared = Number(response.headers.get("content-length") || 0);
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await response.body?.cancel().catch(() => {});
+    throw Object.assign(new Error(message), { statusCode: 502, code });
+  }
+  const chunks = [];
+  let size = 0;
+  try {
+    if (response.body) for await (const chunk of response.body) {
+      const buffer = Buffer.from(chunk);
+      size += buffer.length;
+      if (size > maxBytes) throw Object.assign(new Error(message), { statusCode: 502, code });
+      chunks.push(buffer);
+    }
+  } catch (error) {
+    if (error?.code === code) throw error;
+    throw Object.assign(new Error(message), { statusCode: 502, code });
+  }
+  return Buffer.concat(chunks, size);
+}
+
+async function resolveRepositoryArchive(repositoryUrl, repository, fetchImpl, timeoutMs) {
+  const apiUrl = "https://api.github.com/repos/" + repository;
+  let response;
+  try {
+    response = await fetchImpl(apiUrl, {
+      method: "GET",
+      redirect: "error",
+      headers: { accept: "application/vnd.github+json", "user-agent": "fnos-nas-agent" },
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+  } catch {
+    throw Object.assign(new Error("Unable to look up GitHub repository metadata (network error or timeout)."), {
+      statusCode: 502, code: "SKILL_REMOTE_LOOKUP_FAILED"
+    });
+  }
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    throw Object.assign(new Error("GitHub repository lookup failed with HTTP " + response.status + "."), {
+      statusCode: 502, code: "SKILL_REMOTE_LOOKUP_FAILED"
+    });
+  }
+  let metadata;
+  try {
+    const bytes = await readBoundedBody(response, 16 * 1024, "SKILL_REMOTE_METADATA_TOO_LARGE", "GitHub repository metadata was invalid or too large.");
+    metadata = JSON.parse(bytes.toString("utf8"));
+  } catch (error) {
+    if (error?.code?.startsWith("SKILL_REMOTE_")) throw error;
+    throw Object.assign(new Error("GitHub repository metadata was invalid or too large."), {
+      statusCode: 502, code: "SKILL_REMOTE_METADATA_INVALID"
+    });
+  }
+  const defaultBranch = metadata?.default_branch;
+  if (!validDefaultBranch(defaultBranch))
+    throw Object.assign(new Error("GitHub repository returned an unsupported default branch name."), {
+      statusCode: 502, code: "SKILL_REMOTE_BRANCH_INVALID"
+    });
+  const [owner, repo] = repository.split("/");
+  const archiveUrl = "https://github.com/" + owner + "/" + repo + "/archive/refs/heads/" + defaultBranch + ".zip";
+  return { archive: validateGitHubArchiveUrl(archiveUrl), branch: defaultBranch, sourceUrl: repositoryUrl, resolvedFromRepository: true };
+}
+
 export async function fetchGitHubSkillArchive(value, {
   fetchImpl = fetch,
   maxBytes = 25 * 1024 * 1024,
@@ -41,8 +128,23 @@ export async function fetchGitHubSkillArchive(value, {
     throw new TypeError("maxBytes must be between 1 byte and 25 MiB");
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 30_000)
     throw new TypeError("timeoutMs must be between 1000 and 30000");
-  let current = validateGitHubArchiveUrl(value);
-  const sourceUrl = current.url;
+  let sourceUrl = value;
+  let current;
+  let branch = null;
+  let resolvedFromRepository = false;
+  try {
+    current = validateGitHubArchiveUrl(value);
+    sourceUrl = current.url;
+  } catch (archiveError) {
+    let repositoryInput;
+    try { repositoryInput = validateGitHubRepositoryUrl(value); }
+    catch { throw archiveError; }
+    const resolved = await resolveRepositoryArchive(repositoryInput.url, repositoryInput.repository, fetchImpl, timeoutMs);
+    current = resolved.archive;
+    sourceUrl = resolved.sourceUrl;
+    branch = resolved.branch;
+    resolvedFromRepository = resolved.resolvedFromRepository;
+  }
   let redirects = 0;
   while (true) {
     let response;
@@ -113,6 +215,6 @@ export async function fetchGitHubSkillArchive(value, {
     if (!size) throw Object.assign(new Error("GitHub returned an empty ZIP archive."), {
       statusCode: 502, code: "SKILL_REMOTE_EMPTY"
     });
-    return { buffer: Buffer.concat(chunks, size), sourceUrl, repository: current.repository, bytes: size, redirects };
+    return { buffer: Buffer.concat(chunks, size), sourceUrl, repository: current.repository, branch, resolvedFromRepository, bytes: size, redirects };
   }
 }
