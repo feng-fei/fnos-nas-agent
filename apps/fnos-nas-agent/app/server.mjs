@@ -32,6 +32,7 @@ const passwordFile = dataDir ? join(dataDir, "password.json") : "";
 let passwordRecord = null;
 const sessions = new Map();
 const authLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
+const modelActionLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
 const MAX_SESSIONS = 1000;
 const skillStore = dataDir ? createSkillStore(dataDir) : null;
 const auditLogger = dataDir ? createAuditLogger({ dataDir }) : null;
@@ -509,10 +510,12 @@ const server = createServer(async (req, res) => {
     }
     const modelCatalogMatch = url.pathname.match(/^\/api\/models\/([a-f0-9]{24})\/catalog$/);
     if (modelCatalogMatch) {
-      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      const activeSession = sessionFor(req);
+      if (!activeSession) return reply(res, 401, { error: "Unauthorized" });
       if (!modelProviderStore) return reply(res, 503, { error: "模型管理需要配置 Agent 私有数据目录。" });
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!modelActionLimiter.allow(activeSession.key)) return reply(res, 429, { error: "模型操作过于频繁，请稍后再试。" }, "application/json; charset=utf-8", { "retry-after": "60" });
       try {
         const result = await modelProviderStore.discoverModels(modelCatalogMatch[1]);
         return reply(res, result.ok ? 200 : (result.statusCode === 401 || result.statusCode === 403 ? 502 : 200), result);
@@ -538,10 +541,13 @@ const server = createServer(async (req, res) => {
     }
     const modelActionMatch = url.pathname.match(/^\/api\/models\/([a-f0-9]{24})\/(default|test)$/);
     if (modelActionMatch) {
-      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      const activeSession = sessionFor(req);
+      if (!activeSession) return reply(res, 401, { error: "Unauthorized" });
       if (!modelProviderStore) return reply(res, 503, { error: "模型管理需要配置 Agent 私有数据目录。" });
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (modelActionMatch[2] === "test" && !modelActionLimiter.allow(activeSession.key))
+        return reply(res, 429, { error: "模型操作过于频繁，请稍后再试。" }, "application/json; charset=utf-8", { "retry-after": "60" });
       try {
         if (modelActionMatch[2] === "default") return reply(res, 200, { provider: await modelProviderStore.setDefault(modelActionMatch[1]) });
         return reply(res, 200, await modelProviderStore.test(modelActionMatch[1]));
