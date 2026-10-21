@@ -75,3 +75,39 @@ test("model adapter rejects missing required and unknown schema arguments", asyn
   const unknown = createModelAdapter({ config: enabledConfig(), fetchImpl: async () => envelope({ message: "ok", toolCalls: [{ id: "fnos.file.ls", args: { path: "/vol1", command: "whoami" } }] }) });
   await assert.rejects(unknown.plan("列目录", tools), error => error.code === "MODEL_INVALID_PLAN");
 });
+
+
+test("model adapter switches to the newly selected provider without restart and never exposes provider keys in status", async () => {
+  let selected = {
+    enabled: true, endpoint: "https://one.example/v1/chat/completions", apiKey: "provider-one-secret",
+    model: "model-one", providerId: "aaaaaaaaaaaaaaaaaaaaaaaa", providerName: "Provider One", timeoutMs: 1000
+  };
+  const calls = [];
+  const adapter = createModelAdapter({
+    configProvider: () => selected,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, body: JSON.parse(options.body), authorization: options.headers.authorization });
+      return envelope({ message: "已查询。", toolCalls: [] });
+    }
+  });
+  assert.equal(adapter.status().providerName, "Provider One");
+  assert.equal(JSON.stringify(adapter.status()).includes("provider-one-secret"), false);
+  await adapter.plan("hello", tools);
+  selected = {
+    enabled: true, endpoint: "https://two.example/v1/chat/completions", apiKey: "provider-two-secret",
+    model: "model-two", providerId: "bbbbbbbbbbbbbbbbbbbbbbbb", providerName: "Provider Two", timeoutMs: 1000
+  };
+  assert.equal(adapter.status().providerName, "Provider Two");
+  await adapter.plan("hello again", tools);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, "https://one.example/v1/chat/completions");
+  assert.equal(calls[0].body.model, "model-one");
+  assert.equal(calls[0].authorization, "Bearer provider-one-secret");
+  assert.equal(calls[1].url, "https://two.example/v1/chat/completions");
+  assert.equal(calls[1].body.model, "model-two");
+  assert.equal(calls[1].authorization, "Bearer provider-two-secret");
+  selected = { enabled: false, endpoint: null, apiKey: null, model: null, timeoutMs: 1000 };
+  assert.equal(adapter.status().enabled, false);
+  assert.equal(await adapter.plan("disabled", tools), null);
+  assert.equal(calls.length, 2);
+});
