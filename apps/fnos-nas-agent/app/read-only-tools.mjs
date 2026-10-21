@@ -12,6 +12,12 @@ const definitions = [
     risk: "read-only"
   },
   {
+    id: "system.process-summary",
+    title: "进程概况",
+    description: "仅读取系统进程数量，不读取进程名称、命令行或环境变量。",
+    risk: "read-only"
+  },
+  {
     id: "network.interfaces",
     title: "网络接口",
     description: "读取非内部网络接口及其 IP/CIDR 信息。",
@@ -49,6 +55,8 @@ export function createReadOnlyToolRegistry({ getDiagnostics }) {
         return { collectedAt: snapshot.collectedAt, storage: snapshot.storage };
       case "network.interfaces":
         return { collectedAt: snapshot.collectedAt, network: snapshot.network };
+      case "system.process-summary":
+        return { collectedAt: snapshot.collectedAt, processes: snapshot.processes || { available: false } };
       default:
         throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
     }
