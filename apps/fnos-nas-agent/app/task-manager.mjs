@@ -82,7 +82,16 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
   function pump() {
     while (active < concurrency && queue.length) {
       const task = queue.shift(); active++; task.status = "running"; task.stage = "执行中"; task.startedAt = now(); void persist().catch(() => {});
-      Promise.resolve().then(() => execute(task.input, Object.freeze({\n        reportProgress(value, stage = "") {\n          if (task.status !== "running" || !Number.isFinite(value)) return false;\n          task.progress = Math.max(task.progress, Math.min(99, Math.max(0, Math.floor(value))));\n          task.stage = typeof stage === "string" ? stage.trim().slice(0, 80) : "";\n          void persist().catch(() => {});\n          return true;\n        }\n      }))).then(\n        result => { task.status = "completed"; task.progress = 100; task.stage = "已完成"; task.result = result; },
+      Promise.resolve().then(() => execute(task.input, Object.freeze({
+        reportProgress(value, stage = "") {
+          if (task.status !== "running" || !Number.isFinite(value)) return false;
+          task.progress = Math.max(task.progress, Math.min(99, Math.max(0, Math.floor(value))));
+          task.stage = typeof stage === "string" ? stage.trim().slice(0, 80) : "";
+          void persist().catch(() => {});
+          return true;
+        }
+      }))).then(
+        result => { task.status = "completed"; task.progress = 100; task.stage = "已完成"; task.result = result; },
         error => { task.status = "failed"; task.stage = "执行失败"; task.error = error?.statusCode === 400 ? "请求参数无效。" : "任务执行失败；未执行任意系统命令。"; }
       ).finally(() => { task.completedAt = now(); active--; prune(); void persist().catch(() => {}); pump(); });
     }
