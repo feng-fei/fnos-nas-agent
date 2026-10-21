@@ -509,7 +509,7 @@ document.querySelector("#file-mkdir").addEventListener("click",async()=>{const n
 function uploadFileWithProgress(url,file,onProgress){
  return new Promise((resolve,reject)=>{
   const xhr=new XMLHttpRequest();xhr.open("POST",url);xhr.withCredentials=true;xhr.setRequestHeader("content-type","application/octet-stream");
-  xhr.upload.addEventListener("progress",event=>{if(event.lengthComputable)onProgress(Math.max(0,Math.min(100,Math.round(event.loaded/event.total*100)));});
+  xhr.upload.addEventListener("progress",event=>{if(event.lengthComputable)onProgress(Math.max(0,Math.min(100,Math.round(event.loaded/event.total*100))));});
   xhr.addEventListener("load",()=>{let data={};try{data=JSON.parse(xhr.responseText||"{}");}catch{}if(xhr.status>=200&&xhr.status<300)resolve(data);else reject(Error(data.error||"上传失败（HTTP "+xhr.status+"）"));});
   xhr.addEventListener("error",()=>reject(Error("网络中断，上传结果尚未确认。")));
   xhr.addEventListener("abort",()=>reject(Error("上传已中止。")));
