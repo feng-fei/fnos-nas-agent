@@ -7,6 +7,9 @@ on:
     paths:
       - "apps/fnos-nas-agent/**"
       - "scripts/generate-fpk-icons.py"
+      - "package.json"
+      - "src/**"
+      - "tests/**"
       - ".github/workflows/build-fpk.yml"
   workflow_dispatch:
 
@@ -32,6 +35,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22.17.0"
+
+      - name: Run core tests
+        run: npm test
 
       - name: Prepare app payload and icons
         shell: bash
@@ -86,6 +92,10 @@ jobs:
           test -s dist/fnos-nas-agent-test.fpk
           sha256sum dist/fnos-nas-agent-test.fpk | tee dist/fnos-nas-agent-test.fpk.sha256
           file dist/fnos-nas-agent-test.fpk
+          tar -tzf dist/fnos-nas-agent-test.fpk > dist/fpk-contents.txt
+          grep -qx "manifest" dist/fpk-contents.txt
+          grep -q "app.tgz" dist/fpk-contents.txt
+          grep -q "cmd/main" dist/fpk-contents.txt
           ls -lh dist/fnos-nas-agent-test.fpk*
 
       - name: Upload test FPK
