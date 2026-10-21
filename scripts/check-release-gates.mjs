@@ -115,6 +115,8 @@ const cliHealthUiTests = await read("tests/phase-44-cli-health-ui.test.mjs");
 const oauthUiTests = await read("tests/phase-43-guided-oauth-setup.test.mjs");
 assert.match(server, /createTrimCliLoginCommand/);
 assert.match(server, /agent\.trim-cli-login-command/);
+assert.match(server, /trimCliProviderAvailable/);
+assert.match(server, /errorCategory/);
 assert.match(await read("apps/fnos-nas-agent/app/audit-log.mjs"), /"agent\.trim-cli-login-command"/);
 assert.match(cliSetup, /isIP/);
 assert.match(cliSetup, /quoteShellArg/);
