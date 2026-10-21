@@ -94,6 +94,7 @@ document.querySelector("#model-provider-preset").addEventListener("change",()=>{
  document.querySelector("#model-provider-model").value="";
  document.querySelector("#model-provider-model").placeholder=preset.modelPlaceholder||"填写服务商提供的模型 ID";
  document.querySelector("#model-provider-preset-help").textContent=preset.description+(preset.docsUrl?" · 官方文档："+preset.docsUrl:"");
+ document.querySelector("#model-provider-key").placeholder=preset.id==="ollama-local"?"本机 Ollama 通常忽略 API Key；填入占位值 ollama 即可":"添加时必填；编辑时留空表示保留已保存密钥";
  document.querySelector("#model-provider-error").textContent="";
  if(preset.endpoint)document.querySelector("#model-provider-key").focus();
 });
