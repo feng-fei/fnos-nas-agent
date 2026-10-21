@@ -104,6 +104,8 @@ jobs:
           node --check "$app/app/model-adapter.mjs"
           node --check "$app/app/agent-core.mjs"
           node --check "$app/app/task-manager.mjs"
+          python3 -c 'import re, pathlib; s=pathlib.Path("apps/fnos-nas-agent/app/ui/index.html").read_text(); m=re.search(r"<script>(.*?)</script>", s, re.S); assert m, "inline UI script not found"; pathlib.Path("/tmp/fnos-agent-ui-check.mjs").write_text(m.group(1))'
+          node --check /tmp/fnos-agent-ui-check.mjs
           node --check "$app/app/permission-policy.mjs"
           node --check "$app/app/skill-manifest.mjs"
           node --check "$app/app/approval-ledger.mjs"
