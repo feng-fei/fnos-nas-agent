@@ -103,6 +103,11 @@ test("model management API enforces session/origin, persists provider settings, 
   assert.equal(twoResponse.status, 201, "second provider creation should succeed");
   const two = (await twoResponse.json()).provider;
   assert.equal(two.isDefault, false);
+  assert.equal(two.fallback, true);
+  const fallbackState = await request("/api/models", { headers: { cookie } });
+  const fallbackStateBody = await fallbackState.json();
+  assert.equal(fallbackStateBody.modelStatus.fallbackProviders, 1);
+  assert.equal(fallbackStateBody.metrics.scope, "process-lifetime-memory-only");
 
   const choose = await request("/api/models/" + two.id + "/default", { method: "POST", headers: { cookie } });
   assert.equal(choose.status, 200, "default selection should succeed");
