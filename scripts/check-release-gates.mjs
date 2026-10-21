@@ -6,7 +6,7 @@ import { createPermissionPolicy } from "../apps/fnos-nas-agent/app/permission-po
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = path => readFile(join(root, path), "utf8");
-const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests] = await Promise.all([
+const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme] = await Promise.all([
   read("package.json"),
   read(".github/workflows/build-fpk.yml"),
   read("apps/fnos-nas-agent/app/server.mjs"),
@@ -16,7 +16,8 @@ const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, audit
   read("apps/fnos-nas-agent/app/ui/index.html"),
   read("apps/fnos-nas-agent/app/task-manager.mjs"),
   read("apps/fnos-nas-agent/app/audit-log.mjs"),
-  read("tests/phase-21-task-persistence.test.mjs")
+  read("tests/phase-21-task-persistence.test.mjs"),
+  read("README.md")
 ].map(async promise => promise));
 const packageJson = JSON.parse(pkg);
 
@@ -25,6 +26,10 @@ assert.equal(packageJson.dependencies, undefined, "runtime must remain dependenc
 assert.match(workflow, /node-version:\s*\["24\.x",\s*"26\.x"\]/);
 assert.match(workflow, /Build FPK/);
 assert.match(workflow, /Inspect package and checksum/);
+assert.match(workflow, /phase-24-\*/);
+assert.doesNotMatch(readme, /\\\\n- \[Phase 21/);
+assert.match(readme, /\[Phase 21 task persistence and crash recovery\]\(docs\/phase-21-task-persistence-recovery\.md\)/);
+assert.match(readme, /\[Phase 22 release-candidate acceptance\]\(docs\/phase-22-release-candidate-acceptance\.md\)/);
 assert.match(workflow, /node --check "\$app\/app\/request-limiter\.mjs"/);
 assert.match(workflow, /node --check \/tmp\/fnos-agent-ui-check\.mjs/);
 
