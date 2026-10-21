@@ -10,7 +10,7 @@ test("FPK provenance attestation is limited to verified main-branch builds", asy
   assert.match(workflow, /\n  push:\n    branches:\n      - main\n/);
   assert.match(attestJob, /if: github\.ref == 'refs\/heads\/main' && github\.event_name != 'pull_request'/);
   assert.match(attestJob, /needs: build/);
-  assert.match(attestJob, /uses: actions\/download-artifact@v4/);
+  assert.match(attestJob, /uses: actions\/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4\.3\.0/);
   assert.match(attestJob, /name: fnos-nas-agent-test-fpk-node-26\.x/);
   assert.match(attestJob, /Verify artifact bundle before attestation/);
   assert.match(attestJob, /node scripts\/verify-release-artifact\.mjs/);
