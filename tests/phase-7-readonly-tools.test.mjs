@@ -46,6 +46,11 @@ test("registry validates per-tool arguments and rejects unknown fields", async (
   await assert.rejects(registry.invoke("files.list", { path: "/vol1", command: "id" }), { statusCode: 400 });
   await assert.rejects(registry.invoke("files.list", { limit: 201 }), { statusCode: 400 });
   await assert.rejects(registry.invoke("files.preview", {}), { statusCode: 400 });
+  assert.deepEqual(await registry.invoke("files.list", { path: "/vol1", limit: 10 }), { path: "/vol1", limit: 10 });
+  assert.deepEqual(await registry.invoke("files.preview", { path: "/vol1/readme.txt" }), { name: "/vol1/readme.txt" });
+  await assert.rejects(registry.invoke("files.list", { path: "/vol1", command: "id" }), { statusCode: 400 });
+  await assert.rejects(registry.invoke("files.list", { limit: 201 }), { statusCode: 400 });
+  await assert.rejects(registry.invoke("files.preview", {}), { statusCode: 400 });
 });
 
 test("registry requires a diagnostics provider", () => {
