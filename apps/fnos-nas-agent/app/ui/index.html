@@ -54,6 +54,13 @@
 <label for="skill-remote-version">版本（可选）</label><input id="skill-remote-version" maxlength="40" placeholder="例如 v1.2.0">
 <button id="skill-remote-import-submit" type="submit">从 GitHub 下载并隔离</button>
 <p id="skill-remote-import-status" class="muted" role="status">可直接粘贴仓库地址（自动识别默认分支），也可粘贴分支/标签 ZIP；下载内容只进入隔离审核区，不会执行。</p>
+</form>
+<form id="skill-remote-batch-form">
+<label for="skill-remote-batch-urls">批量 GitHub 仓库或 ZIP 地址（每行一个，最多 5 个）</label>
+<textarea id="skill-remote-batch-urls" rows="4" maxlength="10240" placeholder="https://github.com/owner/skill-one&#10;https://github.com/owner/skill-two" required></textarea>
+<label for="skill-remote-batch-version">统一版本备注（可选）</label><input id="skill-remote-batch-version" maxlength="40" placeholder="例如 imported-2026-10">
+<button id="skill-remote-batch-submit" type="submit">批量下载并隔离</button>
+<p id="skill-remote-batch-status" class="muted" role="status">按行顺序导入；所有项目共享 25 MiB 累计下载上限。单项失败不会撤销已成功的隔离导入。</p>
 </form><details><summary>手动登记已有归档摘要（仅元数据）</summary><form id="skill-form"><label for="skill-name">Skill 名称</label><input id="skill-name" maxlength="100" required><label for="skill-version">版本（可选）</label><input id="skill-version" maxlength="40"><label for="skill-hash">归档 SHA-256</label><input id="skill-hash" minlength="64" maxlength="64" pattern="[a-fA-F0-9]{64}" required><label for="skill-source">来源备注（可选）</label><input id="skill-source" maxlength="100"><button type="submit">登记元数据</button></form></details><p id="skill-error" class="error" role="status"></p><div class="skill-filters"><label for="skill-search">搜索 Skill 名称、版本、来源、摘要或能力</label><input id="skill-search" maxlength="100" placeholder="输入关键词"><label for="skill-state-filter">状态筛选</label><select id="skill-state-filter"><option value="">全部状态</option><option value="pending_review">待审核</option><option value="approved">已批准</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="rejected">已拒绝</option></select><button id="skill-filter-apply" type="button">筛选</button><label><input id="skill-select-visible" type="checkbox">选择本页</label><label for="skill-batch-state">批量目标状态</label><select id="skill-batch-state"><option value="approved">批准</option><option value="enabled">启用</option><option value="disabled">停用</option><option value="rejected">拒绝</option></select><label for="skill-batch-note">批量审核备注（可选）</label><input id="skill-batch-note" maxlength="500" placeholder="统一备注"><button id="skill-batch-apply" type="button" disabled>执行批量变更</button><span id="skill-selected-count" class="muted">已选择 0 个</span><p id="skill-count" class="muted">尚未加载</p><button id="skill-page-prev" type="button" disabled>上一页</button> <button id="skill-page-next" type="button" disabled>下一页</button></div><div id="skill-list"><p class="muted">尚未加载</p></div></section>
 <section class="card"><h2>安全说明</h2><p class="muted">任意系统命令和导入 Skill 执行默认关闭。已登记的常规文件操作需通过有效会话及参数校验。HTTP 不加密传输内容，因此仅限可信局域网，不要暴露到公网。</p></section>
 <script>
@@ -791,6 +798,23 @@ document.querySelector("#skill-remote-import-form").addEventListener("submit",as
   e.target.reset();await refreshSkills();
   status.textContent="已隔离 "+result.repository+(result.branch?" · "+(result.refType==="tags"?"标签 ":"分支 ")+result.branch:"")+"（"+result.archiveBytes+" 字节）"+(result.commitSha?" · commit "+result.commitSha.slice(0,12):"")+"；尚未解压或执行，请在列表中审核。";
  }catch(error){status.className="error";status.textContent=error.message||"GitHub Skill 导入失败";}
+ finally{button.disabled=false;}
+});
+document.querySelector("#skill-remote-batch-form").addEventListener("submit",async e=>{
+ e.preventDefault();
+ const button=document.querySelector("#skill-remote-batch-submit"),status=document.querySelector("#skill-remote-batch-status");
+ const urls=document.querySelector("#skill-remote-batch-urls").value.split(/\r?\n/).map(value=>value.trim()).filter(Boolean);
+ if(!urls.length||urls.length>5){status.className="error";status.textContent="请填写 1 到 5 个 GitHub 地址，每行一个。";return;}
+ button.disabled=true;status.className="muted";status.textContent="正在按顺序解析、固定 commit 并下载；总大小不超过 25 MiB…";
+ try{
+  const version=document.querySelector("#skill-remote-batch-version").value.trim();
+  const response=await api("/api/skills/import-remote-batch",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({items:urls.map(url=>({url,version}))})});
+  const result=await response.json();if(!response.ok)throw Error(result.error||"批量 Skill 导入失败");
+  await refreshSkills();
+  const lines=(result.results||[]).map(item=>item.index+". "+(item.ok?"成功：":"失败：")+(item.skill?.name||item.repository||"此项目")+" — "+(item.ok?("commit "+(item.commitSha||"未知").slice(0,12)+"，"+item.archiveBytes+" 字节，状态 "+item.skill.state):item.error));
+  status.textContent="批量结束：成功 "+result.importedCount+" / "+result.total+"，失败或跳过 "+result.failedCount+"；累计下载 "+result.downloadedBytes+" 字节。\n"+lines.join("\n");
+  if(result.importedCount>0)e.target.reset();
+ }catch(error){status.className="error";status.textContent=error.message||"批量 Skill 导入失败";}
  finally{button.disabled=false;}
 });
 document.querySelector("#skill-import-cancel").addEventListener("click",()=>{if(activeSkillUploadXhr){document.querySelector("#skill-import-cancel").disabled=true;activeSkillUploadXhr.abort();}});
