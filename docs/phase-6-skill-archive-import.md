@@ -9,9 +9,9 @@
 
 ## Limits and validation
 
-- Maximum uploaded archive: 5 MiB.
+- Maximum uploaded archive: 25 MiB (sized to fit the supplied official fnOS Skill ZIP, about 17.7 MB).
 - Maximum ZIP entries: 500.
-- Maximum declared uncompressed size across entries: 20 MiB.
+- Maximum declared uncompressed size across entries: 64 MiB (the supplied official package declares about 43.4 MB).
 - Maximum central directory: 1 MiB; maximum encoded entry name: 1 KiB.
 - Rejects malformed or multi-disk archives, ZIP64, encrypted entries, unsupported compression methods, unsafe absolute/drive/backslash/NUL/dot-dot paths, duplicate entry names, symlinks, and special Unix file types.
 - Checks central-directory and local-header consistency and verifies stored quarantine bytes against the computed SHA-256.
@@ -33,4 +33,4 @@ If inventory persistence fails after the archive is stored, an unreferenced quar
 
 ## Release gate
 
-Before merge, run the full test suite on Node.js 26.x and the compatibility suite on Node.js 24.x, inspect CI output, and verify the Node 26 FPK packaging artifact. The ZIP validator is deliberately conservative; unsupported archive formats should fail closed rather than be accepted permissively.
+During active development, run the Node.js 26 core suite and syntax checks. Node.js 24 CI and FPK packaging are temporarily paused; restore release checks before producing a release. The ZIP validator is deliberately conservative; unsupported archive formats should fail closed rather than be accepted permissively.
