@@ -117,9 +117,21 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
       prune(); void persist().catch(() => {});
       return { cancelled: true, task: publicTask(task) };
     },
-    list({ limit = 20 } = {}) {
+    list({ limit = 20, offset = 0, status } = {}) {
       const bounded = Number.isInteger(limit) ? Math.min(50, Math.max(1, limit)) : 20;
-      return [...tasks.values()].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).slice(0, bounded).map(publicTask);
+      const skipped = Number.isInteger(offset) ? Math.min(10000, Math.max(0, offset)) : 0;
+      return [...tasks.values()]
+        .filter(task => !status || task.status === status)
+        .sort((a,b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(skipped, skipped + bounded).map(publicTask);
+    },
+    query({ limit = 20, offset = 0, status } = {}) {
+      const bounded = Number.isInteger(limit) ? Math.min(50, Math.max(1, limit)) : 20;
+      const skipped = Number.isInteger(offset) ? Math.min(10000, Math.max(0, offset)) : 0;
+      const filtered = [...tasks.values()].filter(task => !status || task.status === status)
+        .sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+      return { total: filtered.length, limit: bounded, offset: skipped, status: status || null,
+        tasks: filtered.slice(skipped, skipped + bounded).map(publicTask) };
     },
     stats() { return { queued: queue.length, running: active, retained: tasks.size, concurrency }; }
   });

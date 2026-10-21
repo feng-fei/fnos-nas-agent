@@ -640,7 +640,16 @@ const server = createServer(async (req, res) => {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
       const requested = Number(url.searchParams.get("limit") || 20);
-      return reply(res, 200, { tasks: taskManager.list({ limit: Number.isFinite(requested) ? Math.trunc(requested) : 20 }) });
+      const requestedOffset = Number(url.searchParams.get("offset") || 0);
+      const status = url.searchParams.get("status") || undefined;
+      const allowedStatuses = new Set(["queued", "running", "completed", "failed", "cancelled"]);
+      if (status && !allowedStatuses.has(status)) return reply(res, 400, { error: "Invalid task status filter" });
+      if (!Number.isFinite(requested) || !Number.isFinite(requestedOffset) || requestedOffset < 0 || requestedOffset > 10000)
+        return reply(res, 400, { error: "Invalid task pagination" });
+      return reply(res, 200, taskManager.query({
+        limit: Math.min(50, Math.max(1, Math.trunc(requested))),
+        offset: Math.trunc(requestedOffset), status
+      }));
     }
     const cancelMatch = url.pathname.match(/^\/api\/tasks\/([a-f0-9-]{8,64})\/cancel$/i);
     if (cancelMatch) {
