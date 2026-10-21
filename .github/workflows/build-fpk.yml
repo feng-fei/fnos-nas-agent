@@ -37,6 +37,8 @@ on:
       - "phase-26-*"
       - "phase-27/**"
       - "phase-27-*"
+      - "phase-28/**"
+      - "phase-28-*"
       - "fix/**"
       - "test/**"
     paths:
