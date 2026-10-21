@@ -23,7 +23,7 @@ test("FPK provenance attestation is limited to verified main-branch builds", asy
   }
 
   const verificationIndex = attestJob.indexOf("Verify artifact bundle before attestation");
-  const attestationIndex = attestJob.indexOf("uses: actions/attest@v4");
+  const attestationIndex = attestJob.indexOf("uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6");
   assert.ok(verificationIndex >= 0 && attestationIndex > verificationIndex,
     "artifact consistency must be re-verified before attestation");
 });
