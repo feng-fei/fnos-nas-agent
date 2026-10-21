@@ -1,5 +1,6 @@
 import { inflateRawSync } from "node:zlib";
 import { inspectZipArchive } from "./skill-archives.mjs";
+import { inspectSkillSource } from "./skill-source-review.mjs";
 
 const MANIFEST_LIMIT = 64 * 1024;
 const MAX_DESCRIPTION = 1000;
@@ -70,16 +71,28 @@ function parseFrontmatter(text) {
  */
 export function inspectSkillManifest(buffer) {
   const archive = inspectZipArchive(buffer);
+  const sourceReview = inspectSkillSource(buffer, archive);
+  const reviewResult = value => {
+    const findings = [...(value.findings || []), ...sourceReview.findings].slice(0, 20);
+    return reviewResult({
+      ...value,
+      status: findings.length ? "needs_review" : value.status,
+      findings,
+      sourceFilesScanned: sourceReview.scannedFiles,
+      sourceBytesScanned: sourceReview.scannedBytes,
+      sourceReviewIncomplete: sourceReview.incomplete
+    });
+  };
   const entry = findManifestEntry(buffer);
   const findings = [];
   if (!entry) {
-    return Object.freeze({
+    return reviewResult({
       status: "needs_review", manifestFound: false, entryPath: null, name: null, description: null,
       findings: ["missing-skill-manifest"], archiveEntryCount: archive.entryCount
     });
   }
   if (entry.uncompressedSize > MANIFEST_LIMIT) {
-    return Object.freeze({
+    return reviewResult({
       status: "needs_review", manifestFound: true, entryPath: entry.name, name: null, description: null,
       findings: ["manifest-exceeds-64-kib"], archiveEntryCount: archive.entryCount
     });
@@ -93,13 +106,13 @@ export function inspectSkillManifest(buffer) {
   try {
     data = entry.method === 0 ? Buffer.from(compressed) : inflateRawSync(compressed, { maxOutputLength: MANIFEST_LIMIT });
   } catch {
-    return Object.freeze({
+    return reviewResult({
       status: "needs_review", manifestFound: true, entryPath: entry.name, name: null, description: null,
       findings: ["manifest-decompression-failed"], archiveEntryCount: archive.entryCount
     });
   }
   if (data.length !== entry.uncompressedSize || data.length > MANIFEST_LIMIT || crc32(data) !== entry.crc) {
-    return Object.freeze({
+    return reviewResult({
       status: "needs_review", manifestFound: true, entryPath: entry.name, name: null, description: null,
       findings: ["manifest-integrity-check-failed"], archiveEntryCount: archive.entryCount
     });
@@ -107,7 +120,7 @@ export function inspectSkillManifest(buffer) {
   let content;
   try { content = new TextDecoder("utf-8", { fatal: true }).decode(data); }
   catch {
-    return Object.freeze({
+    return reviewResult({
       status: "needs_review", manifestFound: true, entryPath: entry.name, name: null, description: null,
       findings: ["manifest-not-valid-utf8"], archiveEntryCount: archive.entryCount
     });
@@ -122,7 +135,7 @@ export function inspectSkillManifest(buffer) {
     findings.push("potentially-dangerous-command-text");
   }
   if (/(?:\bexec\b|\bspawn\b|\bchild_process\b|\beval\s*\()/i.test(content)) findings.push("execution-related-text");
-  return Object.freeze({
+  return reviewResult({
     status: findings.length ? "needs_review" : "manifest_parsed",
     manifestFound: true, entryPath: entry.name, name: fields.name || null,
     description: fields.description || null, findings, archiveEntryCount: archive.entryCount
