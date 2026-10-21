@@ -68,3 +68,21 @@ test("tool call count, message size and unknown shape are bounded", async () => 
   const tooLong = createModelAdapter({ config: enabledConfig(), fetchImpl: async () => envelope({ message: "x".repeat(2001), toolCalls: [] }) });
   await assert.rejects(tooLong.plan("x", tools), error => error.code === "MODEL_INVALID_PLAN");
 });
+
+
+test("runtime model settings validate HTTPS, preserve blank keys, and never expose secrets", async () => {
+  const adapter = createModelAdapter({ config: { enabled: false, endpoint: null, apiKey: null, model: null, timeoutMs: 1000 }, fetchImpl: async (_url, options) => { assert.equal(options.headers.authorization, "Bearer secret-key"); return envelope({ message: "ok", toolCalls: [] }); } });
+  assert.equal(adapter.settings().hasApiKey, false);
+  assert.throws(() => adapter.configure({ enabled: true, endpoint: "http://bad.example/v1/chat/completions", model: "m", apiKey: "secret-key" }), { statusCode: 400 });
+  assert.throws(() => adapter.configure({ enabled: true, endpoint: "https://api.example/v1/chat/completions", model: "m", apiKey: "" }), { statusCode: 400 });
+  const settings = adapter.configure({ enabled: true, endpoint: "https://api.example/v1/chat/completions", model: "m", apiKey: "secret-key" });
+  assert.equal(settings.enabled, true);
+  assert.equal(settings.hasApiKey, true);
+  assert.equal(JSON.stringify(settings).includes("secret-key"), false);
+  assert.equal((await adapter.plan("hello", tools)).message, "ok");
+  const saved = adapter.getConfiguration();
+  assert.equal(saved.apiKey, "secret-key");
+  adapter.configure({ ...saved, enabled: false });
+  assert.equal(adapter.settings().enabled, false);
+  assert.equal(adapter.settings().hasApiKey, true);
+});
