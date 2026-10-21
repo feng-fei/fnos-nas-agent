@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>fnOS NAS Agent</title>
+<style>body{margin:0;background:Canvas;color:CanvasText;font-family:system-ui,sans-serif}main{max-width:680px;margin:auto;padding:24px 16px}.card{border:1px solid #8886;border-radius:14px;padding:16px;margin:14px 0}.muted{opacity:.72}button{font:inherit;padding:10px 14px;border-radius:10px}</style></head>
+<body><main><h1>fnOS NAS Agent</h1><p class="muted">原生 FPK 测试版 · 仅状态页面</p>
+<section class="card"><h2>服务状态</h2><p id="status">正在检查…</p><p id="detail" class="muted">此版本不会执行 NAS 管理操作。</p><button id="refresh">刷新</button></section>
+<script>
+async function refresh(){const s=document.querySelector("#status"),d=document.querySelector("#detail");try{const r=await fetch("/api/health",{cache:"no-store"});if(!r.ok)throw Error();const j=await r.json();s.textContent=j.ok?"运行正常":"状态异常";d.textContent="版本 "+j.version+"；NAS 执行能力："+(j.executionEnabled?"已启用":"关闭");}catch{s.textContent="无法连接服务";d.textContent="请检查应用是否运行。";}}
+document.querySelector("#refresh").addEventListener("click",refresh);refresh();
+</script></main></body></html>
