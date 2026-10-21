@@ -63,7 +63,7 @@ assert.match(attestJobSource, /needs: build/);
 assert.match(attestJobSource, /uses: actions\/download-artifact@v4/);
 assert.match(attestJobSource, /Verify artifact bundle before attestation/);
 assert.match(attestJobSource, /verify-release-artifact\.mjs/);
-assert.match(attestJobSource, /uses: actions\/attest@v4/);
+assert.match(attestJobSource, /uses: actions\/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4\.2\.2/);
 assert.match(attestJobSource, /subject-path: artifact\/fnos-nas-agent-test-node-26\.fpk/);
 assert.match(attestJobSource, /id-token: write/);
 assert.match(attestJobSource, /attestations: write/);
