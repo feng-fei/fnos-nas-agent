@@ -114,7 +114,7 @@ test("first-run setup stores only a salted password hash and protects session en
 
   const pendingWithoutSession = await fetch(baseUrl + "/api/actions/pending");
   assert.equal(pendingWithoutSession.status, 401);
-  const confirmWithoutSession = await fetch(baseUrl + "/api/actions/not-a-real-id/confirm", {
+  const confirmWithoutSession = await fetch(baseUrl + "/api/actions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/confirm", {
     method: "POST", headers: { origin: baseUrl, "content-type": "application/json" }, body: "{}"
   });
   assert.equal(confirmWithoutSession.status, 401);
