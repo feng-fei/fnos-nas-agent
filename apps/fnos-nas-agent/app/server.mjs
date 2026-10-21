@@ -211,6 +211,9 @@ function auditRoute(pathname, method) {
   if (/^\/api\/models\/[a-f0-9]{24}$/.test(pathname)) return method === "PUT" ? "models.update" : method === "DELETE" ? "models.remove" : "other_api";
   if (/^\/api\/models\/[a-f0-9]{24}\/default$/.test(pathname)) return "models.default";
   if (/^\/api\/models\/[a-f0-9]{24}\/test$/.test(pathname)) return "models.test";
+  if (/^\/api\/models\/[a-f0-9]{24}$/.test(pathname)) return method === "PUT" ? "models.update" : method === "DELETE" ? "models.remove" : "other_api";
+  if (/^\/api\/models\/[a-f0-9]{24}\/default$/.test(pathname)) return "models.default";
+  if (/^\/api\/models\/[a-f0-9]{24}\/test$/.test(pathname)) return "models.test";
   if (pathname === "/api/agent/status") return "agent.status";
   if (pathname === "/api/agent/trim-cli/test") return "agent.trim-cli-test";
   if (pathname === "/api/agent/trim-cli/login-command") return "agent.trim-cli-login-command";
@@ -690,6 +693,10 @@ const server = createServer(async (req, res) => {
 await loadPassword();
 await loadSessions();
 if (skillStore) await skillStore.load();
+if (modelProviderStore) {
+  try { await modelProviderStore.load(); }
+  catch { console.error("Model settings unavailable; managed model providers were disabled."); }
+}
 await taskManager.ready;
 // First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
 server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; registered tools enabled, arbitrary shell and imported Skill execution disabled`));
