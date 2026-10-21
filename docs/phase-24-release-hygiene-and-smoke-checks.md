@@ -9,7 +9,7 @@ Keep release instructions, branch triggers, and automated safety gates aligned s
 - README links to the Phase 21 persistence and Phase 22 acceptance documents resolve to tracked files.
 - README phase index has no accidentally escaped newline before a Markdown list item.
 - FPK CI runs for Phase 23 and Phase 24 branches as well as the mainline pull request.
-- Node.js 24 and 26 run the full test suite and release gates; Node.js 26 packages and inspects the FPK and emits a SHA-256 checksum.
+- Node.js 26 runs the full test suite and release gates, builds and inspects the FPK, emits a SHA-256 sidecar and unsigned manifest, and verifies the artifact against both.
 
 ## Manual fnOS smoke checklist
 

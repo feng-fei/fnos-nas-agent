@@ -6,7 +6,8 @@ Make a release candidate reviewable as a single acceptance package after Phases 
 
 ## Automated release gates
 
-- Node.js 24 and 26 run the complete built-in test suite.
+- Node.js 26 runs the complete built-in test suite and release safety gate.
+- The same workflow builds an x86 test FPK, checks package structure, generates a SHA-256 sidecar and unsigned release manifest, and verifies that all fields agree.
 - Release gate script verifies runtime dependency policy, FPK workflow and package inspection, and the no-arbitrary-execution boundary.
 - Release gate script also checks that task persistence is wired into server startup/shutdown, inputs/results/raw errors are excluded from durable task state, interruption recovery never auto-replays work, and audit storage remains bounded.
 - Node.js 26 builds the FPK, verifies archive structure, and publishes the package with a checksum.
@@ -28,7 +29,7 @@ Before declaring a production-ready release, an operator must validate on a disp
 
 ## Release decision
 
-A release is **CI-verified** only when the latest PR commit passes Node.js 24/26 tests, release gates, FPK build, package inspection, and checksum generation.
+A test artifact is **CI-verified** only when the exact latest PR commit passes Node.js 26 tests, release gates, FPK build, package inspection, checksum generation, and manifest verification.
 
 A release is **fnOS-staging-verified** only after the above checklist is completed on a disposable test NAS and the tested artifact checksum is recorded.
 

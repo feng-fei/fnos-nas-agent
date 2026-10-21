@@ -35,8 +35,10 @@ test("FPK manifest and payload layout agree with the launcher", async () => {
   assert.match(main, /AGENT_DATA_DIR="\$APP_VAR"/);
   assert.match(main, /HOST=0\.0\.0\.0/);
   assert.match(workflow, /node-version:\s*\["26\.x"\]/);
-  assert.doesNotMatch(workflow, /- name: Build FPK/);
-  assert.doesNotMatch(workflow, /tar -tzf dist\/fnos-nas-agent-test\.fpk/);
+  assert.match(workflow, /- name: Build FPK/);
+  assert.match(workflow, /- name: Inspect package and checksum/);
+  assert.match(workflow, /verify-fpk-artifact\.mjs/);
+  assert.match(workflow, /fnos-nas-agent-test-node-26\.fpk/);
 });
 
 test("uninstall and upgrade lifecycle scripts preserve user data by default", async () => {

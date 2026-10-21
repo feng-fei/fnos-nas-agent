@@ -1,25 +1,17 @@
-# Native FPK packaging draft
+# Native FPK package
 
-This directory is a draft native fnOS application template, not yet a build-verified FPK.
+GitHub Actions builds an **unsigned x86 CI test FPK** from this template. The artifact build, archive inspection, checksum and manifest checks run in an isolated CI staging directory. This is a CI-verified package only; it has not been certified by installing it on real fnOS hardware.
 
-## Current boundaries
+## Package behavior and staging
 
-- Intended for x86 fnOS devices, including the target J4125 NAS.
-- The app exposes a status-only web page and health endpoint.
-- It does not execute shell commands on behalf of the model, inspect NAS data, or call fnOS administrative APIs.
-- The lifecycle script expects a bundled Node.js executable at `app/bin/node`. That runtime is not committed in this repository yet.
-- Desktop icon assets are also placeholders and must be supplied before a complete package can be built.
-- Do not attempt to install this draft until the bundled runtime, icons, and manifest are validated.
+- Intended for x86_64 fnOS devices.
+- The pipeline copies the Node.js 26.x executable selected by `actions/setup-node` to `app/bin/node` in a temporary package copy. The runtime binary is not committed and is not downloaded when the app is installed.
+- Desktop PNG icons are generated into the same temporary package copy before fnpack runs.
+- The main lifecycle script uses the bundled `app/bin/node` and starts `server.mjs` with `AGENT_DATA_DIR` pointing to the package's private data directory.
+- Imported Skill code and arbitrary shell execution remain disabled; this FPK still requires real-device security and lifecycle validation before any non-test use.
 
-## Build plan
+## Manual acceptance still required
 
-1. Install the official `fnpack` CLI on a development machine.
-2. Add a verified, pinned official Node.js Linux x64 runtime under `app/bin/node` (do not install Node.js onto the NAS during FPK installation).
-3. Add valid fnOS desktop icon assets.
-4. Validate all lifecycle scripts and the manifest against current official fnOS documentation.
-5. Run `fnpack build` from this directory.
-6. Install the resulting FPK manually on a test fnOS device and validate install/start/status/stop/uninstall.
+Verify the artifact's SHA-256 against the sidecar and release manifest, then use only a disposable test fnOS NAS. Check install and first-run password setup, login/session expiry, app-center start/stop/restart, read-only tool and file workflows, task recovery after restart, audit/task directory permissions, upgrade/rollback, uninstall and data retention. Record the exact checksum and fnOS version. CI does not run these operations and must never modify a production NAS.
 
-## Runtime security note
-
-The first FPK draft binds to the NAS interface so a phone on the LAN can reach it. Before enabling LAN use, add a real authentication flow and verify it end-to-end. Do not expose the service to the public internet.
+See [the CI build description](../../docs/fpk-ci-build.md) and [the staging test plan](../../docs/fpk-test-plan.md).

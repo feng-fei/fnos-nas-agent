@@ -6,9 +6,9 @@ Create a deterministic pre-release gate that can run on Node.js 24 and 26 withou
 
 ## Release checklist
 
-- [ ] Node.js 24 test job passes.
-- [ ] Node.js 26 test job passes.
+- [ ] Node.js 26 test suite and release safety checks pass.
 - [ ] Node.js 26 FPK build and package inspection pass.
+- [ ] The artifact SHA-256 sidecar and unsigned release manifest verify against the same FPK.
 - [ ] Archive and manifest size limits remain in force.
 - [ ] Write/destructive operations remain denied by default.
 - [ ] Approval ledger remains disconnected from execution until a separately reviewed server-side execution design exists.
@@ -21,4 +21,4 @@ A successful build does not prove compatibility with every fnOS version or hardw
 
 ## Validation
 
-`npm run check:release` runs on both Node.js 24 and 26 alongside the existing unit suite. The CI job still builds and inspects an FPK only on Node.js 26.
+`npm test` and `npm run check:release` run on Node.js 26.x. The same job builds and inspects the x86 test FPK, writes its checksum and unsigned manifest, and verifies their consistency.

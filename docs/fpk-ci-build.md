@@ -1,38 +1,38 @@
 # FPK CI build
 
-The repository builds the native x86 FPK on GitHub Actions; no build tools are installed on the NAS.
+GitHub Actions now builds an **unsigned x86 CI test FPK** from an isolated copy of `apps/fnos-nas-agent/`. CI does not install the package on any NAS, and a successful artifact build is not real-device acceptance.
 
 ## Runtime policy
 
-- **Node.js 26.x is the default packaged runtime** because the user has confirmed it runs normally on the target fnOS NAS.
-- The workflow follows the latest patch release within the Node.js 26.x line automatically.
-- Node.js 24.x remains a test-only regression line for core tests and source/shell syntax checks. It does not produce an FPK artifact.
-- When a newer Node.js major becomes the preferred runtime, update the CI matrix and packaging condition in a reviewed PR, run all checks, then test the generated FPK on fnOS before switching the default.
+- Node.js 26.x is the supported development, test, and packaged runtime line.
+- The CI staging folder receives the exact Node.js executable selected by `actions/setup-node`; the binary is not committed into source control or downloaded at install time on the NAS.
+- The package remains x86-only because the current target NAS and bundled runtime are x86_64. A different architecture requires its own tested runtime and artifact.
+- fnpack is downloaded from the official fnOS distribution URL at version 1.2.3. The workflow verifies the pinned SHA-256 before executing it and fails closed on a mismatch.
 
-This policy means "use the latest Node.js" within a tested release line, not silently package an untested major version. CI does not prove that Node 26 is faster or uses less memory than Node 24.
+## CI pipeline
 
-## Trigger
+On each matching push, pull request, or manual workflow dispatch, Node.js 26.x:
 
-- Push changes affecting the app or build script to the FPK packaging, `phase-2/**`, `fix/**`, or `test/**` branches.
-- Or use **Actions → Build fnOS FPK → Run workflow**.
+1. Runs `npm test`, `npm run check:release`, and source/shell syntax validation.
+2. Copies the app template to `RUNNER_TEMP`, bundles Node.js under `app/bin/node`, and generates the required PNG icons there. Generated files and binaries do not modify the repository checkout.
+3. Validates the manifest-supporting directories and JSON config, then builds the package with fnpack 1.2.3.
+4. Inspects the resulting FPK archive without extracting or executing it. The verifier rejects unsafe paths, duplicate normalized paths, empty packages, unreasonable entry counts, and missing top-level package entries.
+5. Produces a SHA-256 sidecar and unsigned `release-manifest.json`, then independently checks that both agree with the artifact.
+6. Uploads the FPK, checksum, and manifest as `fnos-nas-agent-test-fpk-node-26.x` for 14 days.
 
-## What the workflow does
+Open the successful workflow run in GitHub Actions to download those three files. Verify a downloaded set locally with:
 
-Both Node.js lines run the core test suite and validate the application entry point and lifecycle shell scripts. Only Node.js 26.x performs the full FPK pipeline:
+```sh
+node scripts/verify-release-artifact.mjs \
+  fnos-nas-agent-test-node-26.fpk \
+  fnos-nas-agent-test-node-26.fpk.sha256 \
+  release-manifest.json
+```
 
-1. Bundle the resolved Node.js executable into the app payload.
-2. Generate PNG icons and validate the required package metadata and wizard directory.
-3. Download official `fnpack 1.2.3` and verify its SHA-256 before executing it.
-4. Build the x86 FPK, inspect its contents, generate a SHA-256 checksum, and upload the test artifact for 14 days.
+A matching checksum/manifest proves internal consistency only. The manifest is explicitly unsigned, provenance attestation is not currently enabled, and neither result proves publisher identity or that the source code is safe.
 
-The artifact is named `fnos-nas-agent-test-fpk-node-26.x`. Open the successful workflow run in the repository's **Actions** tab to download it.
+## Security and staging boundary
 
-## Network and safety boundary
+The artifact contains the developed management UI and backend; it must be treated as a test build, not as a certified production release. The app listens on the configured interface/port and uses HTTP, so keep it on a trusted private network and do not port-forward it directly to the public internet.
 
-The current test app is status-page-only and binds to `0.0.0.0` so computers and phones on the LAN can reach it. The only HTTP routes are the status page and `GET /api/health`; NAS command execution, Skill execution, and model calls remain disabled.
-
-**Security note:** this status-only build has no client authentication. Binding to `0.0.0.0` listens on all network interfaces; it does not itself restrict access to the LAN. Use only on a trusted private LAN, do not configure router port forwarding, and do not expose port 18787 to the public internet. Before adding any NAS management or execution features, implement and test authentication, authorization, CSRF protections where applicable, and explicit confirmation for risky actions.
-
-## Follow-up real-device validation
-
-The next fnOS test remains a manual, user-controlled step. Validate install, start, status, stop, restart, and uninstall through the app center, and confirm that `/api/health` returns HTTP 200 from a LAN client. CI does not install or change anything on the NAS and does not replace lifecycle testing on the target fnOS version.
+Real fnOS validation must be performed by an operator on a **disposable, non-production test NAS** using the exact artifact checksum. Cover install/first-run setup, authentication/session expiry, start/stop/restart, allowlisted read-only operations, task interruption recovery, audit/task storage permissions, upgrade, rollback, uninstall and data retention. Record the fnOS version, test date, package SHA-256, and pass/fail for each item. CI will never install, restart or modify a production NAS.
