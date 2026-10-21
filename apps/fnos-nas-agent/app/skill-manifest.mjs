@@ -115,7 +115,7 @@ export function inspectSkillManifest(buffer) {
   const { fields, duplicateFields = [], hasFrontmatter } = parseFrontmatter(content);
   if (!hasFrontmatter) findings.push("missing-or-invalid-frontmatter");
   if (duplicateFields.length) findings.push("duplicate-frontmatter-field");
-  if (/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]/.test(content)) findings.push("control-characters-in-manifest");
+  if ([...content].some(char => { const code = char.charCodeAt(0); return code <= 8 || code === 11 || code === 12 || (code >= 14 && code <= 31); })) findings.push("control-characters-in-manifest");
   if (!fields.name) findings.push("missing-name-field");
   if (!fields.description) findings.push("missing-description-field");
   if (/(?:\bsudo\b|\brm\s+-rf\b|\bcurl\b.{0,80}\|\s*(?:ba)?sh\b|\bwget\b.{0,80}\|\s*(?:ba)?sh\b|\bchmod\s+777\b|\bbase64\s+-d\b|\bnc\s+-e\b|\b(?:python|node)\s+-c\b|\/dev\/tcp\/)/i.test(content)) {
