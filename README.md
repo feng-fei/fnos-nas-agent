@@ -15,6 +15,7 @@ Core development is active. The repository currently includes:
 - GitHub branch/tag ZIP imports are validated, bounded, and stored in quarantine before static review.
 - Batch-import up to five GitHub Skills sequentially with immutable commit pinning and a shared 25 MiB download budget; each item remains in quarantine for review.
 - Imported Skill archives receive bounded source-code heuristics for risky shell execution, dynamic evaluation, privilege escalation, destructive commands, and sensitive-file access before human review.
+- Skill static review also checks common cloud access-key IDs, GitHub/package-registry tokens, private-key markers, and long credential assignments; findings store paths and rule names only, never matched values.
 - GitHub Skill source labels retain the repository and branch/tag ref when importing a specific archive.
 - Privacy-conscious audit records that omit prompts, task inputs, credentials, and raw exceptions.
 
@@ -121,6 +122,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 102 — Immutable GitHub Skill Commit Pinning](docs/phase-102-pin-skill-commit.md)
 - [Phase 103 — Bounded Skill Source Static Review](docs/phase-103-skill-source-static-review.md)
 - [Phase 104 — Batch GitHub Skill Import](docs/phase-104-batch-github-skill-import.md)
+- [Phase 105 — Skill Embedded Credential Scanning](docs/phase-105-skill-secret-scanning.md)
 
 ### Foundations
 - [Architecture](docs/architecture.md)

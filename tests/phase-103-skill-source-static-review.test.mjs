@@ -148,3 +148,41 @@ test("Skill import persists source scan findings and counters across reload", as
   assert.ok(saved.manifestReview.sourceBytesScanned > 0);
   assert.ok(saved.manifestReview.findings.some(item => item.startsWith("destructive-system-command: scripts/install.sh")));
 });
+
+test("source review detects embedded token/key patterns but never records the credential values", () => {
+  const awsKey = "AKIA1234567890ABCDEF";
+  const githubToken = "ghp_abcdefghijklmnopqrstuvwxyz123456";
+  const privateKeyMarker = "-----BEGIN RSA PRIVATE KEY-----";
+  const archive = makeZip([
+    { name: "SKILL.md", data: manifest },
+    { name: "config/.env.example", data:
+      "AWS_ACCESS_KEY_ID=" + awsKey + "\\n" +
+      "GH_TOKEN=" + githubToken + "\\n" +
+      "OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz1234567890\\n" +
+      "PRIVATE_KEY=" + privateKeyMarker + "\\n"
+    },
+    { name: ".npmrc", data: "_authToken=npm_abcdefghijklmnopqrstuvwxyz1234567890\\n" }
+  ]);
+  const review = inspectSkillSource(archive);
+  assert.ok(review.findings.some(item => item.startsWith("cloud-access-key-id: config/.env.example")));
+  assert.ok(review.findings.some(item => item.startsWith("github-token-pattern: config/.env.example")));
+  assert.ok(review.findings.some(item => item.startsWith("private-key-material: config/.env.example")));
+  assert.ok(review.findings.some(item => item.startsWith("hardcoded-secret-assignment: config/.env.example")));
+  assert.ok(review.findings.some(item => item.startsWith("package-registry-token: .npmrc")));
+  const serialized = JSON.stringify(review.findings);
+  assert.equal(serialized.includes(awsKey), false);
+  assert.equal(serialized.includes(githubToken), false);
+  assert.equal(serialized.includes(privateKeyMarker), false);
+  assert.equal(serialized.includes("sk-abcdefghijklmnopqrstuvwxyz"), false);
+});
+
+test("credential-like material in an imported Skill keeps manifest status at needs_review", () => {
+  const archive = makeZip([
+    { name: "SKILL.md", data: manifest },
+    { name: "config/settings.json", data: '{"api_key":"abcdefghijklmnopqrstuvwxyz0123456789"}' }
+  ]);
+  const review = inspectSkillManifest(archive);
+  assert.equal(review.status, "needs_review");
+  assert.ok(review.findings.some(item => item.startsWith("hardcoded-secret-assignment: config/settings.json")));
+  assert.equal(JSON.stringify(review).includes("abcdefghijklmnopqrstuvwxyz0123456789"), false);
+});
