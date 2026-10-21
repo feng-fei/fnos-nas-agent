@@ -23,14 +23,22 @@ export function createActionApprovalService({ tools, ledger = createApprovalLedg
   if (!tools || typeof tools.list !== "function" || typeof tools.invoke !== "function") throw new TypeError("A registered tool catalogue is required");
   const pending = new Map();
 
+  function revokeTaskPending(taskId) {
+    ledger.revokeTask(taskId);
+    for (const [key, item] of pending) {
+      if (item.taskId === taskId) pending.delete(key);
+    }
+  }
+
   function prune() {
     const time = now();
-    for (const [key, item] of pending) {
-      if (item.expiresAt <= time) {
-        ledger.revokeTask(item.taskId);
-        pending.delete(key);
-      }
+    const expiredTasks = new Set();
+    for (const item of pending.values()) {
+      if (item.expiresAt <= time) expiredTasks.add(item.taskId);
     }
+    // Approval grants are revoked by task in the ledger. Remove every queue entry for
+    // that task as well, so the UI cannot display approvals that can no longer succeed.
+    for (const taskId of expiredTasks) revokeTaskPending(taskId);
   }
 
   function request({ toolId, args = {}, taskId = id() } = {}) {
@@ -78,8 +86,7 @@ export function createActionApprovalService({ tools, ledger = createApprovalLedg
     prune();
     const item = pending.get(idValue);
     if (!item) return false;
-    pending.delete(idValue);
-    ledger.revokeTask(item.taskId);
+    revokeTaskPending(item.taskId);
     return true;
   }
 
