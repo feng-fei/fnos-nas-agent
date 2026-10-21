@@ -211,7 +211,6 @@ function auditRoute(pathname, method) {
   if (/^\/api\/models\/[a-f0-9]{24}$/.test(pathname)) return method === "PUT" ? "models.update" : method === "DELETE" ? "models.remove" : "other_api";
   if (/^\/api\/models\/[a-f0-9]{24}\/default$/.test(pathname)) return "models.default";
   if (/^\/api\/models\/[a-f0-9]{24}\/test$/.test(pathname)) return "models.test";
-  if (/^\/api\/models\/[a-f0-9]{24}$/.test(pathname)) return method === "PUT" ? "models.update" : method === "DELETE" ? "models.remove" : "other_api";
   if (/^\/api\/models\/[a-f0-9]{24}\/default$/.test(pathname)) return "models.default";
   if (/^\/api\/models\/[a-f0-9]{24}\/test$/.test(pathname)) return "models.test";
   if (pathname === "/api/agent/status") return "agent.status";
