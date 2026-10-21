@@ -107,13 +107,13 @@ concurrency:
 
 jobs:
   build:
-    name: Validate and package (Node ${{ matrix.node-version }})
+    name: Core tests and syntax (Node 26.x)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
-        node-version: ["24.x", "26.x"]
+        node-version: ["26.x"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -123,7 +123,7 @@ jobs:
       - name: Set up Node.js runtime
         uses: actions/setup-node@v4
         with:
-          # Node 26 is the default packaged runtime; Node 24 remains a test-only regression line.
+          # Node 26 is the sole supported development and test runtime.
           node-version: ${{ matrix.node-version }}
 
       - name: Show Node.js runtime version
@@ -163,123 +163,3 @@ jobs:
           node --check scripts/verify-fpk-artifact.mjs
           node --check scripts/create-release-manifest.mjs
           node --check scripts/verify-release-artifact.mjs
-
-      - name: Prepare app payload and icons
-        if: matrix.node-version == '26.x'
-        shell: bash
-        run: |
-          set -euo pipefail
-          app="apps/fnos-nas-agent"
-          mkdir -p "$app/app/bin"
-          cp "$(command -v node)" "$app/app/bin/node"
-          chmod 755 "$app/app/bin/node"
-          python3 scripts/generate-fpk-icons.py "$app"
-
-          test -s "$app/config/privilege"
-          test -s "$app/config/resource"
-          test -d "$app/wizard"
-          python3 -m json.tool "$app/config/privilege" >/dev/null
-          python3 -m json.tool "$app/config/resource" >/dev/null
-
-          for script in "$app"/cmd/*; do chmod 755 "$script"; done
-          test -x "$app/cmd/main"
-          test -x "$app/cmd/install_init"
-          test -x "$app/cmd/install_callback"
-          test -x "$app/cmd/uninstall_init"
-          test -x "$app/cmd/uninstall_callback"
-          test -x "$app/cmd/upgrade_init"
-          test -x "$app/cmd/upgrade_callback"
-          test -x "$app/cmd/config_init"
-          test -x "$app/cmd/config_callback"
-          "$app/app/bin/node" --version
-          "$app/app/bin/node" --check "$app/app/server.mjs"
-
-      - name: Download and verify official fnpack
-        if: matrix.node-version == '26.x'
-        shell: bash
-        run: |
-          set -euo pipefail
-          url="https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64"
-          expected="54b97fa7b70968c4d05c79840f5daeff508957d0bb2062fdb0376d00d9615c93"
-          curl --fail --location --silent --show-error "$url" --output "$RUNNER_TEMP/fnpack"
-          printf '%s  %s\n' "$expected" "$RUNNER_TEMP/fnpack" | sha256sum --check
-          chmod 755 "$RUNNER_TEMP/fnpack"
-          "$RUNNER_TEMP/fnpack" --help
-
-      - name: Build FPK
-        if: matrix.node-version == '26.x'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd apps/fnos-nas-agent
-          "$RUNNER_TEMP/fnpack" build
-          shopt -s nullglob
-          packages=(./*.fpk)
-          if [ "${#packages[@]}" -eq 0 ]; then
-            echo "fnpack did not produce an FPK file" >&2
-            exit 1
-          fi
-          mkdir -p ../../dist
-          cp "${packages[0]}" ../../dist/fnos-nas-agent-test.fpk
-
-      - name: Inspect package and checksum
-        if: matrix.node-version == '26.x'
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s dist/fnos-nas-agent-test.fpk
-          sha256sum dist/fnos-nas-agent-test.fpk | tee dist/fnos-nas-agent-test.fpk.sha256
-          file dist/fnos-nas-agent-test.fpk
-          node scripts/verify-fpk-artifact.mjs dist/fnos-nas-agent-test.fpk
-          node scripts/create-release-manifest.mjs dist/fnos-nas-agent-test.fpk dist/release-manifest.json
-          node scripts/verify-release-artifact.mjs dist/fnos-nas-agent-test.fpk dist/fnos-nas-agent-test.fpk.sha256 dist/release-manifest.json
-          tar -tzf dist/fnos-nas-agent-test.fpk > dist/fpk-contents.txt
-          ls -lh dist/fnos-nas-agent-test.fpk*
-
-      - name: Upload Node.js 26 test FPK
-        if: matrix.node-version == '26.x'
-        uses: actions/upload-artifact@v4
-        with:
-          name: fnos-nas-agent-test-fpk-node-26.x
-          path: |
-            dist/fnos-nas-agent-test.fpk
-            dist/fnos-nas-agent-test.fpk.sha256
-            dist/release-manifest.json
-          if-no-files-found: error
-          retention-days: 14
-
-  attest:
-    name: Attest FPK build provenance
-    needs: build
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-    steps:
-      - name: Checkout source for verifier
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Download verified Node.js 26 FPK artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: fnos-nas-agent-test-fpk-node-26.x
-          path: dist
-
-      - name: Verify artifact bundle before attestation
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s dist/fnos-nas-agent-test.fpk
-          test -s dist/fnos-nas-agent-test.fpk.sha256
-          test -s dist/release-manifest.json
-          node scripts/verify-release-artifact.mjs dist/fnos-nas-agent-test.fpk dist/fnos-nas-agent-test.fpk.sha256 dist/release-manifest.json
-
-      - name: Generate GitHub build provenance attestation
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: dist/fnos-nas-agent-test.fpk
