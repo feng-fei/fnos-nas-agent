@@ -24,6 +24,9 @@ async function fixture(t, options = {}) {
 
 test("provider input validation requires HTTPS OpenAI-compatible endpoint and rejects secret-bearing URL fields", () => {
   assert.throws(() => validateModelProviderInput(input("x", { endpoint: "http://provider.example/v1/chat/completions" }), { creating: true }), { statusCode: 400 });
+  assert.equal(validateModelProviderInput(input("local", { endpoint: "http://127.0.0.1:11434/v1/chat/completions" }), { creating: true }).endpoint, "http://127.0.0.1:11434/v1/chat/completions");
+  assert.equal(validateModelProviderInput(input("local-v6", { endpoint: "http://[::1]:11434/v1/chat/completions" }), { creating: true }).endpoint, "http://[::1]:11434/v1/chat/completions");
+  assert.throws(() => validateModelProviderInput(input("remote-http", { endpoint: "http://192.168.1.10:11434/v1/chat/completions" }), { creating: true }), { statusCode: 400 });
   assert.throws(() => validateModelProviderInput(input("x", { endpoint: "https://user:pass@provider.example/v1/chat/completions" }), { creating: true }), { statusCode: 400 });
   assert.throws(() => validateModelProviderInput(input("x", { endpoint: "https://provider.example/v1/chat/completions?key=secret" }), { creating: true }), { statusCode: 400 });
   assert.throws(() => validateModelProviderInput(input("x", { endpoint: "https://provider.example/v1/responses" }), { creating: true }), { statusCode: 400 });
