@@ -42,6 +42,8 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
     // Validate the complete plan before the first tool invocation.
     for (const call of plan.toolCalls) {
       if (!catalogue.has(call.id)) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
+      if (!["read-only", "write", "destructive"].includes(catalogue.get(call.id).risk))
+        throw Object.assign(new Error("Unknown tool risk; execution denied"), { statusCode: 403 });
       if (!argsMatchSchema(call.args, catalogue.get(call.id).inputSchema))
         throw Object.assign(new Error("Invalid tool arguments"), { statusCode: 400 });
     }
