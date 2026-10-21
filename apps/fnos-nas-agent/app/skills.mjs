@@ -51,7 +51,6 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
         await storageFs.writeFile(tmp, snapshot + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
         await storageFs.chmod(tmp, 0o600);
         await storageFs.rename(tmp, file);
-        await storageFs.chmod(file, 0o600);
       } catch (error) {
         await storageFs.unlink(tmp).catch(() => {});
         throw error;
