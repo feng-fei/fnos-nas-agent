@@ -11,6 +11,6 @@ test("mobile file uploads show bounded progress and retain existing upload limit
   assert.match(html, /xhr\.withCredentials=true/);
   assert.match(html, /content-type","application\/octet-stream"/);
   assert.match(html, /file\.size>25\*1024\*1024/);
-  assert.match(html, /正在上传… /);
+  assert.match(html, /正在上传第 /);
   assert.match(html, /上传未完成；请确认文件状态后再重试/);
 });
