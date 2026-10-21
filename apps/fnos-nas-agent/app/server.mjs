@@ -200,7 +200,7 @@ function auditRoute(pathname, method) {
   if (/^\/api\/skills\/[a-f0-9]{24}$/.test(pathname)) return "skills.remove";
   if (pathname === "/api/skills/import") return "skills.import";
   if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
-  if (/^\\/api\\/skills\\/([a-f0-9]{24})\\/install-cli$/.test(pathname)) return "skills.install-cli";
+  if (/^\/api\/skills\/([a-f0-9]{24})\/install-cli$/.test(pathname)) return "skills.install-cli";
   if (pathname === "/api/agent/status") return "agent.status";
   if (pathname === "/api/agent/message") return "agent.message";
   if (pathname === "/api/tasks/status") return "tasks.status";
@@ -392,7 +392,7 @@ const server = createServer(async (req, res) => {
         return reply(res, 415, { error: "Expected application/json" });
       return reply(res, 200, { skill: await skillStore.transition(transitionMatch[1], await jsonBody(req)) });
     }
-    const installCliMatch = url.pathname.match(/^\\/api\\/skills\\/([a-f0-9]{24})\\/install-cli$/);
+    const installCliMatch = url.pathname.match(/^\/api\/skills\/([a-f0-9]{24})\/install-cli$/);
     if (installCliMatch) {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
