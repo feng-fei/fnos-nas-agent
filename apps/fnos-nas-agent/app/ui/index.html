@@ -513,7 +513,9 @@ async function refreshFiles(pathValue=currentFilePath){
  }catch(e){err.textContent=e.message||"目录读取失败";host.textContent="无法读取此目录。";}
 }
 document.querySelector("#file-form").addEventListener("submit",e=>{e.preventDefault();refreshFiles(document.querySelector("#file-path").value.trim());});
-for(const id of ["#file-search","#file-type-filter","#file-sort"])document.querySelector(id).addEventListener(id==="#file-search"?"input":"change",()=>refreshFiles(currentFilePath));
+let fileSearchTimer=null;
+document.querySelector("#file-search").addEventListener("input",()=>{clearTimeout(fileSearchTimer);fileSearchTimer=setTimeout(()=>refreshFiles(currentFilePath),180);});
+for(const id of ["#file-type-filter","#file-sort"])document.querySelector(id).addEventListener("change",()=>refreshFiles(currentFilePath));
 async function runFileOperation(payload){const err=document.querySelector("#file-error");err.textContent="";try{const r=await api("/api/files/operation",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const data=await r.json();if(!r.ok)throw Error(data.error||"文件操作失败");document.querySelector("#file-preview").classList.add("hidden");await refreshFiles(currentFilePath);return data;}catch(e){err.textContent=e.message||"文件操作失败";throw e;}}
 document.querySelector("#file-mkdir").addEventListener("click",async()=>{const name=prompt("新文件夹名称");if(name)try{await runFileOperation({action:"mkdir",path:currentFilePath,name});}catch{}});
 let activeUploadXhr=null;
