@@ -60,6 +60,19 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
    fail(409, "File changed during operation; retry the operation");
   return info;
  }
+ async function ensureDirectoryPathStillMatches(item) {
+  let actual, info;
+  try {
+   actual = await fs.realpath(item.path);
+   info = await fs.lstat(item.path);
+  } catch (error) {
+   if (["ENOENT", "ENOTDIR", "ELOOP"].includes(error?.code))
+    fail(409, "Directory changed during operation; retry the operation");
+   throw error;
+  }
+  if (actual !== item.path || info.isSymbolicLink() || !sameIdentity(info, item.info))
+   fail(409, "Directory changed during operation; retry the operation");
+ }
  async function destination(directory,name){const parent=await resolveExisting(directory,"directory"),clean=safeName(name),target=resolve(parent.path,clean);if(!within(parent.root,target)||target===parent.root)fail(403,"Path is outside configured storage roots");return {...parent,target,name:clean};}
  async function ensureAbsent(path){try{await fs.lstat(path);fail(409,"A file or directory with that name already exists");}catch(e){if(e.statusCode)throw e;if(e.code!=="ENOENT")throw e;}}
  async function preview(value) {
@@ -142,6 +155,7 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
       if (error?.code === "EEXIST") fail(409, "A file or directory with that name already exists");
       throw error;
     }
+    await ensureDirectoryPathStillMatches(target);
     return { name: target.name, path: target.target, sizeBytes: buffer.length };
   } catch (error) {
     if (created) await fs.unlink(targetPath).catch(() => {});
@@ -188,6 +202,8 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
     try {
       await ensureAbsent(targetPath);
       await fs.mkdir(targetPath, { mode: 0o750 });
+      try { await ensureDirectoryPathStillMatches(d); }
+      catch (error) { await fs.rmdir(targetPath).catch(() => {}); throw error; }
       return { action, name: d.name, path: d.target };
     } finally { await parent.handle.close().catch(() => {}); }
   }
@@ -207,6 +223,13 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
       const targetPath = join(destinationOpened.path, d.name);
       await ensureAbsent(targetPath);
       await fs.rename(sourcePath, targetPath);
+      try {
+        await ensureDirectoryPathStillMatches(sourceParent);
+        await ensureDirectoryPathStillMatches(d);
+      } catch (error) {
+        await fs.rename(targetPath, sourcePath).catch(() => {});
+        throw error;
+      }
       return { action, path: d.target, name: basename(d.target) };
     } finally {
       if (destinationOpened) await destinationOpened.handle.close().catch(() => {});
@@ -221,6 +244,7 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
     const parent = await openValidatedDirectory(sourceParent);
     try {
       const sourcePath = join(parent.path, basename(source.path));
+      await ensureDirectoryPathStillMatches(sourceParent);
       const info = await verifyChildIdentity(sourcePath, source.info);
       if (info.isDirectory()) await fs.rmdir(sourcePath);
       else if (info.isFile()) await fs.unlink(sourcePath);
