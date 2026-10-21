@@ -212,3 +212,41 @@ test("model adapter exposes no sensitive endpoint or key through health metrics 
   assert.equal(JSON.stringify({ status, metrics }).includes("test-secret-key"), false);
   assert.equal(JSON.stringify({ status, metrics }).includes("private.example"), false);
 });
+
+test("model adapter honors numeric Retry-After hints while bounding provider backoff", async () => {
+  let calls = 0;
+  const delays = [];
+  const adapter = createModelAdapter({
+    config: enabledConfig(),
+    maxAttempts: 2,
+    retryDelaysMs: [10],
+    sleepImpl: async delay => delays.push(delay),
+    fetchImpl: async () => {
+      calls++;
+      if (calls === 1) return new Response("busy", { status: 429, headers: { "retry-after": "1.5" } });
+      return envelope({ message: "recovered", toolCalls: [] });
+    }
+  });
+  assert.deepEqual(await adapter.plan("hello", tools), { message: "recovered", toolCalls: [] });
+  assert.deepEqual(delays, [1500]);
+  assert.equal(adapter.metrics().totals.retries, 1);
+});
+
+test("model adapter clamps excessive Retry-After hints to two seconds", async () => {
+  let calls = 0;
+  const delays = [];
+  const adapter = createModelAdapter({
+    config: enabledConfig(),
+    maxAttempts: 2,
+    retryDelaysMs: [5],
+    sleepImpl: async delay => delays.push(delay),
+    fetchImpl: async () => {
+      calls++;
+      return calls === 1
+        ? new Response("busy", { status: 503, headers: { "retry-after": "900" } })
+        : envelope({ message: "recovered", toolCalls: [] });
+    }
+  });
+  await adapter.plan("hello", tools);
+  assert.deepEqual(delays, [2000]);
+});
