@@ -17,6 +17,8 @@ test("connection status distinguishes auth, scope, network, TLS, timeout and sta
 
 test("CLI tool errors render next actions and refresh the current connection state", () => {
   assert.match(html, /payload\.nextAction/);
+  assert.match(html, /item\.providerAvailable===false/);
+  assert.match(html, /先安装官方 CLI/);
   assert.match(html, /await refreshAgentStatus\(\)/);
   assert.match(html, /建议：/);
 });
