@@ -8,7 +8,10 @@ const TRIM_CLI_TOOLS = [
   ["fnos.download.list", "download.ls", "列出下载任务。", {}],
   ["fnos.monitor.cpu", "monitor.cpu", "读取 fnOS CPU 监控数据。", {}],
   ["fnos.storage.pools", "storage.pools", "读取存储池列表，不修改存储。", {}],
-  ["fnos.user.info", "user.info", "读取当前用户信息。", {}]
+  ["fnos.user.info", "user.info", "读取当前用户信息。", {}],
+  ["fnos.monitor.beep-supported", "monitor.beep-supported", "检查 fnOS 是否支持蜂鸣器监控能力（仅查询支持情况，不触发蜂鸣）。", {}],
+  ["fnos.photos.folders", "photos.folders", "读取相册文件夹列表。", {}],
+  ["fnos.photos.search", "photos.search", "按关键词搜索相册内容；最多返回 50 条。", { keyword: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, ["keyword"]]
 ].map(([id, command, description, properties, required = []]) => ({
   id, title: id, description, risk: "read-only", trimCliCommand: command,
   inputSchema: { type: "object", properties, required, additionalProperties: false }
