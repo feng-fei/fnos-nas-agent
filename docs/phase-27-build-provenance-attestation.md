@@ -28,7 +28,7 @@ node scripts/verify-release-artifact.mjs \
   release-manifest.json
 ```
 
-A valid attestation provides verifiable provenance claims for that artifact digest. Reviewers must still check that repository, workflow, source revision, and event match the intended trust policy. Neither attestation nor checksum proves that source code is safe or that a package works on a particular fnOS release.
+A valid attestation provides verifiable provenance claims for that artifact digest. Reviewers must still check that repository, workflow, source revision, and event match the intended trust policy. A GitHub attestation does not prove that the source code is safe, that the build is bug-free, or that a package works on a particular fnOS release. Reviewers must still validate repository, workflow, source ref, and event against their trust policy.
 
 ## Trust and staging boundaries
 
