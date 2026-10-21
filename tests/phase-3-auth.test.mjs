@@ -106,11 +106,18 @@ test("first-run setup stores only a salted password hash and protects session en
   const toolCatalogue = await tools.json();
   assert.equal(toolCatalogue.executionEnabled, false);
   assert.equal(toolCatalogue.readOnlyExecutionEnabled, true);
-  assert.deepEqual(toolCatalogue.tools.map(tool => tool.id), ["fnos.system.info", "fnos.file.ls", "fnos.file.ls-dir", "fnos.file.usage", "fnos.app.list", "fnos.docker.image-list", "fnos.download.list", "fnos.monitor.cpu", "fnos.storage.pools", "fnos.user.info", "fnos.monitor.beep-supported", "fnos.photos.folders", "fnos.photos.search", "system.status", "storage.summary", "system.process-summary", "network.interfaces", "files.list", "files.preview", "files.create-folder", "files.rename", "files.move"]);
-  assert.ok(toolCatalogue.tools.every(tool => ["read-only", "write"].includes(tool.risk) && tool.inputSchema.additionalProperties === false));
+  assert.deepEqual(toolCatalogue.tools.map(tool => tool.id), ["fnos.system.info", "fnos.file.ls", "fnos.file.ls-dir", "fnos.file.usage", "fnos.app.list", "fnos.docker.image-list", "fnos.download.list", "fnos.monitor.cpu", "fnos.storage.pools", "fnos.user.info", "fnos.monitor.beep-supported", "fnos.photos.folders", "fnos.photos.search", "system.status", "storage.summary", "system.process-summary", "network.interfaces", "files.list", "files.preview", "files.create-folder", "files.rename", "files.move", "files.delete"]);
+  assert.ok(toolCatalogue.tools.every(tool => ["read-only", "write", "destructive"].includes(tool.risk) && tool.inputSchema.additionalProperties === false));
   assert.equal(toolCatalogue.routineWriteExecutionEnabled, true);
+  assert.equal(toolCatalogue.destructiveActionConfirmationEnabled, true);
   assert.ok(toolCatalogue.tools.filter(tool => tool.risk === "write").every(tool => ["files.create-folder", "files.rename", "files.move"].includes(tool.id)));
 
+  const pendingWithoutSession = await fetch(baseUrl + "/api/actions/pending");
+  assert.equal(pendingWithoutSession.status, 401);
+  const confirmWithoutSession = await fetch(baseUrl + "/api/actions/not-a-real-id/confirm", {
+    method: "POST", headers: { origin: baseUrl, "content-type": "application/json" }, body: "{}"
+  });
+  assert.equal(confirmWithoutSession.status, 401);
   const hiddenToolRun = await fetch(baseUrl + "/api/tools/system.status/run", {
     method: "POST", headers: { "content-type": "application/json" }, body: "{}"
   });
@@ -119,6 +126,13 @@ test("first-run setup stores only a salted password hash and protects session en
     method: "POST", headers: { cookie, origin: "http://attacker.invalid", "content-type": "application/json" }, body: "{}"
   });
   assert.equal(wrongOriginToolRun.status, 403);
+  const directDestructiveRun = await fetch(baseUrl + "/api/tools/files.delete/run", {
+    method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: JSON.stringify({ path: "/vol1/never-delete.txt" })
+  });
+  assert.equal(directDestructiveRun.status, 409);
+  const pendingActions = await fetch(baseUrl + "/api/actions/pending", { headers: { cookie } });
+  assert.equal(pendingActions.status, 200);
+  assert.deepEqual((await pendingActions.json()).actions, []);
   const statusToolRun = await fetch(baseUrl + "/api/tools/system.status/run", {
     method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: "{}"
   });
