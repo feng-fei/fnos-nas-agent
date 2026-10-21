@@ -11,6 +11,7 @@ import { createReadOnlyToolRegistry } from "./read-only-tools.mjs";
 import { createModelAdapter } from "./model-adapter.mjs";
 import { createAgentCore } from "./agent-core.mjs";
 import { createTaskManager } from "./task-manager.mjs";
+import { createFixedWindowLimiter } from "./request-limiter.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -19,7 +20,8 @@ const sessionFile = dataDir ? join(dataDir, "sessions.json") : "";
 const passwordFile = dataDir ? join(dataDir, "password.json") : "";
 let passwordRecord = null;
 const sessions = new Map();
-const attempts = new Map();
+const authLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
+const MAX_SESSIONS = 1000;
 const skillStore = dataDir ? createSkillStore(dataDir) : null;
 const SESSION_TTL = 8 * 60 * 60 * 1000;
 const REMEMBER_TTL = 30 * 24 * 60 * 60 * 1000;
@@ -71,7 +73,7 @@ async function loadSessions() {
     const raw = JSON.parse(await readFile(sessionFile, "utf8"));
     if (!Array.isArray(raw)) return;
     const now = Date.now();
-    for (const item of raw) {
+    for (const item of raw) {\n      if (sessions.size >= MAX_SESSIONS) break;
       if (!Array.isArray(item) || typeof item[0] !== "string" || !item[1] || !Number.isFinite(item[1].expiresAt)) continue;
       if (item[1].expiresAt > now) sessions.set(item[0], { createdAt: item[1].createdAt, expiresAt: item[1].expiresAt });
     }
@@ -198,7 +200,7 @@ const server = createServer(async (req, res) => {
         return reply(res, 500, { error: "Unable to save password securely" });
       }
       passwordRecord = record;
-      attempts.delete(req.socket.remoteAddress || "unknown");
+      authLimiter.reset(req.socket.remoteAddress || "unknown");
       return reply(res, 201, { configured: true });
     }
     if (req.method === "POST" && url.pathname === "/api/session") {
@@ -221,7 +223,7 @@ const server = createServer(async (req, res) => {
       }
       attempts.delete(req.socket.remoteAddress || "unknown");
       return reply(res, 200, { authenticated: true, remembered: remember }, "application/json; charset=utf-8", {
-        "set-cookie": `nas_agent_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(ttl / 1000)}`
+        "set-cookie": `nas_agent_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(ttl / 1000)}${req.socket.encrypted ? "; Secure" : ""}`
       });
     }
     if (req.method === "POST" && url.pathname === "/api/logout") {
