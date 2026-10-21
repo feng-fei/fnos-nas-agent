@@ -21,7 +21,7 @@ Core development is active. The repository currently includes:
 - GitHub Skill source labels retain the repository and branch/tag ref when importing a specific archive.
 - Privacy-conscious audit records that omit prompts, task inputs, credentials, and raw exceptions.
 
-**Runtime and validation:** Node.js 26.x is the supported development and CI runtime. GitHub Actions builds an unsigned x86 CI test FPK, inspects the outer archive structure, verifies SHA-256 and release-manifest consistency, and uploads the artifact for 14 days. Build-provenance attestation remains disabled. CI success does not mean the package has been installed or validated on a real fnOS NAS; lifecycle acceptance remains a separate manual staging gate.
+**Runtime and validation:** Node.js 26.x is the supported development and CI runtime. GitHub Actions builds an unsigned x86 CI test FPK, inspects the archive, verifies SHA-256 and release-manifest consistency, and uploads the artifact for 14 days. A separate job creates GitHub build-provenance attestation only for verified `main` builds; pull requests do not receive OIDC/attestation permissions. CI success does not mean the package has been installed or validated on a real fnOS NAS; lifecycle acceptance remains a separate manual staging gate.
 
 ## Safety boundaries
 
@@ -148,6 +148,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 22 release-candidate acceptance](docs/phase-22-release-candidate-acceptance.md)
 - [Phase 27 build provenance attestation](docs/phase-27-build-provenance-attestation.md)
 - [Phase 113 — FPK Lifecycle Process Identity](docs/phase-113-fpk-process-identity.md)
+- [Phase 114 — FPK Build Provenance Attestation](docs/phase-114-build-provenance-attestation.md)
 - [Phase 28 practical read-only file browser](docs/phase-28-practical-file-browser.md)
 - [Phase 43 guided OAuth setup](docs/phase-43-guided-oauth-setup.md)
 - [Phase 44 — CLI Health and Read-only Closure](docs/phase-44-cli-health-and-readonly-closure.md)

@@ -1,6 +1,6 @@
 # FPK CI build
 
-GitHub Actions now builds an **unsigned x86 CI test FPK** from an isolated copy of `apps/fnos-nas-agent/`. CI does not install the package on any NAS, and a successful artifact build is not real-device acceptance.
+GitHub Actions builds an **unsigned x86 CI test FPK** from an isolated copy of `apps/fnos-nas-agent/`. On `main`, a separate job additionally produces a GitHub artifact attestation for the FPK after the exact artifact bundle is re-verified. CI does not install the package on any NAS, and a successful build or attestation is not real-device acceptance.
 
 ## Runtime policy
 
@@ -11,7 +11,7 @@ GitHub Actions now builds an **unsigned x86 CI test FPK** from an isolated copy 
 
 ## CI pipeline
 
-On each matching push, pull request, or manual workflow dispatch, Node.js 26.x:
+The Node.js 26.x build job:
 
 1. Runs `npm test`, `npm run check:release`, and source/shell syntax validation.
 2. Copies the app template to `RUNNER_TEMP`, bundles Node.js under `app/bin/node`, and generates the required PNG icons there. Generated files and binaries do not modify the repository checkout.
@@ -20,19 +20,22 @@ On each matching push, pull request, or manual workflow dispatch, Node.js 26.x:
 5. Produces a SHA-256 sidecar and unsigned `release-manifest.json`, then independently checks that both agree with the artifact.
 6. Uploads the FPK, checksum, and manifest as `fnos-nas-agent-test-fpk-node-26.x` for 14 days.
 
-Open the successful workflow run in GitHub Actions to download those three files. Verify a downloaded set locally with:
+When the workflow runs against `main` outside a pull-request event, a separate attestation job downloads this run's artifact, verifies the sidecar and manifest again, and uses `actions/attest@v4` to create signed build provenance for the FPK. The elevated OIDC and attestation permissions are scoped to this job. Pull-request builds do not receive these permissions and do not produce an attestation.
+
+Open the successful workflow run in GitHub Actions to download the files. Verify the downloaded set locally with:
 
 ```sh
 node scripts/verify-release-artifact.mjs \
   fnos-nas-agent-test-node-26.fpk \
   fnos-nas-agent-test-node-26.fpk.sha256 \
   release-manifest.json
+gh attestation verify fnos-nas-agent-test-node-26.fpk -R feng-fei/fnos-nas-agent
 ```
 
-A matching checksum/manifest proves internal consistency only. The manifest is explicitly unsigned, provenance attestation is not currently enabled, and neither result proves publisher identity or that the source code is safe.
+A matching checksum/manifest proves internal consistency only. The GitHub attestation adds verifiable provenance claims but does not prove that source code is safe or that the package is compatible with every fnOS release.
 
 ## Security and staging boundary
 
-The artifact contains the developed management UI and backend; it must be treated as a test build, not as a certified production release. The app listens on the configured interface/port and uses HTTP, so keep it on a trusted private network and do not port-forward it directly to the public internet.
+The artifact contains the developed management UI and backend; treat it as a test build, not as a certified production release. The app listens on the configured interface/port and uses HTTP, so keep it on a trusted private network and do not port-forward it directly to the public internet.
 
 Real fnOS validation must be performed by an operator on a **disposable, non-production test NAS** using the exact artifact checksum. Cover install/first-run setup, authentication/session expiry, start/stop/restart, allowlisted read-only operations, task interruption recovery, audit/task storage permissions, upgrade, rollback, uninstall and data retention. Record the fnOS version, test date, package SHA-256, and pass/fail for each item. CI will never install, restart or modify a production NAS.

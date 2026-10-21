@@ -1,6 +1,6 @@
 # Development and Validation
 
-> **Current implementation note (Phase 112):** Most core milestones are implemented in `main`, including mobile file operations, Skill review/import, model-provider management, and bounded task/audit workflows. Development and CI use Node.js 26.x. GitHub Actions now builds and integrity-checks an unsigned x86 FPK test artifact. Build-provenance attestation remains disabled, and real fnOS NAS lifecycle validation remains a separate manual staging gate.
+> **Current implementation note (Phase 112):** Most core milestones are implemented in `main`, including mobile file operations, Skill review/import, model-provider management, and bounded task/audit workflows. Development and CI use Node.js 26.x. GitHub Actions builds and integrity-checks an unsigned x86 FPK test artifact; a separate least-privilege job attests verified `main` builds only. Real fnOS NAS lifecycle validation remains a separate manual staging gate.
 
 
 ## Development constraints
