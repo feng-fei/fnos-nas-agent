@@ -166,7 +166,11 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
             apiKey, enabled: item.enabled && Boolean(apiKey), fallback: item.fallback === true, createdAt: item.createdAt, updatedAt: item.updatedAt,
             lastTest: item.lastTest && typeof item.lastTest === "object" ? {
               ok: item.lastTest.ok === true, at: typeof item.lastTest.at === "string" ? item.lastTest.at : "",
-              message: typeof item.lastTest.message === "string" ? item.lastTest.message.slice(0, 240) : ""
+              message: typeof item.lastTest.message === "string" ? item.lastTest.message.slice(0, 240) : "",
+              ...(Number.isInteger(item.lastTest.statusCode) && item.lastTest.statusCode >= 100 && item.lastTest.statusCode <= 599
+                ? { statusCode: item.lastTest.statusCode } : {}),
+              ...(Number.isSafeInteger(item.lastTest.durationMs) && item.lastTest.durationMs >= 0
+                ? { durationMs: item.lastTest.durationMs } : {})
             } : null
           };
         });
@@ -319,10 +323,14 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
           : "连接失败，请检查 HTTPS 地址、API Key、模型名称和网络。" };
       }
       const oldProviders = providers, oldActive = activeProviderId;
-      const updated = { ...item, lastTest: { ok: result.ok, at: now(), message: result.message, ...(result.statusCode ? { statusCode: result.statusCode } : {}) } };
+      const durationMs = Math.max(0, Date.now() - started);
+      const updated = { ...item, lastTest: {
+        ok: result.ok, at: now(), message: result.message, durationMs,
+        ...(result.statusCode ? { statusCode: result.statusCode } : {})
+      } };
       providers = providers.map(provider => provider.id === id ? updated : provider);
       try { await persist(); } catch { rollback(oldProviders, oldActive); fail(500, "Test completed but could not save its result.", "MODEL_STORE_WRITE_FAILED"); }
-      return { provider: publicProvider(updated, activeProviderId), test: { ...result, durationMs: Math.max(0, Date.now() - started) } };
+      return { provider: publicProvider(updated, activeProviderId), test: { ...result, durationMs } };
     });
   }
   return Object.freeze({ load, list, runtimeConfig, runtimeFallbackConfigs, add, update, remove, setDefault, test, discoverModels, status() {

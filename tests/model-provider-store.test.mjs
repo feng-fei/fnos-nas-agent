@@ -88,7 +88,7 @@ test("provider test calls the standard endpoint but stores and returns only a sa
     request = { url, options };
     return new Response(JSON.stringify({ choices: [{ message: { content: "OK" } }] }), { status: 200 });
   };
-  const { store } = await fixture(t, { fetchImpl });
+  const { dataDir, store } = await fixture(t, { fetchImpl });
   const item = await store.add(input("Probe"));
   const result = await store.test(item.id);
   assert.equal(request.url, item.endpoint);
@@ -96,6 +96,13 @@ test("provider test calls the standard endpoint but stores and returns only a sa
   assert.equal(JSON.parse(request.options.body).model, item.model);
   assert.equal(result.test.ok, true);
   assert.equal(result.provider.lastTest.ok, true);
+  assert.ok(Number.isSafeInteger(result.test.durationMs) && result.test.durationMs >= 0);
+  assert.equal(result.provider.lastTest.durationMs, result.test.durationMs);
+  assert.equal(result.provider.lastTest.statusCode, 200);
+  const reloaded = createModelProviderStore({ dataDir });
+  await reloaded.load();
+  assert.equal(reloaded.list().providers.find(provider => provider.id === item.id).lastTest.durationMs, result.test.durationMs);
+  assert.equal(reloaded.list().providers.find(provider => provider.id === item.id).lastTest.statusCode, 200);
   assert.equal(JSON.stringify(result).includes("MODEL_SECRET_KEY_DO_NOT_LOG"), false);
   assert.equal(JSON.stringify(store.list()).includes("MODEL_SECRET_KEY_DO_NOT_LOG"), false);
 });
