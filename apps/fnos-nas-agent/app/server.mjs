@@ -183,7 +183,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/audit") return "audit.list";
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
-  if (/^\\/api\\/skills\\/[a-f0-9]{24}$/.test(pathname)) return "skills.remove";
+  if (/^\/api\/skills\/[a-f0-9]{24}$/.test(pathname)) return "skills.remove";
   if (pathname === "/api/skills/import") return "skills.import";
   if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
   if (pathname === "/api/agent/status") return "agent.status";
@@ -374,7 +374,7 @@ const server = createServer(async (req, res) => {
         return reply(res, 415, { error: "Expected application/json" });
       return reply(res, 200, { skill: await skillStore.transition(transitionMatch[1], await jsonBody(req)) });
     }
-    const skillDeleteMatch = url.pathname.match(/^\\/api\\/skills\\/([a-f0-9]{24})$/);
+    const skillDeleteMatch = url.pathname.match(/^\/api\/skills\/([a-f0-9]{24})$/);
     if (skillDeleteMatch) {
       if (req.method !== "DELETE") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "DELETE" });
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
