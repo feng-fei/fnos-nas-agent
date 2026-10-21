@@ -309,7 +309,10 @@ const server = createServer(async (req, res) => {
       if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
       try {
         const rawLimit = Number(url.searchParams.get("limit") || 100);
-        const result = await fileBrowser.list(url.searchParams.get("path") || "", rawLimit);
+        const rawOffset = Number(url.searchParams.get("offset") || 0);
+        if (!Number.isInteger(rawOffset) || rawOffset < 0 || rawOffset > 100_000)
+          return reply(res, 400, { error: "Invalid directory pagination offset" });
+        const result = await fileBrowser.list(url.searchParams.get("path") || "", rawLimit, rawOffset);
         return reply(res, 200, result);
       } catch (error) {
         const status = [400, 403, 404].includes(error?.statusCode) ? error.statusCode : 500;
