@@ -146,3 +146,19 @@ test("running task cancellation waits for the active operation and stops coopera
   assert.match(finalTask.error, /当前工具已结束/);
   assert.doesNotMatch(JSON.stringify(finalTask), /private cancellation detail/);
 });
+
+test("task history search filters only safe metadata and combines with status filters", async () => {
+  const manager = createTaskManager({
+    execute: async input => input.fail ? (() => { throw new Error("sanitized failure"); })() : { ok: true },
+    id: (() => { let n = 0; return () => "search-task-" + (++n); })(),
+    historyLimit: 10
+  });
+  const failed = manager.submit({ fail: true, privatePrompt: "never-search-this" });
+  const completed = manager.submit({});
+  for (let i = 0; i < 100 && [failed, completed].some(task => !["completed", "failed"].includes(manager.get(task.taskId)?.status)); i++) await tick();
+  assert.equal(manager.query({ search: "SEARCH-TASK-1" }).total, 1);
+  assert.equal(manager.query({ search: "failed" }).total, 1);
+  assert.equal(manager.query({ status: "completed", search: "search-task" }).total, 1);
+  assert.equal(manager.query({ search: "never-search-this" }).total, 0);
+  assert.equal(manager.query({ search: "never-search-this" }).search, "never-search-this");
+});
