@@ -103,6 +103,7 @@ export function createSkillStore(dataDir) {
       declaredUncompressedBytes: Number.isSafeInteger(input.declaredUncompressedBytes) ? input.declaredUncompressedBytes : null,
       state: "pending_review",
       declaredCapabilities: caps,
+      manifestReview: normalizeManifestReview(input.manifestReview),
       reviewNote: "",
       reviewedAt: null
     };
@@ -112,13 +113,15 @@ export function createSkillStore(dataDir) {
   }
 
   async function importArchive(input, buffer) {
+    const manifestReview = inspectSkillManifest(buffer);
     const archive = await saveQuarantinedArchive(dataDir, buffer);
     const record = await register({
       name: input.name, version: input.version, sourceLabel: input.sourceLabel,
       archiveSha256: archive.sha256, quarantineFile: archive.quarantineFile,
       archiveSizeBytes: archive.sizeBytes, archiveEntryCount: archive.entryCount,
       declaredUncompressedBytes: archive.declaredUncompressedBytes,
-      declaredCapabilities: input.declaredCapabilities
+      declaredCapabilities: input.declaredCapabilities,
+      manifestReview
     });
     return { ...record, archiveEntries: archive.entries };
   }
