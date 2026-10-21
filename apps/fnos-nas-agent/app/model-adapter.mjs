@@ -204,8 +204,18 @@ export function createModelAdapter({
     metric.touchedAt = ++touchedCounter;
     return metric;
   }
-  async function sleepBeforeRetry(attempt) {
-    const delay = retryDelaysMs[attempt - 1] ?? retryDelaysMs.at(-1) ?? 0;
+  async function sleepBeforeRetry(attempt, response = null) {
+    const fallbackDelay = retryDelaysMs[attempt - 1] ?? retryDelaysMs.at(-1) ?? 0;
+    let delay = fallbackDelay;
+    const retryAfter = response?.headers?.get?.("retry-after");
+    if (typeof retryAfter === "string" && retryAfter.trim()) {
+      const seconds = Number(retryAfter.trim());
+      if (Number.isFinite(seconds) && seconds >= 0) delay = Math.min(2000, Math.floor(seconds * 1000));
+      else {
+        const date = Date.parse(retryAfter);
+        if (Number.isFinite(date)) delay = Math.min(2000, Math.max(0, date - Date.now()));
+      }
+    }
     if (delay > 0) await sleepImpl(delay);
   }
   async function requestOne(selected, userText, tools, toolSummary, system, history) {
@@ -250,7 +260,7 @@ export function createModelAdapter({
           lastFailure = providerFailure(status);
           if (lastFailure.retryable && attempt < maxAttempts) {
             metric.retries = saturatingAdd(metric.retries, 1);
-            await sleepBeforeRetry(attempt);
+            await sleepBeforeRetry(attempt, response);
             continue;
           }
           throw lastFailure;
