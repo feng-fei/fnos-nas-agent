@@ -2,28 +2,26 @@
 
 ## Current behavior
 
-- The packaged server binds to `127.0.0.1` unless `AGENT_ACCESS_TOKEN` is configured with at least 32 characters.
-- The FPK startup script reads the token from `$TRIM_PKGVAR/access-token` without printing it. When present and valid, the service binds to `0.0.0.0` for trusted-LAN access.
-- The web UI accepts the token and exchanges it for a random in-memory session ID. The cookie is HttpOnly and SameSite=Strict; sessions expire after eight hours and are lost on restart.
-- Login checks Origin, limits JSON request size, uses constant-time comparison for equal-length token candidates, and rate-limits repeated failures per source address.
-- `GET /api/health` is intentionally public and exposes only basic health/version and whether authentication is configured. `/api/tools` requires a session.
-- NAS execution, Skill import/execution, and model calls remain disabled.
+- The FPK starts on `0.0.0.0` so the browser can reach the first-run setup screen from the trusted LAN. In setup mode, the only available features are health/status and one-time token initialization; NAS execution, Skills, and model calls remain disabled.
+- First run asks the user to set a 32–256 character access token or generate a 256-bit random token in the browser. The server writes it to `$TRIM_PKGVAR/access-token` with mode `0600`; the token is never written to logs. Setup is one-time and rejects requests after a token is configured.
+- On subsequent starts, the FPK startup script reads the token from `$TRIM_PKGVAR/access-token` without printing it.
+- The web UI exchanges the token for a random in-memory session ID. The cookie is HttpOnly and SameSite=Strict; sessions expire after eight hours and are lost on restart.
+- Login and setup check Origin, limit JSON request size, use constant-time comparison for token login, and rate-limit repeated failures per source address.
+- `GET /api/health` is intentionally public and exposes only basic health/version and whether authentication is configured. `/api/tools` requires a session and returns no executable tools.
+- The server receives the app data path through `AGENT_DATA_DIR`, set by the FPK lifecycle script from `TRIM_PKGVAR`.
 
-## Configure the token for an FPK
+## First-run setup
 
-Do not commit or paste the token into GitHub issues, chat, screenshots, or logs. On the NAS, use the app's private data directory reported by fnOS as `TRIM_PKGVAR`; create an `access-token` file there with a cryptographically random value of at least 32 characters and restrict permissions to the app account. For example, in an authorized shell where the correct app data path is known:
+1. Open `http://<NAS-IP>:18787` from a **trusted private LAN**.
+2. On the first-run setup screen, generate a random token or enter one with at least 32 characters.
+3. Save the token in a password manager before leaving the page. After setup, the token is not displayed again.
+4. Log in using the token.
 
-```sh
-umask 077
-openssl rand -hex 32 > /path/to/app-data/access-token
-chmod 600 /path/to/app-data/access-token
-```
-
-Replace the example path with the actual app data directory; do not run this example with the literal placeholder. Restart the app through the fnOS app center after creating the file. Without a valid token file, the app remains loopback-only.
+The setup endpoint is exposed to the trusted LAN only because the first-run token does not exist yet. A device already on that LAN could race to complete setup. Therefore, only use this flow on a private network you trust; do not expose port 18787 to the internet or untrusted Wi-Fi. This first-run setup is acceptable only while the app has no NAS command execution, Skill execution, or model-call capability.
 
 ## Transport limitation
 
-The current FPK serves plain HTTP. The login token is therefore not encrypted in transit. Use this build only on a trusted private LAN; do not use it over public Wi-Fi, expose it to the internet, or configure router port forwarding. For use across untrusted networks, put the service behind a properly configured HTTPS reverse proxy or implement native TLS before enabling remote access. The session cookie intentionally does not set `Secure` because the current server is HTTP; this must change when HTTPS is terminated by the app itself. Never add NAS execution features until authentication, transport, authorization, and risky-action approval are reviewed together.
+The current FPK serves plain HTTP. The setup token and login token are therefore not encrypted in transit. Use this build only on a trusted private LAN; do not use it over public Wi-Fi, expose it to the internet, or configure router port forwarding. For use across untrusted networks, put the service behind a properly configured HTTPS reverse proxy or implement native TLS before enabling remote access. The session cookie intentionally does not set `Secure` because the current server is HTTP; this must change when HTTPS is terminated by the app itself. Never add NAS execution features until authentication, transport, authorization, and risky-action approval are reviewed together.
 
 ## Important limitations
 
