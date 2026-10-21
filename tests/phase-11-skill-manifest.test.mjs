@@ -1,5 +1,9 @@
 import test from "node:test";
-import assert from "node:assert/strict";\nimport { mkdtemp, rm } from "node:fs/promises";\nimport { tmpdir } from "node:os";\nimport { join } from "node:path";\nimport { createSkillStore } from "../apps/fnos-nas-agent/app/skills.mjs";
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createSkillStore } from "../apps/fnos-nas-agent/app/skills.mjs";
 import { inspectSkillManifest } from "../apps/fnos-nas-agent/app/skill-manifest.mjs";
 import { inspectZipArchive } from "../apps/fnos-nas-agent/app/skill-archives.mjs";
 
