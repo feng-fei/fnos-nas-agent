@@ -131,7 +131,7 @@ test("disabling or deleting a default provider clears the default or selects an 
   await assert.rejects(store.setDefault(first.id), { statusCode: 409 });
   await store.setDefault(second.id);
   await store.remove(second.id);
-  assert.equal(store.list().activeProviderId, first.id);
+  assert.equal(store.list().activeProviderId, null);
   assert.equal(store.runtimeConfig().enabled, false);
 });
 
