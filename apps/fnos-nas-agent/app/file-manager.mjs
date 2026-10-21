@@ -183,6 +183,7 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
       if (error?.code === "EEXIST") fail(409, "A file or directory with that name already exists");
       throw error;
     }
+    await ensureDirectoryPathStillMatches(target);
     return { name: target.name, path: target.target, sizeBytes: buffer.length };
   } catch (error) {
     if (created) await fs.unlink(targetPath).catch(() => {});
