@@ -12,14 +12,15 @@ function fixture({ enabled = false, plan = null } = {}) {
       ...["fnos.app.list", "fnos.docker.image-list", "fnos.download.list", "fnos.monitor.cpu", "fnos.storage.pools", "fnos.user.info"].map(id => ({ id, title: id, description: "只读", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } })),
       { id: "fnos.file.ls", title: "fnOS 文件列表", description: "只读", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path"], additionalProperties: false } },
       { id: "files.preview", title: "预览文本文件", description: "只读", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path"], additionalProperties: false } },
+      { id: "files.search", title: "搜索文件名", description: "只读", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, query: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 100 } }, required: ["query"], additionalProperties: false } },
       { id: "files.list", title: "浏览文件目录", description: "只读", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, limit: { type: "integer", minimum: 1, maximum: 200 } }, additionalProperties: false } },
       { id: "fnos.photos.folders", title: "相册文件夹", description: "只读", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
       { id: "fnos.photos.search", title: "相册搜索", description: "只读", risk: "read-only", inputSchema: { type: "object", properties: { keyword: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["keyword"], additionalProperties: false } }
     ],
     async invoke(id, args) {
       calls.push({ id, args });
-      if (!["system.status", "storage.summary", "files.list", "files.preview", "fnos.file.ls", "fnos.app.list", "fnos.docker.image-list", "fnos.download.list", "fnos.monitor.cpu", "fnos.storage.pools", "fnos.user.info", "fnos.photos.folders", "fnos.photos.search"].includes(id)) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
-      if (["files.preview", "fnos.file.ls"].includes(id) ? typeof args.path !== "string" || Object.keys(args).some(k => k !== "path") : id === "files.list" ? Object.keys(args).some(k => !["path", "limit"].includes(k)) : id === "fnos.photos.search" ? typeof args.keyword !== "string" || !Number.isInteger(args.limit) || args.limit < 1 || args.limit > 50 : id === "fnos.photos.folders" || ["fnos.app.list", "fnos.docker.image-list", "fnos.download.list", "fnos.monitor.cpu", "fnos.storage.pools", "fnos.user.info"].includes(id) ? Object.keys(args).length > 0 : Object.keys(args).length) throw Object.assign(new Error("Invalid args"), { statusCode: 400 });
+      if (!["system.status", "storage.summary", "files.list", "files.preview", "files.search", "fnos.file.ls", "fnos.app.list", "fnos.docker.image-list", "fnos.download.list", "fnos.monitor.cpu", "fnos.storage.pools", "fnos.user.info", "fnos.photos.folders", "fnos.photos.search"].includes(id)) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
+      if (id === "files.search" ? typeof args.query !== "string" || Object.keys(args).some(k => !["path", "query", "limit"].includes(k)) : ["files.preview", "fnos.file.ls"].includes(id) ? typeof args.path !== "string" || Object.keys(args).some(k => k !== "path") : id === "files.list" ? Object.keys(args).some(k => !["path", "limit"].includes(k)) : id === "fnos.photos.search" ? typeof args.keyword !== "string" || !Number.isInteger(args.limit) || args.limit < 1 || args.limit > 50 : id === "fnos.photos.folders" || ["fnos.app.list", "fnos.docker.image-list", "fnos.download.list", "fnos.monitor.cpu", "fnos.storage.pools", "fnos.user.info"].includes(id) ? Object.keys(args).length > 0 : Object.keys(args).length) throw Object.assign(new Error("Invalid args"), { statusCode: 400 });
       return { ok: true, id };
     }
   };
@@ -139,6 +140,7 @@ test("expanded read-only operational requests route directly without model calls
     ["查看当前用户", "fnos.user.info", {}],
     ["查看fnOS文件 /vol1", "fnos.file.ls", { path: "/vol1" }],
     ["查看目录 /vol1/资料", "files.list", { path: "/vol1/资料" }],
+    ["搜索文件 report 于 /vol1/资料", "files.search", { query: "report", path: "/vol1/资料", limit: 50 }],
     ["预览文本文件 /vol1/资料/readme.txt", "files.preview", { path: "/vol1/资料/readme.txt" }]
   ];
   for (const [text, id, args] of cases) {
