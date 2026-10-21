@@ -6,7 +6,7 @@ import { createPermissionPolicy } from "../apps/fnos-nas-agent/app/permission-po
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = path => readFile(join(root, path), "utf8");
-const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs, releaseVerifier, releaseVerifierTests, releaseVerifierDocs, provenanceDocs, phase116Docs, phase117Docs, lifecycleSmokeTests, fpkTestPlan, sessionCleanupTest, sessionCleanupDocs] = await Promise.all([
+const [pkg, workflow, server, skills, archives, manifest, ui, fileManager, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs, releaseVerifier, releaseVerifierTests, releaseVerifierDocs, provenanceDocs, phase116Docs, phase117Docs, lifecycleSmokeTests, fpkTestPlan, sessionCleanupTest, sessionCleanupDocs, mutationConfinementTest, mutationConfinementDocs] = await Promise.all([
   read("package.json"),
   read(".github/workflows/build-fpk.yml"),
   read("apps/fnos-nas-agent/app/server.mjs"),
@@ -14,6 +14,7 @@ const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, audit
   read("apps/fnos-nas-agent/app/skill-archives.mjs"),
   read("apps/fnos-nas-agent/app/skill-manifest.mjs"),
   read("apps/fnos-nas-agent/app/ui/index.html"),
+  read("apps/fnos-nas-agent/app/file-manager.mjs"),
   read("apps/fnos-nas-agent/app/task-manager.mjs"),
   read("apps/fnos-nas-agent/app/audit-log.mjs"),
   read("tests/phase-21-task-persistence.test.mjs"),
@@ -30,7 +31,9 @@ const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, audit
   read("tests/phase-117-fpk-lifecycle-smoke.test.mjs"),
   read("docs/fpk-test-plan.md"),
   read("tests/phase-119-expired-session-cleanup.test.mjs"),
-  read("docs/phase-119-expired-session-cleanup.md")
+  read("docs/phase-119-expired-session-cleanup.md"),
+  read("tests/phase-122-file-mutation-directory-confinement.test.mjs"),
+  read("docs/phase-122-file-mutation-directory-confinement.md")
 ].map(async promise => promise));
 const packageJson = JSON.parse(pkg);
 
@@ -89,11 +92,16 @@ assert.match(lifecycleSmokeTests, /stop must terminate the process/);
 assert.match(fpkTestPlan, /launcher binds to `0\.0\.0\.0`/);
 assert.doesNotMatch(fpkTestPlan, /LAN access remains disabled/);
 assert.match(readme, /\[Phase 117 — FPK Lifecycle Smoke Verification\]\(docs\/phase-117-fpk-lifecycle-smoke\.md\)/);
+assert.match(readme, /\[Phase 122 — File Mutation Directory Descriptor Confinement\]\(docs\/phase-122-file-mutation-directory-confinement\.md\)/);
 assert.match(server, /void persistSessions\(\)\.catch\(\(\) => \{/);
 assert.match(server, /Expired session cleanup could not be persisted\./);
 assert.match(sessionCleanupTest, /expired-session persistence failures are handled and sanitized/);
 assert.match(sessionCleanupDocs, /unhandled rejection/);
 assert.match(readme, /\[Phase 119 — Expired Session Cleanup Error Handling\]\(docs\/phase-119-expired-session-cleanup\.md\)/);
+assert.match(fileManager, /openValidatedDirectory/);
+assert.match(fileManager, /validatedChildPath/);
+assert.match(mutationConfinementTest, /refuses a parent directory swapped to an outside symlink/);
+assert.match(mutationConfinementDocs, /Destination-name races for rename\/move remain a separate atomic no-replace concern/);
 assert.match(attestJobSource, /id-token: write/);
 assert.match(attestJobSource, /attestations: write/);
 assert.match(attestJobSource, /artifact-metadata: write/);
