@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { fetchGitHubSkillArchive, validateGitHubArchiveUrl } from "../apps/fnos-nas-agent/app/skill-remote-import.mjs";
+import { fetchGitHubSkillArchive, validateGitHubArchiveUrl, validateGitHubRepositoryUrl } from "../apps/fnos-nas-agent/app/skill-remote-import.mjs";
 
 const githubUrl = "https://github.com/example/project/archive/refs/heads/main.zip";
 const codeloadUrl = "https://codeload.github.com/example/project/legacy.zip/refs/heads/main";
@@ -86,4 +86,47 @@ test("remote Skill import is wired through authenticated quarantine flow and mob
   assert.match(html, /id="skill-remote-url" type="url" maxlength="2048"/);
   assert.match(html, /api\("\/api\/skills\/import-remote"/);
   assert.match(html, /尚未解压或执行/);
+});
+
+test("plain GitHub repository URLs resolve the default branch and use the existing ZIP quarantine flow", async () => {
+  const repoUrl = "https://github.com/example/project";
+  const apiUrl = "https://api.github.com/repos/example/project";
+  const archiveUrl = "https://github.com/example/project/archive/refs/heads/main.zip";
+  const calls = [];
+  const fetchImpl = async url => {
+    calls.push(url);
+    if (url === apiUrl) return new Response(JSON.stringify({ default_branch: "main" }), { status: 200 });
+    if (url === archiveUrl) return new Response(null, { status: 302, headers: { location: codeloadUrl } });
+    if (url === codeloadUrl) return new Response(Buffer.from([80, 75, 3, 4, 102, 97, 107, 101]), { status: 200, headers: { "content-length": "8" } });
+    throw new Error("unexpected URL");
+  };
+  const result = await fetchGitHubSkillArchive(repoUrl, { fetchImpl, maxBytes: 64 });
+  assert.equal(result.repository, "example/project");
+  assert.equal(result.sourceUrl, repoUrl);
+  assert.equal(result.branch, "main");
+  assert.equal(result.resolvedFromRepository, true);
+  assert.equal(result.bytes, 8);
+  assert.deepEqual(calls, [apiUrl, archiveUrl, codeloadUrl]);
+});
+
+test("GitHub repository shortcut rejects unsafe or malformed default-branch metadata before archive download", async () => {
+  let calls = 0;
+  await assert.rejects(
+    fetchGitHubSkillArchive("https://github.com/example/project", {
+      fetchImpl: async () => { calls++; return new Response(JSON.stringify({ default_branch: "../../private" }), { status: 200 }); }
+    }),
+    error => error.code === "SKILL_REMOTE_BRANCH_INVALID"
+  );
+  assert.equal(calls, 1);
+  assert.throws(() => validateGitHubRepositoryUrl("https://github.com/example/project/tree/main"));
+  assert.throws(() => validateGitHubRepositoryUrl("https://github.com.example/owner/repo"));
+});
+
+test("GitHub repository metadata failures never expose upstream response bodies", async () => {
+  await assert.rejects(
+    fetchGitHubSkillArchive("https://github.com/example/project", {
+      fetchImpl: async () => new Response("private upstream secret", { status: 403 })
+    }),
+    error => error.code === "SKILL_REMOTE_LOOKUP_FAILED" && !error.message.includes("private upstream secret")
+  );
 });
