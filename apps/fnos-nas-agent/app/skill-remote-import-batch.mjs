@@ -41,7 +41,7 @@ export async function importGitHubSkillBatch(items, {
       results.push({ index, ok: false, error: "GitHub URL must contain 1 to 2048 characters." });
       continue;
     }
-    const normalizedUrl = url.toLowerCase();
+    const normalizedUrl = url;
     if (seen.has(normalizedUrl)) {
       results.push({ index, ok: false, error: "Duplicate URL in this batch; skipped." });
       continue;
@@ -92,6 +92,9 @@ export async function importGitHubSkillBatch(items, {
       });
     } catch (error) {
       const status = Number.isInteger(error?.statusCode) ? error.statusCode : 502;
+      // A streaming-size failure may happen after consuming the remaining budget.
+      // Stop all later downloads when actual bytes consumed cannot be known exactly.
+      if (error?.code === "SKILL_REMOTE_TOO_LARGE" || status === 413) downloadedBytes = maxTotalBytes;
       const errorMessage = status >= 500
         ? (typeof error?.code === "string" && error.code.startsWith("SKILL_REMOTE_")
           ? error.message : "Unable to import this GitHub Skill archive.")
