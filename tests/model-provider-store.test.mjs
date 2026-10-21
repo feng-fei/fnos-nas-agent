@@ -140,3 +140,41 @@ test("removal rejects malformed and unknown IDs", async t => {
   await assert.rejects(store.remove("bad-id"), { statusCode: 400 });
   await assert.rejects(store.remove("a".repeat(24)), { statusCode: 404 });
 });
+
+
+test("only explicitly marked enabled backup providers participate in failover", async t => {
+  const { dataDir, store } = await fixture(t);
+  const primary = await store.add(input("Primary"));
+  const ordinary = await store.add(input("Ordinary alternate"));
+  const backup = await store.add(input("Explicit Backup", { fallback: true }));
+  await store.setDefault(primary.id);
+  assert.deepEqual(store.runtimeFallbackConfigs().map(item => item.providerId), [backup.id]);
+  assert.equal(store.runtimeFallbackConfigs()[0].apiKey, "MODEL_SECRET_KEY_DO_NOT_LOG");
+  assert.equal(JSON.stringify(store.list()).includes("MODEL_SECRET_KEY_DO_NOT_LOG"), false);
+  await store.update(backup.id, {
+    name: "Explicit Backup", endpoint: backup.endpoint, model: backup.model,
+    enabled: false, fallback: true
+  });
+  assert.deepEqual(store.runtimeFallbackConfigs(), []);
+  await store.update(ordinary.id, {
+    name: "Ordinary alternate", endpoint: ordinary.endpoint, model: ordinary.model,
+    enabled: true, fallback: true
+  });
+  assert.deepEqual(store.runtimeFallbackConfigs().map(item => item.providerId), [ordinary.id]);
+  const reloaded = createModelProviderStore({ dataDir });
+  await reloaded.load();
+  assert.equal(reloaded.list().providers.find(item => item.id === ordinary.id).fallback, true);
+  assert.equal(reloaded.list().providers.find(item => item.id === backup.id).fallback, true);
+  assert.equal(reloaded.runtimeFallbackConfigs().length, 1);
+});
+
+test("fallback flag is type-checked and backup candidates are bounded", async t => {
+  const { store } = await fixture(t);
+  await assert.rejects(store.add(input("Invalid fallback", { fallback: "yes" })), { statusCode: 400 });
+  const main = await store.add(input("Main"));
+  await store.setDefault(main.id);
+  const backups = [];
+  for (let index = 0; index < 6; index++) backups.push(await store.add(input("Backup " + index, { fallback: true })));
+  assert.equal(store.runtimeFallbackConfigs().length, 3);
+  assert.equal(store.runtimeFallbackConfigs().some(item => item.providerId === main.id), false);
+});
