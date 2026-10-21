@@ -138,7 +138,7 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
         reportProgress(value, stage = "") {
           if (task.status !== "running" || !Number.isFinite(value)) return false;
           task.progress = Math.max(task.progress, Math.min(99, Math.max(0, Math.floor(value))));
-          task.stage = typeof stage === "string" ? stage.trim().slice(0, 80) : "";
+          task.stage = task.cancelRequested ? "等待当前工具结束后停止" : (typeof stage === "string" ? stage.trim().slice(0, 80) : "");
           void persist().catch(() => {});
           return true;
         }
