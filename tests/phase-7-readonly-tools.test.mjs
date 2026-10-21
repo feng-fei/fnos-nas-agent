@@ -15,7 +15,7 @@ const snapshot = {
 test("registry exposes only explicit read-only tools with closed input schemas", () => {
   const registry = createReadOnlyToolRegistry({ getDiagnostics: async () => snapshot });
   const tools = registry.list();
-  assert.deepEqual(tools.map(tool => tool.id), ["system.status", "storage.summary", "network.interfaces", "system.process-summary"]);
+  assert.deepEqual(tools.map(tool => tool.id), ["system.status", "storage.summary", "system.process-summary", "network.interfaces"]);
   assert.ok(tools.every(tool => tool.risk === "read-only"));
   assert.ok(tools.every(tool => tool.inputSchema.additionalProperties === false));
 });
