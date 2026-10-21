@@ -5,7 +5,8 @@ APP_PORT="${TRIM_SERVICE_PORT:-18787}"
 APP_ROOT="${TRIM_APPDEST:-}"
 APP_VAR="${TRIM_PKGVAR:-}"
 APP_LOG="${TRIM_TEMP_LOGFILE:-/tmp/fnos-nas-agent-fpk.log}"
-PID_FILE="${APP_VAR}/agent.pid"
+PID_FILE=""
+if [ -n "$APP_VAR" ]; then PID_FILE="${APP_VAR}/agent.pid"; fi
 NODE_BIN="${APP_ROOT}/bin/node"
 ENTRY="${APP_ROOT}/server.mjs"
 
@@ -15,10 +16,16 @@ fail() {
   exit 1
 }
 is_running() {
-  [ -f "$PID_FILE" ] || return 1
+  [ -n "$PID_FILE" ] || return 1
+  [ -r "$PID_FILE" ] || return 1
   pid="$(cat "$PID_FILE" 2>/dev/null || true)"
   case "$pid" in ''|*[!0-9]*) return 1 ;; esac
-  kill -0 "$pid" 2>/dev/null
+  kill -0 "$pid" 2>/dev/null || return 1
+  [ -n "$NODE_BIN" ] && [ -n "$ENTRY" ] || return 1
+  [ -r "/proc/$pid/cmdline" ] || return 1
+  process_command="$(tr '\\000' '\\n' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+  printf '%s\\n' "$process_command" | grep -Fqx -- "$NODE_BIN" || return 1
+  printf '%s\\n' "$process_command" | grep -Fqx -- "$ENTRY"
 }
 case "${1:-}" in
   start)
@@ -39,6 +46,7 @@ case "${1:-}" in
     fail "Agent 启动失败，请检查应用日志。"
     ;;
   stop)
+    [ -n "$PID_FILE" ] || exit 0
     if is_running; then
       pid="$(cat "$PID_FILE")"
       kill "$pid" 2>/dev/null || true
