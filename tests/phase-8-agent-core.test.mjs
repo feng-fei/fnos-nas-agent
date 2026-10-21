@@ -151,3 +151,15 @@ test("expanded read-only operational requests route directly without model calls
     assert.deepEqual(f.calls.at(-1), { id, args }, text);
   }
 });
+
+test("agent stops before starting the next tool after cooperative cancellation", async () => {
+  const f = fixture({ enabled: true, plan: { message: "two reads", toolCalls: [
+    { id: "system.status", args: {} },
+    { id: "storage.summary", args: {} }
+  ] } });
+  await assert.rejects(
+    f.agent.run({ text: "请综合检查系统" }, { shouldCancel: () => f.calls.length >= 1 }),
+    { code: "TASK_CANCELLED" }
+  );
+  assert.deepEqual(f.calls, [{ id: "system.status", args: {} }]);
+});
