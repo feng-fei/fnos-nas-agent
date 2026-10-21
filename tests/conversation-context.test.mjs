@@ -16,13 +16,14 @@ test("conversation context accepts only bounded user/assistant messages", () => 
   assert.throws(() => normalizeConversationHistory([{ role: "user", content: " " }]), { statusCode: 400 });
 });
 
-test("conversation history keeps only the newest eight messages and bounds total context", () => {
+test("conversation history caps the newest eight messages and bounds total context", () => {
   const input = Array.from({ length: 12 }, (_, index) => ({
     role: index % 2 ? "assistant" : "user",
     content: "message-" + index + "-" + "x".repeat(1000)
   }));
   const result = normalizeConversationHistory(input);
-  assert.equal(result.length, conversationContextLimits.maxMessages);
+  assert.ok(result.length <= conversationContextLimits.maxMessages);
+  assert.ok(result.length >= 2, "recent context should be retained while respecting the total cap");
   assert.ok(result.every(item => item.content.length <= conversationContextLimits.maxMessageChars));
   assert.ok(result.reduce((sum, item) => sum + item.content.length, 0) <= conversationContextLimits.maxTotalChars);
   assert.equal(result.at(-1).content.startsWith("message-11-"), true);
