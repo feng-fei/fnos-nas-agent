@@ -32,7 +32,7 @@ function safeMessage(value, fallback) {
   return text ? text.slice(0, 2000) : fallback;
 }
 
-export function createAgentCore({ tools, model, now = () => new Date().toISOString(), id = randomUUID }) {
+export function createAgentCore({ tools, model, requestApproval = null, now = () => new Date().toISOString(), id = randomUUID }) {
   if (!tools || typeof tools.list !== "function" || typeof tools.invoke !== "function") throw new TypeError("A tool registry is required");
   if (!model || typeof model.plan !== "function" || typeof model.status !== "function") throw new TypeError("A model adapter is required");
 
@@ -43,6 +43,12 @@ export function createAgentCore({ tools, model, now = () => new Date().toISOStri
       if (!catalogue.has(call.id)) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
       if (!argsMatchSchema(call.args, catalogue.get(call.id).inputSchema))
         throw Object.assign(new Error("Invalid tool arguments"), { statusCode: 400 });
+    }
+    const destructive = plan.toolCalls.filter(call => catalogue.get(call.id).risk === "destructive");
+    if (destructive.length) {
+      if (plan.toolCalls.length !== 1) throw Object.assign(new Error("Destructive actions must be requested alone so no earlier tool can partially execute"), { statusCode: 400 });
+      if (typeof requestApproval !== "function") throw Object.assign(new Error("Confirmation service is unavailable"), { statusCode: 503 });
+      return { pendingApproval: await requestApproval({ toolId: destructive[0].id, args: destructive[0].args, taskId: id() }) };
     }
     const results = [];
     for (const call of plan.toolCalls) {
@@ -66,6 +72,7 @@ export function createAgentCore({ tools, model, now = () => new Date().toISOStri
       const direct = DIRECT_INTENTS.map(item => ({ item, match: item.pattern.exec(text) })).find(entry => entry.match);
       if (direct) {
         const results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] });
+        if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "rules", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "rules", message: direct.item.message, results };
       }
 
@@ -85,6 +92,7 @@ export function createAgentCore({ tools, model, now = () => new Date().toISOStri
       if (!plan) return { taskId, createdAt, completedAt: now(), status: "failed", mode: "model", message: "模型未生成有效计划，未执行工具。", results: [] };
       try {
         const results = await executePlan(plan);
+        if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "model", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "model", message: safeMessage(plan.message, "已完成请求。"), results };
       } catch (error) {
         return {
