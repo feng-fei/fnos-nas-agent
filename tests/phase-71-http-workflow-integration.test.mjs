@@ -79,7 +79,7 @@ test("authenticated task, Skill batch review, cleanup and audit filters work thr
       method: "POST",
       body: JSON.stringify({ name, version: "1.0.0", sourceLabel: "integration-test", archiveSha256: fill.repeat(64), declaredCapabilities: [] })
     });
-    assert.equal(response.status, 201, await response.text());
+    assert.equal(response.status, 201);
     return (await response.json()).skill;
   };
   const reviewable = await makeSkill("Integration A", "a");
@@ -91,7 +91,7 @@ test("authenticated task, Skill batch review, cleanup and audit filters work thr
       { id: invalidTransition.id, state: "enabled", note: "should fail lifecycle policy" }
     ] })
   });
-  assert.equal(batch.status, 200, await batch.text());
+  assert.equal(batch.status, 200);
   const batchPayload = await batch.json();
   assert.equal(batchPayload.total, 2);
   assert.equal(batchPayload.succeeded, 1);
