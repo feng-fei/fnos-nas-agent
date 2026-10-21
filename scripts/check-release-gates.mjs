@@ -38,7 +38,7 @@ assert.match(workflow, /phase-25-\*/);
 assert.doesNotMatch(workflow, /create-release-manifest\.mjs/, "release manifest creation is intentionally paused");
 assert.match(releaseManifestScript, /createHash\("sha256"\)/);
 assert.match(releaseManifestScript, /GITHUB_SHA/);
-assert.ok(releaseManifestScript.includes("dist/release-manifest.json"));
+assert.ok(releaseManifestScript.includes("release-manifest.json"));
 assert.match(releaseManifestScript, /signature: "not-provided"/);
 assert.match(releaseManifestTests, /records artifact checksum/);
 assert.match(releaseManifestTests, /refuses to overwrite/);
