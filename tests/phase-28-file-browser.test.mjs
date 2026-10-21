@@ -101,7 +101,7 @@ test("file browser applies name/type filters and sort before slicing pages", asy
   const temp = await mkdtemp(join(tmpdir(), "fnos-browser-filter-pages-"));
   try {
     const root = join(temp, "vol1");
-    await mkdir(join(root, "docs"));
+    await mkdir(join(root, "docs"), { recursive: true });
     await writeFile(join(root, "z.txt"), "z");
     await writeFile(join(root, "a.txt"), "a");
     const browser = createFileBrowser({ roots: [root] });
