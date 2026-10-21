@@ -3,6 +3,7 @@ import { extractZipEntry, inspectZipArchive, MAX_ARCHIVE_BYTES, saveQuarantinedA
 import { isPreviewableSkillTextPath, MAX_SKILL_SOURCE_PREVIEW_BYTES } from "./skill-source-review.mjs";
 import { inspectSkillManifest } from "./skill-manifest.mjs";
 import { mkdir, readFile, writeFile, rename, chmod, unlink, lstat } from "node:fs/promises";
+import { createSerialWriteQueue } from "./serial-write-queue.mjs";
 import { resolve, sep } from "node:path";
 import { join } from "node:path";
 
@@ -35,26 +36,31 @@ function normalizeManifestReview(value) {
   };
 }
 
-export function createSkillStore(dataDir) {
+export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, writeFile, rename, chmod, unlink } } = {}) {
   const file = join(dataDir, "skills.json");
   let records = [];
-  let queue = Promise.resolve();
+  const enqueueWrite = createSerialWriteQueue();
 
   async function persist() {
     const snapshot = JSON.stringify(records);
-    queue = queue.then(async () => {
-      await mkdir(dataDir, { recursive: true, mode: 0o700 });
-      const tmp = file + ".tmp";
-      await writeFile(tmp, snapshot + "\n", { encoding: "utf8", mode: 0o600 });
-      await chmod(tmp, 0o600);
-      await rename(tmp, file);
+    return enqueueWrite(async () => {
+      await storageFs.mkdir(dataDir, { recursive: true, mode: 0o700 });
+      const tmp = file + "." + randomBytes(8).toString("hex") + ".tmp";
+      try {
+        await storageFs.writeFile(tmp, snapshot + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
+        await storageFs.chmod(tmp, 0o600);
+        await storageFs.rename(tmp, file);
+        await storageFs.chmod(file, 0o600);
+      } catch (error) {
+        await storageFs.unlink(tmp).catch(() => {});
+        throw error;
+      }
     });
-    return queue;
   }
 
   async function load() {
     try {
-      const value = JSON.parse(await readFile(file, "utf8"));
+      const value = JSON.parse(await storageFs.readFile(file, "utf8"));
       if (!Array.isArray(value) || value.length > MAX_RECORDS) throw new Error("invalid store");
       records = value.filter(item =>
         item && typeof item.id === "string" && typeof item.name === "string" &&
