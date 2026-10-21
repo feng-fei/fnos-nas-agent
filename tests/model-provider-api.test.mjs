@@ -60,9 +60,18 @@ test("model management API enforces session/origin, persists provider settings, 
   assert.equal(login.status, 200, await login.text());
   const cookie = (login.headers.get("set-cookie") || "").split(";")[0];
 
+  const presetResponse = await request("/api/models/presets", { headers: { cookie } });
+  assert.equal(presetResponse.status, 200);
+  const presetPayload = await presetResponse.json();
+  assert.ok(presetPayload.presets.some(item => item.id === "openai"));
+  assert.ok(presetPayload.presets.some(item => item.id === "deepseek"));
+  assert.ok(presetPayload.presets.some(item => item.id === "siliconflow"));
+
   const listing = await request("/api/models", { headers: { cookie } });
   assert.equal(listing.status, 200);
-  assert.deepEqual((await listing.json()).providers, []);
+  const listingPayload = await listing.json();
+  assert.deepEqual(listingPayload.providers, []);
+  assert.ok(listingPayload.metrics?.totals);
 
   const wrongOrigin = await request("/api/models", {
     method: "POST", headers: { cookie, origin: "http://attacker.invalid" },
