@@ -10,12 +10,12 @@ The repository builds the native x86 FPK on GitHub Actions; no build tools are i
 ## What the workflow does
 
 1. Prepares Node.js 22.17.0 on the GitHub-hosted Ubuntu x86_64 runner and bundles its executable in the app payload.
-2. Generates valid PNG icons with a Python standard-library script.
+2. Generates valid PNG icons with a Python standard-library script and validates the required `config/privilege` and `config/resource` JSON plus `wizard/` directory.
 3. Checks shell syntax and the Node.js entry point.
 4. Downloads official `fnpack 1.2.3` and verifies its SHA-256 before executing it.
 5. Builds the FPK and uploads the package plus a SHA-256 checksum as a 14-day Actions artifact.
 
-The artifact is a **test build**, not a production release. A successful CI build proves packaging and static checks only; it does not prove installation or lifecycle behavior on a real fnOS device.
+The artifact is a **test build**, not a production release. The package uses `run-as: package` with no additional groups or shared resources. A successful CI build proves packaging and static checks only; it does not prove installation or lifecycle behavior on a real fnOS device.
 
 ## Download the artifact
 
