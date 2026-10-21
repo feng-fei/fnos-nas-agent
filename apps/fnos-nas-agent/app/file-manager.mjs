@@ -1,4 +1,5 @@
 import { readdir, lstat, realpath, mkdir, open, link, unlink, rename, rmdir, readFile } from "node:fs/promises";
+import { constants } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024, MAX_PREVIEW_BYTES = 1024 * 1024, MAX_TEXT_CREATE_BYTES = 1024 * 1024;
@@ -10,17 +11,55 @@ function safeName(name){if(typeof name!=="string"||!name.trim()||name.length>255
 export function createFileManager({roots:suppliedRoots,env=process.env,fs={readdir,lstat,realpath,mkdir,open,link,unlink,rename,rmdir,readFile}}={}){
  async function getRoots(){let candidates=suppliedRoots;if(!Array.isArray(candidates)){const configured=typeof env.AGENT_FILE_ROOTS==="string"?env.AGENT_FILE_ROOTS.trim():"";if(configured)candidates=configured.split(":").map(x=>x.trim()).filter(Boolean);else{try{candidates=(await fs.readdir("/",{withFileTypes:true})).filter(e=>e.isDirectory()&&/^vol[0-9]+$/i.test(e.name)).map(e=>resolve("/",e.name));}catch{candidates=[];}}}const roots=[];for(const candidate of candidates){if(typeof candidate!=="string"||!isAbsolute(candidate))continue;try{const p=await fs.realpath(candidate),info=await fs.lstat(p);if(info.isDirectory()&&!roots.includes(p))roots.push(p);}catch{}}return roots.sort();}
  async function resolveExisting(value,expected="any"){if(typeof value!=="string"||!value.trim()||value.length>2048)fail(400,"Invalid path");const roots=await getRoots();let path;try{path=await fs.realpath(resolve(value));}catch{fail(404,"Path not found");}const root=roots.find(r=>within(r,path));if(!root)fail(403,"Path is outside configured storage roots");let info;try{info=await fs.lstat(resolve(value));}catch{fail(404,"Path not found");}if(info.isSymbolicLink())fail(403,"Symbolic links are not supported");if(expected==="file"&&!info.isFile())fail(400,"Expected a regular file");if(expected==="directory"&&!info.isDirectory())fail(400,"Expected a directory");if(path===root&&expected==="file")fail(400,"Storage root is not a file");return {path,root,info};}
+ async function openValidatedFile(item) {
+  let handle;
+  try {
+   handle = await fs.open(item.path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+   const info = await handle.stat({ bigint: true });
+   if (!info.isFile() || info.dev !== BigInt(item.info.dev) || info.ino !== BigInt(item.info.ino))
+    fail(409, "File changed while opening; retry the operation");
+   return { handle, info };
+  } catch (error) {
+   if (handle) await handle.close().catch(() => {});
+   if (error?.code === "ELOOP" || error?.code === "ENOENT")
+    fail(409, "File changed while opening; retry the operation");
+   throw error;
+  }
+ }
  async function destination(directory,name){const parent=await resolveExisting(directory,"directory"),clean=safeName(name),target=resolve(parent.path,clean);if(!within(parent.root,target)||target===parent.root)fail(403,"Path is outside configured storage roots");return {...parent,target,name:clean};}
  async function ensureAbsent(path){try{await fs.lstat(path);fail(409,"A file or directory with that name already exists");}catch(e){if(e.statusCode)throw e;if(e.code!=="ENOENT")throw e;}}
- async function preview(value){const item=await resolveExisting(value,"file");if(item.info.size>MAX_PREVIEW_BYTES)fail(413,"Preview is limited to 1 MiB");const b=await fs.readFile(item.path);if(b.includes(0))fail(415,"Binary files cannot be previewed");let content;try{content=new TextDecoder("utf-8",{fatal:true}).decode(b);}catch{fail(415,"File is not valid UTF-8 text");}return {name:basename(item.path),sizeBytes:item.info.size,content};}
- async function download(value){const item=await resolveExisting(value,"file");return {path:item.path,name:basename(item.path),sizeBytes:item.info.size};}
+ async function preview(value) {
+  const item = await resolveExisting(value, "file");
+  const { handle, info } = await openValidatedFile(item);
+  try {
+   if (info.size > BigInt(MAX_PREVIEW_BYTES)) fail(413, "Preview is limited to 1 MiB");
+   const chunks = [], buffer = Buffer.alloc(64 * 1024);
+   let position = 0;
+   while (position <= MAX_PREVIEW_BYTES) {
+    const requested = Math.min(buffer.length, MAX_PREVIEW_BYTES + 1 - position);
+    const { bytesRead } = await handle.read(buffer, 0, requested, position);
+    if (bytesRead <= 0) break;
+    chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    position += bytesRead;
+   }
+   if (position > MAX_PREVIEW_BYTES) fail(413, "Preview is limited to 1 MiB");
+   const b = Buffer.concat(chunks, position);
+   if (b.includes(0)) fail(415, "Binary files cannot be previewed");
+   let content;
+   try { content = new TextDecoder("utf-8", { fatal: true }).decode(b); }
+   catch { fail(415, "File is not valid UTF-8 text"); }
+   return { name: basename(item.path), sizeBytes: position, content };
+  } finally { await handle.close(); }
+ }
+ async function download(value) {
+  const item = await resolveExisting(value, "file");
+  const { handle, info } = await openValidatedFile(item);
+  return { handle, name: basename(item.path), sizeBytes: Number(info.size) };
+ }
  async function checksum(value) {
   const item = await resolveExisting(value, "file");
-  if (item.info.size > MAX_CHECKSUM_BYTES) fail(413, "SHA-256 calculation is limited to 256 MiB");
-  const handle = await fs.open(item.path, "r");
+  const { handle, info: before } = await openValidatedFile(item);
   try {
-    const before = await handle.stat({ bigint: true });
-    if (!before.isFile()) fail(400, "Expected a regular file");
     if (before.size > BigInt(MAX_CHECKSUM_BYTES)) fail(413, "SHA-256 calculation is limited to 256 MiB");
     const expectedSize = Number(before.size);
     const hash = createHash("sha256");

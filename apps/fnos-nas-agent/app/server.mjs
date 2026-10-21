@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { createReadStream } from "node:fs";
+
 import os from "node:os";
 import { statfs } from "node:fs/promises";
 import { readFile, writeFile, mkdir, rename, chmod, readdir, rm } from "node:fs/promises";
@@ -358,10 +358,34 @@ const server = createServer(async (req, res) => {
       catch(e){const s=[400,403,404,413,415].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"Unable to preview file":e.message});}
     }
     if (url.pathname === "/api/files/download") {
-      if (!sessionFor(req)) return reply(res,401,{error:"Unauthorized"});
-      if(req.method!=="GET")return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"GET"});
-      try{const item=await fileManager.download(url.searchParams.get("path")||"");res.writeHead(200,{"content-type":"application/octet-stream","content-length":item.sizeBytes,"content-disposition":"attachment; filename*=UTF-8''"+encodeURIComponent(item.name),"cache-control":"no-store","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; frame-ancestors 'none'","referrer-policy":"no-referrer"});const stream=createReadStream(item.path);stream.on("error",()=>{if(!res.headersSent)reply(res,500,{error:"Unable to download file"});else res.destroy();});stream.pipe(res);return;}
-      catch(e){const s=[400,403,404].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"Unable to download file":e.message});}
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      let item = null;
+      let streaming = false;
+      try {
+        item = await fileManager.download(url.searchParams.get("path") || "");
+        res.writeHead(200, {
+          "content-type": "application/octet-stream",
+          "content-length": item.sizeBytes,
+          "content-disposition": "attachment; filename*=UTF-8''" + encodeURIComponent(item.name),
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
+          "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+          "referrer-policy": "no-referrer"
+        });
+        const stream = item.handle.createReadStream({ autoClose: true });
+        streaming = true;
+        stream.on("error", () => {
+          if (!res.headersSent) reply(res, 500, { error: "Unable to download file" });
+          else res.destroy();
+        });
+        stream.pipe(res);
+        return;
+      } catch (error) {
+        if (item?.handle && !streaming) await item.handle.close().catch(() => {});
+        const status = [400, 403, 404, 409].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 500 ? "Unable to download file" : error.message });
+      }
     }
     if (url.pathname === "/api/files/upload") {
       if(req.method!=="POST")return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"POST"});
