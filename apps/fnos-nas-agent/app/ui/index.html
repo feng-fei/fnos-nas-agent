@@ -488,9 +488,67 @@ body.authenticated .page-panel h2{font-size:1.18rem}body.authenticated #logout{m
 </form><details><summary>手动登记已有归档摘要（仅元数据）</summary><form id="skill-form"><label for="skill-name">Skill 名称</label><input id="skill-name" maxlength="100" required><label for="skill-version">版本（可选）</label><input id="skill-version" maxlength="40"><label for="skill-hash">归档 SHA-256</label><input id="skill-hash" minlength="64" maxlength="64" pattern="[a-fA-F0-9]{64}" required><label for="skill-source">来源备注（可选）</label><input id="skill-source" maxlength="100"><button type="submit">登记元数据</button></form></details><p id="skill-error" class="error" role="status"></p><div class="skill-filters"><label for="skill-search">搜索 Skill 名称、版本、来源、摘要或能力</label><input id="skill-search" maxlength="100" placeholder="输入关键词"><label for="skill-state-filter">状态筛选</label><select id="skill-state-filter"><option value="">全部状态</option><option value="pending_review">待审核</option><option value="approved">已批准</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="rejected">已拒绝</option></select><button id="skill-filter-apply" type="button">筛选</button><label><input id="skill-select-visible" type="checkbox">选择本页</label><label for="skill-batch-state">批量目标状态</label><select id="skill-batch-state"><option value="approved">批准</option><option value="enabled">启用</option><option value="disabled">停用</option><option value="rejected">拒绝</option></select><label for="skill-batch-note">批量审核备注（可选）</label><input id="skill-batch-note" maxlength="500" placeholder="统一备注"><button id="skill-batch-apply" type="button" disabled>执行批量变更</button><span id="skill-selected-count" class="muted">已选择 0 个</span><p id="skill-count" class="muted">尚未加载</p><button id="skill-page-prev" type="button" disabled>上一页</button> <button id="skill-page-next" type="button" disabled>下一页</button></div><div id="skill-list"><p class="muted">尚未加载</p></div></section>
 <section class="card hidden" id="security-note"><h2>安全说明</h2><p class="muted">任意系统命令和导入 Skill 执行默认关闭。已登记的常规文件操作需通过有效会话及参数校验。HTTP 不加密传输内容，因此仅限可信局域网，不要暴露到公网。</p></section>
 <script>
+/* Output formatting helpers: readable units for measurements returned by the API. */
+const DISPLAY_BYTE_UNITS=["B","KB","MB","GB","TB","PB"];
+function formatBytes(value){
+ if(value===null||value===undefined||value===""||!Number.isFinite(Number(value)))return "—";
+ const bytes=Number(value);if(bytes===0)return "0 B";
+ let amount=Math.abs(bytes),unitIndex=0;
+ while(amount>=1024&&unitIndex<DISPLAY_BYTE_UNITS.length-1){amount/=1024;unitIndex++;}
+ amount=bytes/(1024**unitIndex);
+ const digits=unitIndex===0?0:amount>=100?0:amount>=10?1:2;
+ return new Intl.NumberFormat("zh-CN",{maximumFractionDigits:digits}).format(amount)+" "+DISPLAY_BYTE_UNITS[unitIndex];
+}
+function formatDurationSeconds(value){
+ if(value===null||value===undefined||!Number.isFinite(Number(value)))return "—";
+ const seconds=Math.max(0,Math.floor(Number(value)));
+ if(seconds<60)return seconds+" 秒";
+ const days=Math.floor(seconds/86400),minutes=Math.floor(seconds%3600/60),remaining=seconds%60;
+ if(days){const hours=Math.floor(seconds%86400/3600);return days+" 天"+(hours?" "+hours+" 小时":"");}
+ if(seconds>=3600)return Math.floor(seconds/3600)+" 小时"+(minutes?" "+minutes+" 分":"");
+ return Math.floor(seconds/60)+" 分"+(remaining?" "+remaining+" 秒":"");
+}
+function formatDurationMs(value){
+ if(value===null||value===undefined||!Number.isFinite(Number(value)))return "—";
+ const milliseconds=Math.max(0,Number(value));
+ if(milliseconds<1000)return Math.round(milliseconds)+" ms";
+ if(milliseconds<60000)return new Intl.NumberFormat("zh-CN",{maximumFractionDigits:2}).format(milliseconds/1000)+" 秒";
+ return formatDurationSeconds(milliseconds/1000);
+}
+function formatDateTime(value){
+ if(value===null||value===undefined||value==="")return "—";
+ const date=new Date(value);if(!Number.isFinite(date.getTime()))return String(value);
+ return new Intl.DateTimeFormat("zh-CN",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(date);
+}
+function formatDisplayValue(value,key=""){
+ if(Array.isArray(value))return value.map(item=>formatDisplayValue(item,key));
+ if(value!==null&&typeof value==="object")return Object.fromEntries(Object.entries(value).map(([childKey,childValue])=>[childKey,formatDisplayValue(childValue,childKey)]));
+ if(typeof value==="number"){
+  if(/(?:bytes?|BytesScanned)$/i.test(key))return formatBytes(value);
+  if(/(?:duration|elapsed|latency|responseTime|requestTime)Ms$/i.test(key))return formatDurationMs(value);
+  if(/(?:uptime|duration|elapsed|runtime)Seconds$/i.test(key))return formatDurationSeconds(value);
+  if(/(?:percent|percentage|progress)$/i.test(key))return new Intl.NumberFormat("zh-CN",{maximumFractionDigits:1}).format(value)+"%";
+  if(/bytesPerSecond|bytesPerSec$/i.test(key))return formatBytes(value)+"/s";
+ }
+ if(typeof value==="string"){
+  if(/(?:At|Date|Timestamp)$/i.test(key)&&/^\d{4}-\d{2}-\d{2}(?:T|\s)/.test(value))return formatDateTime(value);
+  if(/^(?:stdout|stderr|output|rawOutput|responseText)$/i.test(key)&&/^\s*[\[{]/.test(value)){try{return formatDisplayValue(JSON.parse(value),key);}catch{}}
+ }
+ return value;
+}
+function formatOutputJson(value){
+ let parsed=value;
+ if(typeof value==="string"){
+  const trimmed=value.trim();
+  if(trimmed.startsWith("{")||trimmed.startsWith("[")){try{parsed=JSON.parse(value);}catch{return value;}}
+  else return value;
+ }
+ return JSON.stringify(formatDisplayValue(parsed),null,2);
+}
+
 const setupCard=document.querySelector("#setup-card"),loginCard=document.querySelector("#login-card"),statusCard=document.querySelector("#status-card"),errorEl=document.querySelector("#login-error"),tokenEl=document.querySelector("#token"),newTokenEl=document.querySelector("#new-token");
 async function api(path,options={}){return fetch(path,{cache:"no-store",credentials:"same-origin",...options});}
-async function refresh(){const s=document.querySelector("#status"),d=document.querySelector("#detail"),out=document.querySelector("#diagnostics");try{const r=await api("/api/health");if(!r.ok)throw Error();const h=await r.json();s.textContent=h.ok?"运行正常":"状态异常";d.textContent="版本 "+h.version+"；任意系统命令执行："+(h.executionEnabled?"已启用":"关闭")+"；已登记的常规文件工具可用。";const dr=await api("/api/diagnostics");if(!dr.ok)throw Error("诊断读取失败（HTTP "+dr.status+"）");const x=await dr.json();const gib=n=>(n/1024**3).toFixed(2)+" GiB";out.textContent=["系统："+x.system.platform+" "+x.system.release+" / "+x.system.arch,"Node.js："+x.system.nodeVersion+"；运行时间："+Math.floor(x.system.uptimeSeconds/3600)+" 小时","CPU："+x.cpu.model+"（逻辑核心 "+x.cpu.logicalCores+"）；负载 "+x.cpu.loadAverage.map(n=>n.toFixed(2)).join(" / "),"内存：已用 "+gib(x.memory.usedBytes)+" / "+gib(x.memory.totalBytes)+"（可用 "+gib(x.memory.freeBytes)+"）","网络："+(x.network.flatMap(n=>n.addresses.map(a=>n.name+" "+a.address)).join("；")||"未发现非回环地址"),"存储："+x.storage.map(v=>v.available?v.label+" 已用 "+gib(v.usedBytes)+" / "+gib(v.totalBytes)+"（可用 "+gib(v.freeBytes)+"）":v.label+" 无法读取").join("；")].join("\n");}catch(e){out.textContent=e.message||"诊断信息暂不可用";if(!s.textContent)s.textContent="无法连接服务";}}
+async function refresh(){const s=document.querySelector("#status"),d=document.querySelector("#detail"),out=document.querySelector("#diagnostics");try{const r=await api("/api/health");if(!r.ok)throw Error();const h=await r.json();s.textContent=h.ok?"运行正常":"状态异常";d.textContent="版本 "+h.version+"；任意系统命令执行："+(h.executionEnabled?"已启用":"关闭")+"；已登记的常规文件工具可用。";const dr=await api("/api/diagnostics");if(!dr.ok)throw Error("诊断读取失败（HTTP "+dr.status+"）");const x=await dr.json();const gib=formatBytes;out.textContent=["系统："+x.system.platform+" "+x.system.release+" / "+x.system.arch,"Node.js："+x.system.nodeVersion+"；运行时间："+formatDurationSeconds(x.system.uptimeSeconds),"CPU："+x.cpu.model+"（逻辑核心 "+x.cpu.logicalCores+"）；负载 "+x.cpu.loadAverage.map(n=>n.toFixed(2)).join(" / "),"内存：已用 "+gib(x.memory.usedBytes)+" / "+gib(x.memory.totalBytes)+"（可用 "+gib(x.memory.freeBytes)+"）","网络："+(x.network.flatMap(n=>n.addresses.map(a=>n.name+" "+a.address)).join("；")||"未发现非回环地址"),"存储："+x.storage.map(v=>v.available?v.label+" 已用 "+gib(v.usedBytes)+" / "+gib(v.totalBytes)+"（可用 "+gib(v.freeBytes)+"）":v.label+" 无法读取").join("；")].join("\n");}catch(e){out.textContent=e.message||"诊断信息暂不可用";if(!s.textContent)s.textContent="无法连接服务";}}
 async function init(){try{const r=await api("/api/session");const x=await r.json();if(x.authenticated){showWorkspace();await refresh();await refreshSkills();await refreshModelPresets();await refreshModels();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();await refreshPendingActions();}else if(x.setupRequired){loginCard.classList.add("hidden");setupCard.classList.remove("hidden");}}catch{}}
 
 document.querySelector("#setup-form").addEventListener("submit",async e=>{e.preventDefault();document.querySelector("#setup-error").textContent="";try{const token=newTokenEl.value;const r=await api("/api/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:token})});const x=await r.json();if(!r.ok)throw Error(x.error||"设置失败");tokenEl.value=token;setupCard.classList.add("hidden");loginCard.classList.remove("hidden");document.querySelector("#login-help").textContent="密码已设置，请登录。";newTokenEl.value="";tokenEl.focus();}catch(e){document.querySelector("#setup-error").textContent=e.message||"设置失败";}});
@@ -567,7 +625,7 @@ async function refreshModels(){
    const meta=document.createElement("p");meta.className="muted";meta.textContent="模型："+item.model+"；API Key："+(item.hasApiKey?"已加密保存":"未配置")+"；Endpoint："+item.endpoint;card.append(meta);
    if(item.lastTest){
     const last=document.createElement("p");last.className=item.lastTest.ok?"muted":"error";
-    last.textContent=(item.lastTest.ok?"最近连接测试成功：":"最近连接测试失败：")+item.lastTest.message+(item.lastTest.at?"（"+item.lastTest.at+"）":"")+(Number.isSafeInteger(item.lastTest.durationMs)?" · 耗时 "+item.lastTest.durationMs+" ms":"")+(Number.isInteger(item.lastTest.statusCode)?" · HTTP "+item.lastTest.statusCode:"");card.append(last);
+    last.textContent=(item.lastTest.ok?"最近连接测试成功：":"最近连接测试失败：")+item.lastTest.message+(item.lastTest.at?"（"+formatDateTime(item.lastTest.at)+"）":"")+(Number.isSafeInteger(item.lastTest.durationMs)?" · 耗时 "+formatDurationMs(item.lastTest.durationMs):"")+(Number.isInteger(item.lastTest.statusCode)?" · HTTP "+item.lastTest.statusCode:"");card.append(last);
    }else{
     const last=document.createElement("p");last.className="muted";last.textContent="尚未测试连接。";card.append(last);
    }
@@ -741,7 +799,7 @@ async function runModelProviderBatchTest(){
   await refreshModels();
   const passed=results.filter(item=>item.ok).length;
   const failed=results.length-passed;
-  const details=results.map(item=>(item.ok?"✓ ":"✗ ")+item.name+"："+item.message+(Number.isSafeInteger(item.durationMs)?"（"+item.durationMs+" ms）":"")).join("；");
+  const details=results.map(item=>(item.ok?"✓ ":"✗ ")+item.name+"："+item.message+(Number.isSafeInteger(item.durationMs)?"（"+formatDurationMs(item.durationMs)+"）":"")).join("；");
   const remaining=enabled.length-(start+batch.length);
   status.textContent="本批完成：成功 "+passed+"，失败 "+failed+"。"+(remaining>0?"还有 "+remaining+" 个未测试，继续点击测试下一批。":"已覆盖当前所有启用模型。")+(details?" "+details:"");
  }catch(error){status.textContent=error.message||"批量连接测试失败。";}
@@ -803,7 +861,7 @@ document.querySelector("#trim-cli-test").addEventListener("click",async()=>{
    result.textContent=(body.error||"连接探测失败")+(body.nextAction?" 下一步："+body.nextAction:"");
    return;
   }
-  result.textContent="连接成功（"+body.checkedAt+"）。官方 CLI 已完成只读系统信息查询，OAuth 授权与 API 连通性已验证。";
+  result.textContent="连接成功（"+formatDateTime(body.checkedAt)+"）。官方 CLI 已完成只读系统信息查询，OAuth 授权与 API 连通性已验证。";
  }catch(error){result.textContent=error.message||"连接探测失败";}
  finally{await refreshAgentStatus();button.disabled=false;}
 });
@@ -822,7 +880,7 @@ async function refreshAgentStatus(){
   document.querySelector("#agent-status").textContent="规则优先；模型："+(x.model.enabled?"已启用（"+(x.model.providerName||x.model.model)+" / "+x.model.model+"）":"未配置")+"；可用工具："+x.availableTools+"；官方 CLI："+install+"；连接状态："+statusLabel+"；任意命令执行：关闭。";
   const detail=document.querySelector("#trim-cli-connection-detail");
   const parts=[cli.message||cli.note||"尚无连接状态信息。"];
-  if(cli.checkedAt)parts.push("上次检测："+cli.checkedAt);
+  if(cli.checkedAt)parts.push("上次检测："+formatDateTime(cli.checkedAt));
   if(cli.errorCategory)parts.push("错误类别："+cli.errorCategory);
   if(cli.nextAction)parts.push("建议："+cli.nextAction);
   detail.textContent=parts.join(" ");
@@ -866,7 +924,7 @@ let taskRefreshTimer=null,taskHistoryOffset=0;
   for(const task of data.tasks){
    const card=document.createElement("div");card.className="card";
    const title=document.createElement("strong");title.textContent=task.taskId+" · "+task.status;card.append(title);
-   const info=document.createElement("p");info.className="muted";info.textContent="创建："+task.createdAt+(task.completedAt?"；完成："+task.completedAt:"");card.append(info);
+   const info=document.createElement("p");info.className="muted";info.textContent="创建："+formatDateTime(task.createdAt)+(task.completedAt?"；完成："+formatDateTime(task.completedAt):"");card.append(info);
    if(task.status==="queued"||task.status==="running"){
     hasActive=true;
     const stage=document.createElement("p");stage.className="muted";stage.textContent=(task.stage||(task.status==="queued"?"排队中":"执行中"))+" · "+Math.max(0,Math.min(100,Number(task.progress)||0))+"%";card.append(stage);
@@ -879,7 +937,7 @@ let taskRefreshTimer=null,taskHistoryOffset=0;
    if(Array.isArray(task.result?.results)&&task.result.results.length){
     const details=document.createElement("details");const summary=document.createElement("summary");summary.textContent="查看执行结果（"+task.result.results.length+" 项）";details.append(summary);
     const pre=document.createElement("pre");let serialized="";
-    try{serialized=JSON.stringify(task.result.results.slice(0,10),null,2);}catch{serialized="结果无法显示";}
+    try{serialized=formatOutputJson(task.result.results.slice(0,10));}catch{serialized="结果无法显示";}
     pre.textContent=serialized.length>12000?serialized.slice(0,12000)+"\n…（结果已截断）":serialized;
     pre.style.maxHeight="320px";pre.style.overflow="auto";details.append(pre);
     if(task.result.results.length>10){const note=document.createElement("p");note.className="muted";note.textContent="仅显示前 10 项。";details.append(note);}
@@ -914,11 +972,11 @@ async function refreshPendingActions(){
   for(const action of data.actions){
    const card=document.createElement("div");card.className="card warning";
    const title=document.createElement("strong");title.textContent=action.title+" · 需要确认";card.append(title);
-   const target=document.createElement("p");target.textContent="目标："+(action.target||JSON.stringify(action.args));card.append(target);
-   const desc=document.createElement("p");desc.textContent=action.description+"；确认截止："+new Date(action.expiresAt).toLocaleTimeString();card.append(desc);
-   const args=document.createElement("pre");args.textContent=JSON.stringify(action.args,null,2);card.append(args);
+   const target=document.createElement("p");target.textContent="目标："+(action.target||formatOutputJson(action.args));card.append(target);
+   const desc=document.createElement("p");desc.textContent=action.description+"；确认截止："+formatDateTime(action.expiresAt);card.append(desc);
+   const args=document.createElement("pre");args.textContent=formatOutputJson(action.args);card.append(args);
    const confirmButton=document.createElement("button");confirmButton.type="button";confirmButton.textContent="确认执行此操作";
-   confirmButton.addEventListener("click",async()=>{if(!confirm("请再次确认：执行“"+action.title+"”，目标为“"+(action.target||JSON.stringify(action.args))+"”。此操作可能造成数据丢失。"))return;confirmButton.disabled=true;try{const cr=await api("/api/actions/"+encodeURIComponent(action.id)+"/confirm",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});const result=await cr.json();if(!cr.ok)throw Error(result.error||"确认执行失败");const out=document.querySelector("#tool-result");out.textContent="已执行确认操作：\\n"+JSON.stringify(result.result,null,2);await refreshFiles(currentFilePath);await refreshPendingActions();}catch(error){alert(error.message||"确认执行失败");confirmButton.disabled=false;}});
+   confirmButton.addEventListener("click",async()=>{if(!confirm("请再次确认：执行“"+action.title+"”，目标为“"+(action.target||formatOutputJson(action.args))+"”。此操作可能造成数据丢失。"))return;confirmButton.disabled=true;try{const cr=await api("/api/actions/"+encodeURIComponent(action.id)+"/confirm",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});const result=await cr.json();if(!cr.ok)throw Error(result.error||"确认执行失败");const out=document.querySelector("#tool-result");out.textContent="已执行确认操作：\\n"+formatOutputJson(result.result);await refreshFiles(currentFilePath);await refreshPendingActions();}catch(error){alert(error.message||"确认执行失败");confirmButton.disabled=false;}});
    const denyButton=document.createElement("button");denyButton.type="button";denyButton.textContent="拒绝";
    denyButton.addEventListener("click",async()=>{denyButton.disabled=true;try{const dr=await api("/api/actions/"+encodeURIComponent(action.id)+"/deny",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});const result=await dr.json();if(!dr.ok)throw Error(result.error||"拒绝失败");await refreshPendingActions();}catch(error){alert(error.message||"拒绝失败");denyButton.disabled=false;}});
    card.append(confirmButton,denyButton);host.append(card);
@@ -959,7 +1017,7 @@ document.querySelector("#agent-form").addEventListener("submit",async e=>{
   }
   if(task.status==="completed"&&task.result){
    const result=task.result,details=[result.message,"任务："+taskId+"；模式："+result.mode+"；状态："+result.status];
-   for(const item of result.results||[])details.push("工具 "+item.tool+"：\n"+JSON.stringify(item.result,null,2));
+   for(const item of result.results||[])details.push("工具 "+item.tool+"：\n"+formatOutputJson(item.result));
    renderAgentTurn("NAS Agent",details.join("\n\n"));
    if(result.status==="completed"){
     const contextParts=[result.message||"已完成请求。"];
@@ -1009,11 +1067,11 @@ async function refreshFiles(pathValue=currentFilePath,pageOffset=0){
    const row=document.createElement("div");row.className="card";
    if(item.type==="directory"){const btn=document.createElement("button");btn.type="button";btn.textContent="📁 "+item.name;btn.addEventListener("click",()=>refreshFiles(item.path));row.append(btn);}
    else{const name=document.createElement("strong");name.textContent="📄 "+item.name;row.append(name);}
-   const meta=document.createElement("p");meta.className="muted";meta.textContent=(item.type==="directory"?"文件夹":"文件")+" · "+(item.sizeBytes===null?"—":(item.sizeBytes/1024).toFixed(1)+" KiB")+" · "+item.modifiedAt;row.append(meta);
+   const meta=document.createElement("p");meta.className="muted";meta.textContent=(item.type==="directory"?"文件夹":"文件")+" · "+(item.sizeBytes===null?"—":formatBytes(item.sizeBytes))+" · "+item.modifiedAt;row.append(meta);
    const actions=document.createElement("div");actions.className="file-row-actions";
    const actionButton=(label,fn)=>{const b=document.createElement("button");b.type="button";b.textContent=label;b.addEventListener("click",fn);actions.append(b);};
    if(item.type==="file"){
-    actionButton("预览",async()=>{try{const r=await api("/api/files/preview?path="+encodeURIComponent(item.path));const data=await r.json();if(!r.ok)throw Error(data.error||"预览失败");const pre=document.querySelector("#file-preview");pre.classList.remove("hidden");pre.textContent="文件："+data.name+"（"+data.sizeBytes+" 字节）\\n\\n"+data.content;}catch(e){err.textContent=e.message||"预览失败";}});
+    actionButton("预览",async()=>{try{const r=await api("/api/files/preview?path="+encodeURIComponent(item.path));const data=await r.json();if(!r.ok)throw Error(data.error||"预览失败");const pre=document.querySelector("#file-preview");pre.classList.remove("hidden");pre.textContent="文件："+data.name+"（"+formatBytes(data.sizeBytes)+"）\\n\\n"+data.content;}catch(e){err.textContent=e.message||"预览失败";}});
     actionButton("下载",()=>{const a=document.createElement("a");a.href="/api/files/download?path="+encodeURIComponent(item.path);a.download=item.name;document.body.append(a);a.click();a.remove();});
     actionButton("计算 SHA-256",async()=>{
      err.textContent="";
@@ -1021,7 +1079,7 @@ async function refreshFiles(pathValue=currentFilePath,pageOffset=0){
       const response=await api("/api/files/checksum?path="+encodeURIComponent(item.path)),result=await response.json();
       if(!response.ok)throw Error(result.error||"SHA-256 计算失败");
       const pre=document.querySelector("#file-preview");pre.classList.remove("hidden");
-      pre.textContent="文件："+result.name+"（"+result.sizeBytes+" 字节）\\n算法："+result.algorithm+"\\nSHA-256："+result.sha256+"\\n\\n"+(result.note||"按流式分块读取，未将文件整体载入内存。");
+      pre.textContent="文件："+result.name+"（"+formatBytes(result.sizeBytes)+"）\\n算法："+result.algorithm+"\\nSHA-256："+result.sha256+"\\n\\n"+(result.note||"按流式分块读取，未将文件整体载入内存。");
      }catch(error){err.textContent=error.message||"SHA-256 计算失败";}
     });
    }
@@ -1108,7 +1166,7 @@ async function refreshTools(){
      args[name]=rule.type==="integer"?Number(field.value):field.value;
     }
     const out=document.querySelector("#tool-result");out.textContent="正在读取 "+item.id+"…";btn.disabled=true;
-    try{const result=await api("/api/tools/"+encodeURIComponent(item.id)+"/run",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(args)});const payload=await result.json();if(!result.ok){out.textContent=(payload.error||"工具调用失败")+(payload.nextAction?"\\n\\n建议："+payload.nextAction:"");return;}out.textContent=JSON.stringify(payload.result,null,2);}
+    try{const result=await api("/api/tools/"+encodeURIComponent(item.id)+"/run",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(args)});const payload=await result.json();if(!result.ok){out.textContent=(payload.error||"工具调用失败")+(payload.nextAction?"\\n\\n建议："+payload.nextAction:"");return;}out.textContent=formatOutputJson(payload.result);}
     catch(error){out.textContent=error.message||"工具调用失败";}
     finally{btn.disabled=false;if(item.id.startsWith("fnos."))await refreshAgentStatus();}
    });
@@ -1136,8 +1194,8 @@ async function refreshSkills(){
    const card=document.createElement("div");card.className="card";
    const pickLabel=document.createElement("label");const pick=document.createElement("input");pick.type="checkbox";pick.checked=selectedSkillIds.has(item.id);pick.dataset.skillId=item.id;pick.setAttribute("aria-label","选择 "+item.name);pick.addEventListener("change",()=>{if(pick.checked)selectedSkillIds.add(item.id);else selectedSkillIds.delete(item.id);updateSkillSelectionUi();});pickLabel.append(pick,document.createTextNode(" 选择此 Skill"));card.append(pickLabel);
    const title=document.createElement("strong");title.textContent=item.name+" · "+item.state;card.append(title);
-   const meta=document.createElement("p");meta.className="muted";meta.textContent="版本："+(item.version||"未填写")+"；SHA-256："+item.archiveSha256+(item.quarantineFile?"；隔离归档："+item.archiveSizeBytes+" 字节 / "+item.archiveEntryCount+" 个条目":"；仅登记元数据");card.append(meta);
-   if(item.manifestReview){const review=document.createElement("p");review.className=item.manifestReview.findings?.length?"warning":"muted";review.textContent="静态清单："+(item.manifestReview.name||"未识别名称")+"；"+(item.manifestReview.description||"无描述")+"；源码扫描 "+(item.manifestReview.sourceFilesScanned||0)+" 个 / "+(item.manifestReview.sourceBytesScanned||0)+" 字节"+(item.manifestReview.sourceReviewIncomplete?"（部分源码未扫描）":"")+"；发现："+((item.manifestReview.findings||[]).join("、")||"未发现规则提示")+"。此结果仅供人工审核，不代表安全认证。";card.append(review);}
+   const meta=document.createElement("p");meta.className="muted";meta.textContent="版本："+(item.version||"未填写")+"；SHA-256："+item.archiveSha256+(item.quarantineFile?"；隔离归档："+formatBytes(item.archiveSizeBytes)+" / "+item.archiveEntryCount+" 个条目":"；仅登记元数据");card.append(meta);
+   if(item.manifestReview){const review=document.createElement("p");review.className=item.manifestReview.findings?.length?"warning":"muted";review.textContent="静态清单："+(item.manifestReview.name||"未识别名称")+"；"+(item.manifestReview.description||"无描述")+"；源码扫描 "+(item.manifestReview.sourceFilesScanned||0)+" 个 / "+formatBytes(item.manifestReview.sourceBytesScanned||0)+(item.manifestReview.sourceReviewIncomplete?"（部分源码未扫描）":"")+"；发现："+((item.manifestReview.findings||[]).join("、")||"未发现规则提示")+"。此结果仅供人工审核，不代表安全认证。";card.append(review);}
    if(item.reviewNote){const note=document.createElement("p");note.textContent="审核备注："+item.reviewNote;card.append(note);}
    if(item.quarantineFile){
     const sourceDetails=document.createElement("details");
@@ -1157,11 +1215,11 @@ async function refreshSkills(){
       if(!response.ok)throw Error(data.error||"读取源文件清单失败");
       sourceSelect.replaceChildren();
       for(const file of data.files||[]){
-       const option=document.createElement("option");option.value=file.path;option.textContent=file.path+" · "+file.sizeBytes+" 字节"+(file.previewable?"":" · 超出预览上限");option.disabled=!file.previewable;sourceSelect.append(option);
+       const option=document.createElement("option");option.value=file.path;option.textContent=file.path+" · "+formatBytes(file.sizeBytes)+(file.previewable?"":" · 超出预览上限");option.disabled=!file.previewable;sourceSelect.append(option);
       }
       const available=(data.files||[]).some(file=>file.previewable);
       sourceSelect.disabled=!available;sourcePreviewButton.disabled=!available;
-      sourceStatus.textContent="找到 "+data.total+" 个可识别的文本/源码文件；单文件预览上限 "+data.maxPreviewBytes+" 字节。"+(data.total>data.files.length?" 当前显示 "+data.files.length+" 项。":"");
+      sourceStatus.textContent="找到 "+data.total+" 个可识别的文本/源码文件；单文件预览上限 "+formatBytes(data.maxPreviewBytes)+"。"+(data.total>data.files.length?" 当前显示 "+data.files.length+" 项。":"");
       if(!available)sourceStatus.textContent+=" 没有可预览的文件。";
      }catch(error){sourceStatus.className="error";sourceStatus.textContent=error.message||"读取源文件清单失败";}
      finally{sourceLoad.disabled=false;}
@@ -1172,7 +1230,7 @@ async function refreshSkills(){
      try{
       const response=await api("/api/skills/"+encodeURIComponent(item.id)+"/source-preview?path="+encodeURIComponent(path)),data=await response.json();
       if(!response.ok)throw Error(data.error||"源码预览失败");
-      sourceMeta.textContent=data.path+" · "+data.bytes+" 字节";
+      sourceMeta.textContent=data.path+" · "+formatBytes(data.bytes);
       sourceOutput.textContent=data.content;
       sourceStatus.textContent=data.note||"已读取隔离归档文本。";
      }catch(error){sourceStatus.className="error";sourceStatus.textContent=error.message||"源码预览失败";}
@@ -1182,7 +1240,7 @@ async function refreshSkills(){
    }
    if(item.name?.toLowerCase()==="fnos"&&item.quarantineFile&&item.manifestReview?.name?.toLowerCase()==="fnos"&&["approved","enabled"].includes(item.state)){
     const install=document.createElement("button");install.type="button";install.textContent="安装官方 CLI（当前平台）";
-    install.addEventListener("click",async()=>{if(!confirm("仅提取官方 Skill 包中与当前 Linux 架构匹配的 trim-cli 二进制；不会解压其他文件，也不会执行 Skill 指令。继续安装？"))return;install.disabled=true;try{const ir=await api("/api/skills/"+item.id+"/install-cli",{method:"POST"});const result=await ir.json();if(!ir.ok)throw Error(result.error||"CLI 安装失败");alert("CLI 已安装："+result.installation.platform+"，"+result.installation.sizeBytes+" 字节。请启用 Skill 后再使用官方只读工具。");await refreshSkills();}catch(error){document.querySelector("#skill-error").textContent=error.message||"CLI 安装失败";}finally{install.disabled=false;}});
+    install.addEventListener("click",async()=>{if(!confirm("仅提取官方 Skill 包中与当前 Linux 架构匹配的 trim-cli 二进制；不会解压其他文件，也不会执行 Skill 指令。继续安装？"))return;install.disabled=true;try{const ir=await api("/api/skills/"+item.id+"/install-cli",{method:"POST"});const result=await ir.json();if(!ir.ok)throw Error(result.error||"CLI 安装失败");alert("CLI 已安装："+result.installation.platform+"，"+formatBytes(result.installation.sizeBytes)+"。请启用 Skill 后再使用官方只读工具。");await refreshSkills();}catch(error){document.querySelector("#skill-error").textContent=error.message||"CLI 安装失败";}finally{install.disabled=false;}});
     card.append(install);
    }
    const choices={pending_review:[["approved","批准"],["rejected","拒绝"]],approved:[["enabled","启用"],["disabled","停用"],["rejected","拒绝"]],enabled:[["disabled","停用"]],disabled:[["approved","重新批准"],["rejected","拒绝"]],rejected:[]};
@@ -1270,7 +1328,7 @@ document.querySelector("#skill-remote-import-form").addEventListener("submit",as
   const response=await api("/api/skills/import-remote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
   const result=await response.json();if(!response.ok)throw Error(result.error||"GitHub Skill 导入失败");
   e.target.reset();await refreshSkills();
-  status.textContent="已隔离 "+result.repository+(result.branch?" · "+(result.refType==="tags"?"标签 ":"分支 ")+result.branch:"")+"（"+result.archiveBytes+" 字节）"+(result.commitSha?" · commit "+result.commitSha.slice(0,12):"")+"；尚未解压或执行，请在列表中审核。";
+  status.textContent="已隔离 "+result.repository+(result.branch?" · "+(result.refType==="tags"?"标签 ":"分支 ")+result.branch:"")+"（"+formatBytes(result.archiveBytes)+"）"+(result.commitSha?" · commit "+result.commitSha.slice(0,12):"")+"；尚未解压或执行，请在列表中审核。";
  }catch(error){status.className="error";status.textContent=error.message||"GitHub Skill 导入失败";}
  finally{button.disabled=false;}
 });
@@ -1285,8 +1343,8 @@ document.querySelector("#skill-remote-batch-form").addEventListener("submit",asy
   const response=await api("/api/skills/import-remote-batch",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({items:urls.map(url=>({url,version}))})});
   const result=await response.json();if(!response.ok)throw Error(result.error||"批量 Skill 导入失败");
   await refreshSkills();
-  const lines=(result.results||[]).map(item=>item.index+". "+(item.ok?"成功：":"失败：")+(item.skill?.name||item.repository||"此项目")+" — "+(item.ok?("commit "+(item.commitSha||"未知").slice(0,12)+"，"+item.archiveBytes+" 字节，状态 "+item.skill.state):item.error));
-  status.textContent="批量结束：成功 "+result.importedCount+" / "+result.total+"，失败或跳过 "+result.failedCount+"；累计下载 "+result.downloadedBytes+" 字节。\n"+lines.join("\n");
+  const lines=(result.results||[]).map(item=>item.index+". "+(item.ok?"成功：":"失败：")+(item.skill?.name||item.repository||"此项目")+" — "+(item.ok?("commit "+(item.commitSha||"未知").slice(0,12)+"，"+formatBytes(item.archiveBytes)+"，状态 "+item.skill.state):item.error));
+  status.textContent="批量结束：成功 "+result.importedCount+" / "+result.total+"，失败或跳过 "+result.failedCount+"；累计下载 "+formatBytes(result.downloadedBytes)+"。\n"+lines.join("\n");
   if(result.importedCount>0)e.target.reset();
  }catch(error){status.className="error";status.textContent=error.message||"批量 Skill 导入失败";}
  finally{button.disabled=false;}
@@ -1312,7 +1370,7 @@ async function refreshAudit(){
   document.querySelector("#audit-count").textContent="匹配 "+data.total+" 条 · 显示 "+(data.total?data.offset+1:0)+"–"+Math.min(data.offset+data.events.length,data.total);
   document.querySelector("#audit-prev").disabled=data.offset<=0;
   document.querySelector("#audit-next").disabled=data.offset+data.events.length>=data.total;
-  out.textContent=data.events.length?data.events.map(e=>e.at+" · "+e.method+" "+e.route+" · "+e.statusCode+" · "+e.outcome).join("\n"):"暂无符合条件的操作记录";
+  out.textContent=data.events.length?data.events.map(e=>formatDateTime(e.at)+" · "+e.method+" "+e.route+" · "+e.statusCode+" · "+e.outcome).join("\n"):"暂无符合条件的操作记录";
  }catch(e){out.textContent=e.message||"读取操作记录失败";}
 }
 document.querySelector("#show-audit").addEventListener("click",refreshAudit);
