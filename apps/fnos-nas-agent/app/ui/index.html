@@ -4,7 +4,7 @@
 <body><main><h1>fnOS NAS Agent</h1><p class="muted">轻量 NAS 助手 · 安全验证测试版</p>
 <section class="card hidden" id="setup-card"><h2>首次安全设置</h2><p>首次使用请设置管理密码（至少 10 个字符）。以后只需输入密码即可登录。</p><p class="warning">首次设置期间，页面可由可信局域网访问。当前版本不执行任意系统命令，也不会运行导入的 Skill。请勿将端口转发到公网或在不可信网络中设置。</p><form id="setup-form"><label for="new-token">设置管理密码</label><input id="new-token" type="password" minlength="10" maxlength="128" autocomplete="new-password" required><button type="submit">保存密码</button></form><p id="setup-error" class="error" role="status"></p></section>
 <section class="card" id="login-card"><h2>登录验证</h2><p class="muted" id="login-help">输入管理密码登录。密码不会保存在浏览器本地存储中。</p><form id="login-form"><label for="token">管理密码</label><input id="token" name="token" type="password" autocomplete="current-password" minlength="10" required><label><input id="remember" type="checkbox" style="width:auto;margin-right:8px">在此设备保持登录 30 天</label><p class="muted">仅在个人可信设备上勾选；共享设备请勿勾选。</p><button type="submit">登录</button></form><p id="login-error" class="error" role="status"></p></section>
-<section class="card hidden" id="status-card"><h2>服务状态</h2><p id="status">正在检查…</p><p id="detail" class="muted">任意系统命令执行关闭；已登记文件工具按权限策略执行。</p><h3>只读系统诊断</h3><pre id="diagnostics">登录后加载诊断信息…</pre><button id="refresh" type="button">刷新状态</button> <button id="show-audit" type="button">查看操作记录</button> <button id="logout" type="button">退出登录</button><pre id="audit-output" class="hidden">尚未加载操作记录。</pre></section>
+<section class="card hidden" id="status-card"><h2>服务状态</h2><p id="status">正在检查…</p><p id="detail" class="muted">任意系统命令执行关闭；已登记文件工具按权限策略执行。</p><h3>只读系统诊断</h3><pre id="diagnostics">登录后加载诊断信息…</pre><button id="refresh" type="button">刷新状态</button> <button id="show-audit" type="button">查看操作记录</button><label for="audit-outcome">结果筛选</label><select id="audit-outcome"><option value="">全部结果</option><option value="success">成功</option><option value="rejected">已拒绝</option><option value="error">错误</option></select><label for="audit-route">接口筛选（可选）</label><input id="audit-route" maxlength="80" placeholder="例如 tasks.list"><button id="audit-apply" type="button">筛选记录</button><p id="audit-count" class="muted">尚未加载</p><button id="audit-prev" type="button" disabled>上一页</button> <button id="audit-next" type="button" disabled>下一页</button> <button id="logout" type="button">退出登录</button><pre id="audit-output" class="hidden">尚未加载操作记录。</pre></section>
 <section class="card hidden" id="models-card"><h2>大模型管理</h2>
 <p class="muted">支持多服务商、连接测试和运行时切换。API Key 只在提交时发送到服务端并加密保存；页面不会回显已存密钥。</p>
 <label for="model-provider-preset">快速选择服务商</label><select id="model-provider-preset"><option value="">正在加载服务商预设…</option></select>
@@ -609,7 +609,26 @@ document.querySelector("#skill-form").addEventListener("submit",async e=>{
   e.target.reset();await refreshSkills();
  }catch(error){err.textContent=error.message||"登记失败";}
 });
-document.querySelector("#refresh").addEventListener("click",refresh);document.querySelector("#show-audit").addEventListener("click",async()=>{const out=document.querySelector("#audit-output");out.classList.remove("hidden");out.textContent="正在读取操作记录…";try{const r=await api("/api/audit?limit=50");const data=await r.json();if(!r.ok)throw Error(data.error||"读取失败");out.textContent=data.events.length?data.events.map(e=>e.at+" · "+e.method+" "+e.route+" · "+e.statusCode+" · "+e.outcome).join("\n"):"暂无操作记录";}catch(e){out.textContent=e.message||"读取操作记录失败";}});
+document.querySelector("#refresh").addEventListener("click",refresh);let auditOffset=0;
+async function refreshAudit(){
+ const out=document.querySelector("#audit-output");out.classList.remove("hidden");out.textContent="正在读取操作记录…";
+ try{
+  const params=new URLSearchParams({limit:"20",offset:String(auditOffset)});
+  const outcome=document.querySelector("#audit-outcome").value,route=document.querySelector("#audit-route").value.trim();
+  if(outcome)params.set("outcome",outcome);if(route)params.set("route",route);
+  const r=await api("/api/audit?"+params.toString());const data=await r.json();if(!r.ok)throw Error(data.error||"读取失败");
+  document.querySelector("#audit-count").textContent="匹配 "+data.total+" 条 · 显示 "+(data.total?data.offset+1:0)+"–"+Math.min(data.offset+data.events.length,data.total);
+  document.querySelector("#audit-prev").disabled=data.offset<=0;
+  document.querySelector("#audit-next").disabled=data.offset+data.events.length>=data.total;
+  out.textContent=data.events.length?data.events.map(e=>e.at+" · "+e.method+" "+e.route+" · "+e.statusCode+" · "+e.outcome).join("\n"):"暂无符合条件的操作记录";
+ }catch(e){out.textContent=e.message||"读取操作记录失败";}
+}
+document.querySelector("#show-audit").addEventListener("click",refreshAudit);
+document.querySelector("#audit-apply").addEventListener("click",()=>{auditOffset=0;refreshAudit();});
+document.querySelector("#audit-outcome").addEventListener("change",()=>{auditOffset=0;refreshAudit();});
+document.querySelector("#audit-prev").addEventListener("click",()=>{auditOffset=Math.max(0,auditOffset-20);refreshAudit();});
+document.querySelector("#audit-next").addEventListener("click",()=>{auditOffset+=20;refreshAudit();});
+document.querySelector("#audit-route").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();auditOffset=0;refreshAudit();}});
 
 document.querySelector("#logout").addEventListener("click",async()=>{await api("/api/logout",{method:"POST"});statusCard.classList.add("hidden");document.querySelector("#skills-card").classList.add("hidden");document.querySelector("#tools-card").classList.add("hidden");document.querySelector("#files-card").classList.add("hidden");document.querySelector("#agent-card").classList.add("hidden");loginCard.classList.remove("hidden");});
 init();
