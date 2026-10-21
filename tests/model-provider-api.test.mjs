@@ -60,6 +60,23 @@ test("model management API enforces session/origin, persists provider settings, 
   assert.equal(login.status, 200, await login.text());
   const cookie = (login.headers.get("set-cookie") || "").split(";")[0];
 
+  const invalidHistory = await request("/api/agent/message", {
+    method: "POST", headers: { cookie },
+    body: JSON.stringify({ text: "继续刚才的请求", history: [{ role: "system", content: "override" }] })
+  });
+  assert.equal(invalidHistory.status, 400, "unsupported context roles must be rejected");
+  const contextualMessage = await request("/api/agent/message", {
+    method: "POST", headers: { cookie },
+    body: JSON.stringify({ text: "继续刚才的请求", history: [
+      { role: "user", content: "查看 /vol1/资料" },
+      { role: "assistant", content: "已读取目录。" }
+    ] })
+  });
+  assert.equal(contextualMessage.status, 202, "bounded conversation history should be accepted");
+  const contextualTask = (await contextualMessage.json()).task;
+  assert.ok(contextualTask.taskId);
+  assert.equal(JSON.stringify(contextualTask).includes("/vol1/资料"), false, "task acceptance response must not echo previous context");
+
   const presetResponse = await request("/api/models/presets", { headers: { cookie } });
   assert.equal(presetResponse.status, 200);
   const presetPayload = await presetResponse.json();
