@@ -1,10 +1,16 @@
 import { extractZipEntry, inspectZipArchive } from "./skill-archives.mjs";
 
 const MAX_SOURCE_FILES = 32;
-const MAX_SOURCE_FILE_BYTES = 64 * 1024;
+export const MAX_SKILL_SOURCE_PREVIEW_BYTES = 64 * 1024;
+const MAX_SOURCE_FILE_BYTES = MAX_SKILL_SOURCE_PREVIEW_BYTES;
 const MAX_SOURCE_TOTAL_BYTES = 512 * 1024;
 const TEXT_SOURCE = /\.(?:sh|bash|zsh|fish|py|pyw|js|mjs|cjs|ts|tsx|jsx|ps1|bat|cmd|rb|php|pl|lua|go|rs|service|yaml|yml|json|toml|conf|ini|cfg|properties|xml|sql|pem|key|crt)$/i;
 const SECRET_CONFIG = /(?:^|\/)(?:\.env(?:\.[a-z0-9_-]+)?|\.npmrc|\.pypirc)$/i;
+
+export function isPreviewableSkillTextPath(value) {
+  if (typeof value !== "string" || value.length < 1 || value.length > 1024) return false;
+  return /(?:^|\/)SKILL\.md$/i.test(value) || TEXT_SOURCE.test(value) || SECRET_CONFIG.test(value);
+}
 
 const RULES = [
   ["shell-execution-api", /\b(?:child_process|execFileSync|execSync|spawnSync|subprocess|Popen)\b|\bos\.system\s*\(|\bexec\s*\(/i],
