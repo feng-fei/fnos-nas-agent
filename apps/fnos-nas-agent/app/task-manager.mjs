@@ -96,7 +96,8 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
 
   function persist() {
     if (!storageFile) return Promise.resolve();
-    persistQueue = persistQueue.then(writeSnapshot);
+    // A transient filesystem error must not poison every later snapshot write.
+    persistQueue = persistQueue.catch(() => {}).then(writeSnapshot);
     return persistQueue;
   }
 
