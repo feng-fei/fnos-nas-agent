@@ -19,9 +19,12 @@ test("mobile read-only tool panel submits typed arguments instead of always send
 });
 
 test("Agent status tells the user whether optional official trim-cli is ready", () => {
-  assert.match(html, /官方 fnOS CLI 已安装且可执行；OAuth\/连接状态尚未验证/);
-  assert.match(html, /官方 fnOS CLI 路径已配置但不可执行/);
-  assert.match(html, /官方 fnOS CLI 尚未安装/);
+  assert.match(html, /CLI 已安装且可执行/);
+  assert.match(html, /CLI 路径已配置但不可执行/);
+  assert.match(html, /官方 CLI 尚未安装/);
+  assert.match(html, /连接状态：/);
+  assert.match(html, /需要重新登录/);
+  assert.match(html, /授权范围不足/);
   assert.match(html, /CLI 可执行不代表 OAuth 已授权/);
   assert.match(html, /\/api\/agent\/trim-cli\/test/);
 });
