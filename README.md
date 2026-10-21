@@ -2,7 +2,7 @@
 
 A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mobile-friendly web interface, controlled NAS operations, and a reviewable Skill manager.
 
-> **Status: Phases 11–15 under review.** The FPK app has password/session authentication, read-only diagnostics, Skill inventory/review, bounded ZIP quarantine import, a code-defined allowlist of three read-only tools, a rules-first Agent API, an optional server-configured model adapter, and a bounded asynchronous task engine with recent-task status. Uploaded Skills are not extracted or executed; arbitrary command execution remains disabled. Require Node.js 24/26 CI and Node 26 FPK packaging before merge.
+> **Status: Phases 11–16 under review.** The FPK app has password/session authentication, read-only diagnostics, Skill inventory/review, bounded ZIP quarantine import, a code-defined allowlist of three read-only tools, a rules-first Agent API, an optional server-configured model adapter, and a bounded asynchronous task engine with recent-task status. Uploaded Skills are not extracted or executed; arbitrary command execution remains disabled. Require Node.js 24/26 CI and Node 26 FPK packaging before merge.
 
 ## Goals
 
@@ -58,6 +58,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 13 mobile operations workbench](docs/phase-13-mobile-operations-workbench.md)
 - [Phase 14 authentication security hardening](docs/phase-14-auth-security-hardening.md)
 - [Phase 15 release readiness gates](docs/phase-15-release-readiness-gates.md)
+- [Phase 16 FPK integration smoke tests](docs/phase-16-integration-smoke-tests.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
 
