@@ -99,9 +99,20 @@ test("first-run setup stores only a salted password hash and protects session en
 
   const noSession = await fetch(baseUrl + "/api/tools");
   assert.equal(noSession.status, 401);
+  const protectedDiagnostics = await fetch(baseUrl + "/api/diagnostics");
+  assert.equal(protectedDiagnostics.status, 401);
   const tools = await fetch(baseUrl + "/api/tools", { headers: { cookie } });
   assert.equal(tools.status, 200);
   assert.deepEqual(await tools.json(), { tools: [], executionEnabled: false });
+  const diagnosticResponse = await fetch(baseUrl + "/api/diagnostics", { headers: { cookie } });
+  assert.equal(diagnosticResponse.status, 200);
+  const diagnostics = await diagnosticResponse.json();
+  assert.equal(typeof diagnostics.system.nodeVersion, "string");
+  assert.ok(diagnostics.cpu.logicalCores > 0);
+  assert.ok(diagnostics.memory.totalBytes > 0);
+  assert.ok(Array.isArray(diagnostics.network));
+  assert.ok(Array.isArray(diagnostics.storage));
+  assert.ok(diagnostics.storage.some(item => item.label === "root" && item.available));
 
   const logout = await fetch(baseUrl + "/api/logout", {
     method: "POST", headers: { origin: baseUrl, cookie }
