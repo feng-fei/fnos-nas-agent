@@ -221,6 +221,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/agent/trim-cli/test") return "agent.trim-cli-test";
   if (pathname === "/api/agent/trim-cli/login-command") return "agent.trim-cli-login-command";
   if (pathname === "/api/agent/message") return "agent.message";
+  if (pathname === "/api/tasks/clear-history") return "tasks.clear";
   if (pathname === "/api/tasks/status") return "tasks.status";
   if (pathname === "/api/tasks") return "tasks.list";
   if (/^\/api\/tasks\/[a-f0-9-]{8,64}\/cancel$/i.test(pathname)) return "tasks.cancel";
@@ -660,6 +661,13 @@ const server = createServer(async (req, res) => {
         return reply(res, status, { error: status === 429 ? "Task queue is full; try again shortly." : status === 503 ? "Task capacity is temporarily full; try again shortly." : "Unable to accept task." }, "application/json; charset=utf-8", status === 429 ? { "retry-after": "2" } : {});
       }
       return reply(res, 202, { task });
+    }
+    if (url.pathname === "/api/tasks/clear-history") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      try { return reply(res, 200, await taskManager.clearTerminal()); }
+      catch { return reply(res, 500, { error: "Unable to clear task history" }); }
     }
     if (url.pathname === "/api/tasks/status") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
