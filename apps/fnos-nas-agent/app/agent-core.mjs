@@ -37,7 +37,7 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
   if (!tools || typeof tools.list !== "function" || typeof tools.invoke !== "function") throw new TypeError("A tool registry is required");
   if (!model || typeof model.plan !== "function" || typeof model.status !== "function") throw new TypeError("A model adapter is required");
 
-  async function executePlan(plan) {
+  async function executePlan(plan, approvalTaskId = id()) {
     const catalogue = new Map(tools.list().map(tool => [tool.id, tool]));
     // Validate the complete plan before the first tool invocation.
     for (const call of plan.toolCalls) {
@@ -49,7 +49,7 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
     if (destructive.length) {
       if (plan.toolCalls.length !== 1) throw Object.assign(new Error("Destructive actions must be requested alone so no earlier tool can partially execute"), { statusCode: 400 });
       if (typeof requestApproval !== "function") throw Object.assign(new Error("Confirmation service is unavailable"), { statusCode: 503 });
-      return { pendingApproval: await requestApproval({ toolId: destructive[0].id, args: destructive[0].args, taskId: id() }) };
+      return { pendingApproval: await requestApproval({ toolId: destructive[0].id, args: destructive[0].args, taskId: approvalTaskId }) };
     }
     const results = [];
     for (const call of plan.toolCalls) {
@@ -72,7 +72,7 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       const createdAt = now();
       const direct = DIRECT_INTENTS.map(item => ({ item, match: item.pattern.exec(text) })).find(entry => entry.match);
       if (direct) {
-        const results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] });
+        const results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] }, taskId);
         if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "rules", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "rules", message: direct.item.message, results };
       }
@@ -92,7 +92,7 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       }
       if (!plan) return { taskId, createdAt, completedAt: now(), status: "failed", mode: "model", message: "模型未生成有效计划，未执行工具。", results: [] };
       try {
-        const results = await executePlan(plan);
+        const results = await executePlan(plan, taskId);
         if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "model", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "model", message: safeMessage(plan.message, "已完成请求。"), results };
       } catch (error) {
