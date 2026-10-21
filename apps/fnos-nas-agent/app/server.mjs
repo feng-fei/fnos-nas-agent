@@ -379,8 +379,10 @@ const server = createServer(async (req, res) => {
         const limit = Number.isInteger(rawLimit) ? Math.max(1, Math.min(100, rawLimit)) : 50;
         const offset = Number.isInteger(rawOffset) ? Math.max(0, rawOffset) : 0;
         const state = url.searchParams.get("state") || undefined;
+        const q = url.searchParams.get("q") || "";
         if (state && !skillStates.includes(state)) return reply(res, 400, { error: "Invalid Skill state" });
-        return reply(res, 200, skillStore.list({ limit, offset, state }));
+        if (q.length > 100) return reply(res, 400, { error: "Skill search query is too long" });
+        return reply(res, 200, skillStore.list({ limit, offset, state, q }));
       }
       if (req.method === "POST") {
         if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });

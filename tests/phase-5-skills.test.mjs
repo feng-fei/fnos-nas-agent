@@ -53,3 +53,32 @@ test("Skill registration validates digest and bounds metadata", async t => {
   assert.equal(item.archiveSha256, "a".repeat(64));
   assert.equal(item.declaredCapabilities[0].length, 80);
 });
+
+test("Skill inventory search matches metadata and capabilities before applying pagination", async t => {
+  const dir = await mkdtemp(join(tmpdir(), "fnos-agent-skills-search-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const store = createSkillStore(dir);
+  await store.load();
+  const first = await store.register({
+    name: "Official fnOS",
+    version: "2.0.0",
+    sourceLabel: "official package",
+    archiveSha256: "a".repeat(64),
+    declaredCapabilities: ["read-only", "system diagnostics"],
+    manifestReview: { name: "fnos", description: "Manage NAS files" }
+  });
+  await store.register({
+    name: "Photo Helper",
+    version: "1.1.0",
+    sourceLabel: "community",
+    archiveSha256: "b".repeat(64),
+    declaredCapabilities: ["image metadata"]
+  });
+  assert.equal(store.list({ q: "OFFICIAL" }).total, 1);
+  assert.equal(store.list({ q: "diagnostics" }).skills[0].id, first.id);
+  assert.equal(store.list({ q: "manage nas files" }).total, 1);
+  assert.equal(store.list({ q: "official", state: "enabled" }).total, 0);
+  assert.equal(store.list({ q: "community" }).total, 1);
+  assert.equal(store.list({ q: "a", limit: 1, offset: 1 }).skills.length, 1);
+  assert.equal(store.list({ q: "x".repeat(101) }).total, 0);
+});
