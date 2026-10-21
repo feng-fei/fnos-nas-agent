@@ -11,5 +11,5 @@ test("mobile task UI offers cooperative cancellation for running tasks", () => {
   assert.match(html, /等待当前工具结束/);
   assert.match(html, /当前工具会先完成，不会启动后续工具/);
   assert.match(server, /execute: \(input, context\) => agentCore\.run\(input, context\)/);
-  assert.match(server, /taskManager\.cancel\(taskMatch\[1\]\)/);
+  assert.match(server, /taskManager\.cancel\(cancelMatch\[1\]\)/);
 });
