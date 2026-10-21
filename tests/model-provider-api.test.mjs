@@ -86,9 +86,9 @@ test("model management API enforces session/origin, persists provider settings, 
   assert.equal(invalidEndpoint.status, 400);
 
   const secret = "MODEL_API_KEY_SUPER_SECRET_123";
-  const create = async (name, model) => request("/api/models", {
+  const create = async (name, model, fallback = false) => request("/api/models", {
     method: "POST", headers: { cookie },
-    body: JSON.stringify({ name, endpoint: "https://provider.example/v1/chat/completions", model, apiKey: secret, enabled: true })
+    body: JSON.stringify({ name, endpoint: "https://provider.example/v1/chat/completions", model, apiKey: secret, enabled: true, fallback })
   });
   const oneResponse = await create("Provider One", "model-one");
   assert.equal(oneResponse.status, 201, "provider creation should succeed");
