@@ -115,6 +115,7 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       reportProgress(15, "准备模型计划");
       try { plan = await model.plan(text, tools.list(), history); }
       catch {
+        if (shouldCancel()) throw Object.assign(new Error("Task cancellation requested"), { code: "TASK_CANCELLED" });
         return { taskId, createdAt, completedAt: now(), status: "failed", mode: "model", message: "模型请求失败或返回格式不符合要求。为安全起见，没有执行任何工具；请检查服务端模型配置与网络连通性。", results: [] };
       }
       if (!plan) return { taskId, createdAt, completedAt: now(), status: "failed", mode: "model", message: "模型未生成有效计划，未执行工具。", results: [] };
