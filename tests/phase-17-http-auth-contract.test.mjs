@@ -134,6 +134,8 @@ test("HTTP auth contract: setup, session, origin checks and logout", async t => 
   const toolsPayload = await toolsAfterLogin.json();
   assert.equal(toolsPayload.executionEnabled, false);
   assert.equal(toolsPayload.readOnlyExecutionEnabled, true);
+  assert.equal(toolsPayload.trimCliProviderAvailable, false);
+  assert.ok(toolsPayload.tools.filter(tool => tool.id.startsWith("fnos.")).every(tool => tool.providerAvailable === false));
 
   const wrongOrigin = await request("/api/agent/message", {
     method: "POST",
