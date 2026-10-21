@@ -3,7 +3,7 @@ import { createReadStream } from "node:fs";
 import os from "node:os";
 import { statfs } from "node:fs/promises";
 import { readFile, writeFile, mkdir, rename, chmod, readdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, timingSafeEqual, createHash, scryptSync } from "node:crypto";
 import { createSkillStore, skillStates } from "./skills.mjs";
@@ -156,6 +156,7 @@ async function readOnlyDiagnostics() {
   })).filter(item => item.addresses.length > 0);
   const storage = [await diskUsage("/", "root")];
   if (dataDir && dataDir !== "/") storage.push(await diskUsage(dataDir, "app-data"));
+  for (const volume of await fileManager.getRoots()) storage.push(await diskUsage(volume, basename(volume)));
   return {
     collectedAt: new Date().toISOString(),
     system: { platform: process.platform, arch: process.arch, release: os.release(), nodeVersion: process.version, uptimeSeconds: Math.floor(os.uptime()) },
@@ -179,6 +180,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/session") return method === "POST" ? "login" : "other_api";
   if (pathname === "/api/logout") return "logout";
   if (pathname === "/api/diagnostics") return "diagnostics";
+  if (pathname === "/api/audit") return "audit.list";
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
   if (pathname === "/api/skills/import") return "skills.import";
@@ -305,6 +307,23 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/api/diagnostics") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       return reply(res, 200, await readOnlyDiagnostics());
+    }
+    if (url.pathname === "/api/audit") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      if (!auditLogger) return reply(res, 503, { error: "Audit logging is not configured" });
+      const requested = Number(url.searchParams.get("limit") || 50);
+      const limit = Number.isInteger(requested) ? Math.max(1, Math.min(100, requested)) : 50;
+      const readAudit = async path => { try { return await readFile(path, "utf8"); } catch (e) { if (e.code === "ENOENT") return ""; throw e; } };
+      try {
+        const currentPath = auditLogger.filePath();
+        const [rotated, current] = await Promise.all([readAudit(currentPath + ".1"), readAudit(currentPath)]);
+        const events = (rotated + "\n" + current).split("\n").filter(Boolean).slice(-limit).map(line => {
+          try { const item = JSON.parse(line); return { at: item.at, method: item.method, route: item.route, statusCode: item.statusCode, outcome: item.outcome }; }
+          catch { return null; }
+        }).filter(Boolean);
+        return reply(res, 200, { events, limit });
+      } catch { return reply(res, 500, { error: "Unable to read audit history" }); }
     }
     if (url.pathname === "/api/skills") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
