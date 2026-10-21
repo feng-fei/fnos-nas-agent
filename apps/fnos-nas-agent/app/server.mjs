@@ -298,7 +298,12 @@ const server = createServer(async (req, res) => {
       const input = await jsonBody(req);
       if (!input || typeof input !== "object" || Array.isArray(input) || typeof input.text !== "string" || !input.text.trim() || input.text.trim().length > 2000)
         return reply(res, 400, { error: "Message must contain 1 to 2000 characters" });
-      const task = taskManager.submit({ text: input.text.trim() });
+      let task;
+      try { task = taskManager.submit({ text: input.text.trim() }); }
+      catch (error) {
+        const status = Number.isInteger(error?.statusCode) && [429, 503].includes(error.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 429 ? "Task queue is full; try again shortly." : status === 503 ? "Task capacity is temporarily full; try again shortly." : "Unable to accept task." }, "application/json; charset=utf-8", status === 429 ? { "retry-after": "2" } : {});
+      }
       return reply(res, 202, { task });
     }
     if (url.pathname === "/api/tasks/status") {
