@@ -166,7 +166,7 @@ async function readOnlyDiagnostics() {
 const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics });
 const modelAdapter = createModelAdapter();
 const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter });
-const taskManager = createTaskManager({ execute: input => agentCore.run(input), concurrency: 2, historyLimit: 50, queueLimit: 20 });
+const taskManager = createTaskManager({ execute: input => agentCore.run(input), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "" });
 
 function auditRoute(pathname, method) {
   if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method) || !pathname.startsWith("/api/") || pathname === "/api/health") return null;
@@ -386,8 +386,9 @@ const server = createServer(async (req, res) => {
 await loadPassword();
 await loadSessions();
 if (skillStore) await skillStore.load();
+await taskManager.ready;
 // First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
 server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; execution disabled`));
-function shutdown() { server.close(() => { void (auditLogger?.flush() || Promise.resolve()).finally(() => process.exit(0)); }); }
+function shutdown() { server.close(() => { void Promise.all([auditLogger?.flush(), taskManager.flush()]).finally(() => process.exit(0)); }); }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
