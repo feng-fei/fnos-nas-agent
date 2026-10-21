@@ -98,6 +98,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Task history cleanup control](docs/phase-66-task-history-cleanup-ui.md)
 - [Task result details](docs/phase-67-task-result-details.md)
 - [Gemini and Groq presets](docs/phase-68-gemini-groq-presets.md)
+- [Bounded batch model connection testing](docs/phase-91-model-batch-test.md)
 - [Bounded task result retention](docs/phase-69-bounded-task-results.md)
 - [Model action rate limiting](docs/phase-76-model-action-rate-limit.md)
 - [Mobile upload progress](docs/phase-77-mobile-upload-progress.md)
