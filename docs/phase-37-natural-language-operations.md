@@ -6,7 +6,7 @@ Expand the rules-first mobile Agent so common read-only fnOS and file-management
 ## Direct routes
 - fnOS installed apps, Docker image inventory, download tasks, CPU monitoring, storage pools, and current-user information.
 - fnOS file listing for an explicit path.
-- Agent file listing for an optional directory path and bounded UTF-8 text-file preview.
+- Agent file listing for an optional directory path, bounded UTF-8 text-file preview, and bounded recursive filename search.
 - Preserve existing system, storage, network, process, photo, and routine file-write intents.
 
 ## Behavior
