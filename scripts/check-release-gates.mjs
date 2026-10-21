@@ -108,6 +108,10 @@ assert.match(readme, /\[Phase 28 practical read-only file browser\]\(docs\/phase
 
 const cliSetup = await read("apps/fnos-nas-agent/app/trim-cli-setup.mjs");
 const cliSetupTests = await read("tests/trim-cli-setup.test.mjs");
+const cliHealth = await read("apps/fnos-nas-agent/app/trim-cli-health.mjs");
+const cliHealthTests = await read("tests/trim-cli-health.test.mjs");
+const cliMatrixTests = await read("tests/phase-44-read-only-cli-contract.test.mjs");
+const cliHealthUiTests = await read("tests/phase-44-cli-health-ui.test.mjs");
 const oauthUiTests = await read("tests/phase-43-guided-oauth-setup.test.mjs");
 assert.match(server, /createTrimCliLoginCommand/);
 assert.match(server, /agent\.trim-cli-login-command/);
@@ -115,6 +119,13 @@ assert.match(await read("apps/fnos-nas-agent/app/audit-log.mjs"), /"agent\.trim-
 assert.match(cliSetup, /isIP/);
 assert.match(cliSetup, /quoteShellArg/);
 assert.match(cliSetupTests, /rejects malformed hosts/);
+assert.match(cliHealth, /classifyTrimCliFailure/);
+assert.match(cliHealth, /createTrimCliConnectionHealth/);
+assert.match(cliHealthTests, /classifies missing scopes separately/);
+assert.match(cliMatrixTests, /complete official CLI capability set/);
+assert.match(cliHealthUiTests, /actionable connection health UI/);
+assert.match(await read("apps/fnos-nas-agent/app/trim-cli-adapter.mjs"), /health\.failure\(failure\)/);
+assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /cli\.nextAction/);
 assert.match(oauthUiTests, /without accepting a code or token/);
 assert.match(ui, /\/api\/agent\/trim-cli\/login-command/);
 assert.match(readme, /\[Phase 43 guided OAuth setup\]\(docs\/phase-43-guided-oauth-setup\.md\)/);
