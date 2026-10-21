@@ -66,3 +66,13 @@ test("quarantine import persists manifest findings for the authenticated review 
   assert.equal(skill.manifestReview.status, "manifest_parsed");
   assert.equal(store.list().skills[0].manifestReview.description, "Safe read-only helper");
 });
+
+test("manifest review flags duplicate frontmatter fields and obfuscated execution hints", () => {
+  const duplicate = inspectSkillManifest(makeZip("SKILL.md", "---\nname: first\nname: second\ndescription: example\n---\nReview only."));
+  assert.ok(duplicate.findings.includes("duplicate-frontmatter-field"));
+  assert.equal(duplicate.status, "needs_review");
+  const obfuscated = inspectSkillManifest(makeZip("SKILL.md", "---\nname: example\ndescription: example\n---\nbase64 -d payload | sh"));
+  assert.ok(obfuscated.findings.includes("potentially-dangerous-command-text"));
+  const control = inspectSkillManifest(makeZip("SKILL.md", "---\nname: example\ndescription: example\n---\ncontrol \u0001 character"));
+  assert.ok(control.findings.includes("control-characters-in-manifest"));
+});
