@@ -123,12 +123,13 @@ assert.match(cliHealth, /classifyTrimCliFailure/);
 assert.match(cliHealth, /createTrimCliConnectionHealth/);
 assert.match(cliHealthTests, /classifies missing scopes separately/);
 assert.match(cliMatrixTests, /complete official CLI capability set/);
-assert.match(cliHealthUiTests, /actionable connection health UI/);
+assert.match(cliHealthUiTests, /connection status distinguishes auth/);
 assert.match(await read("apps/fnos-nas-agent/app/trim-cli-adapter.mjs"), /health\.failure\(failure\)/);
 assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /cli\.nextAction/);
 assert.match(oauthUiTests, /without accepting a code or token/);
 assert.match(ui, /\/api\/agent\/trim-cli\/login-command/);
 assert.match(readme, /\[Phase 43 guided OAuth setup\]\(docs\/phase-43-guided-oauth-setup\.md\)/);
+assert.match(readme, /\[Phase 44 — CLI Health and Read-only Closure\]\(docs\/phase-44-cli-health-and-readonly-closure\.md\)/);
 
 console.log("Release readiness gates passed: runtime dependency, CI matrix, packaging, and safety invariants.");
 
