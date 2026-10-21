@@ -1394,8 +1394,9 @@ function buildWorkspaceLayout(){
  audit.append(title,intro);
  const statusPanel=document.querySelector("#status-card");
  const get=id=>document.getElementById(id);
- const outcomeLabel=statusPanel.querySelector('label[for="audit-outcome"]');
- const routeLabel=statusPanel.querySelector('label[for="audit-route"]');
+ // The layout initializer also runs before authentication; tolerate incomplete/legacy markup.
+ const outcomeLabel=statusPanel?.querySelector('label[for="audit-outcome"]')||null;
+ const routeLabel=statusPanel?.querySelector('label[for="audit-route"]')||null;
  if(get("show-audit")){get("show-audit").textContent="刷新操作记录";audit.appendChild(get("show-audit"));}
  if(outcomeLabel)audit.appendChild(outcomeLabel);
  if(get("audit-outcome"))audit.appendChild(get("audit-outcome"));
