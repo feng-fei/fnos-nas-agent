@@ -17,11 +17,12 @@ async function fixture({ race = "none" } = {}) {
   await writeFile(join(root, "inside.txt"), "inside");
   await writeFile(join(outside, "secret.txt"), "outside");
   let armed = race !== "none";
+  let rootLstatCalls = 0;
   const fs = {
     ...baseFs,
     async lstat(path, ...args) {
       const info = await lstat(path, ...args);
-      if (race === "before-open" && armed && resolve(path) === root) {
+      if (race === "before-open" && armed && resolve(path) === root && ++rootLstatCalls >= 2) {
         armed = false;
         await rename(root, moved);
         await symlink(outside, root);
