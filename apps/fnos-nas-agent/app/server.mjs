@@ -12,6 +12,7 @@ import { createModelAdapter } from "./model-adapter.mjs";
 import { createAgentCore } from "./agent-core.mjs";
 import { createTaskManager } from "./task-manager.mjs";
 import { createFixedWindowLimiter } from "./request-limiter.mjs";
+import { createAuditLogger } from "./audit-log.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -23,6 +24,7 @@ const sessions = new Map();
 const authLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
 const MAX_SESSIONS = 1000;
 const skillStore = dataDir ? createSkillStore(dataDir) : null;
+const auditLogger = dataDir ? createAuditLogger({ dataDir }) : null;
 const SESSION_TTL = 8 * 60 * 60 * 1000;
 const REMEMBER_TTL = 30 * 24 * 60 * 60 * 1000;
 const MAX_BODY = 4096;
@@ -165,10 +167,33 @@ const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagn
 const modelAdapter = createModelAdapter();
 const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter });
 const taskManager = createTaskManager({ execute: input => agentCore.run(input), concurrency: 2, historyLimit: 50, queueLimit: 20 });
+
+function auditRoute(pathname, method) {
+  if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method) || !pathname.startsWith("/api/") || pathname === "/api/health") return null;
+  if (pathname === "/api/setup") return "setup";
+  if (pathname === "/api/session") return method === "POST" ? "login" : "other_api";
+  if (pathname === "/api/logout") return "logout";
+  if (pathname === "/api/diagnostics") return "diagnostics";
+  if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
+  if (pathname === "/api/skills/import") return "skills.import";
+  if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
+  if (pathname === "/api/agent/status") return "agent.status";
+  if (pathname === "/api/agent/message") return "agent.message";
+  if (pathname === "/api/tasks/status") return "tasks.status";
+  if (pathname === "/api/tasks") return "tasks.list";
+  if (/^\/api\/tasks\/[a-f0-9-]{8,64}\/cancel$/i.test(pathname)) return "tasks.cancel";
+  if (/^\/api\/tasks\/[a-f0-9-]{8,64}$/i.test(pathname)) return "tasks.get";
+  if (pathname === "/api/tools") return "tools.list";
+  if (/^\/api\/tools\/[a-z][a-z0-9.-]{0,63}\/run$/.test(pathname)) return "tools.run";
+  return "other_api";
+}
+
 function limited(req) { return !authLimiter.allow(req.socket.remoteAddress || "unknown"); }
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", "http://localhost");
+    const auditRouteName = auditRoute(url.pathname, req.method);
+    if (auditLogger && auditRouteName) res.once("finish", () => { void auditLogger.record({ method: req.method, route: auditRouteName, statusCode: res.statusCode }); });
     if (req.method === "GET" && url.pathname === "/api/health")
       return reply(res, 200, { ok: true, app: "fnos-nas-agent", version: "0.2.1", executionEnabled: false, authenticationConfigured: Boolean(passwordRecord) });
     if (req.method === "GET" && url.pathname === "/")
@@ -363,6 +388,6 @@ await loadSessions();
 if (skillStore) await skillStore.load();
 // First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
 server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; execution disabled`));
-function shutdown() { server.close(() => process.exit(0)); }
+function shutdown() { server.close(() => { void (auditLogger?.flush() || Promise.resolve()).finally(() => process.exit(0)); }); }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
