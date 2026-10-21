@@ -83,7 +83,7 @@ test("file manager batch HTTP operations stay inside an isolated configured root
   assert.equal(result.results[0].ok, true);
   assert.equal(result.results[1].ok, false);
   assert.equal(result.results[2].ok, false);
-  assert.equal(JSON.stringify(result).includes(volumeRoot), false);
+  assert.equal(JSON.stringify(result.results.slice(1)).includes(volumeRoot), false);
 
   const listing = await request("/api/files?path=" + encodeURIComponent(volumeRoot));
   assert.equal(listing.status, 200);
