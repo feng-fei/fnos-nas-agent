@@ -49,3 +49,13 @@ test("logged-in sessions reveal model management and reload the active model sta
   assert.match(html, /model-provider-metrics/);
   assert.match(html, /API Key/);
 });
+
+test("model catalog discovery uses an inline accessible picker and never saves without explicit form submission", () => {
+  assert.match(html, /model-catalog-picker/);
+  assert.match(html, /选择服务商模型/);
+  assert.match(html, /使用所选模型/);
+  assert.match(html, /取消/);
+  assert.match(html, /option\.textContent=model\.id/);
+  assert.match(html, /已选择模型 .*尚未保存/);
+  assert.doesNotMatch(html, /prompt\("发现 "/);
+});
