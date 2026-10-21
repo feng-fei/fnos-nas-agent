@@ -25,6 +25,7 @@ on:
       - "phase-3/**"
       - "phase-5/**"
       - "phase-6/**"
+      - "phase-7/**"
       - "fix/**"
       - "test/**"
     paths:
