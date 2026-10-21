@@ -77,7 +77,11 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     const tool = definitions.find(item => item.id === id);
     if (!tool) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
     if (!validArgs(args, tool.inputSchema || { type: "object", properties: {}, additionalProperties: false })) throw Object.assign(new Error("Invalid tool arguments"), { statusCode: 400 });
-    if (tool.trimCliCommand) {\n      if (!trimCli) throw Object.assign(new Error("Official fnOS CLI is unavailable"), { statusCode: 503 });\n      return trimCli.runReadOnly(tool.trimCliCommand, args);\n    }\n    if (id === "files.list") {
+    if (tool.trimCliCommand) {
+      if (!trimCli) throw Object.assign(new Error("Official fnOS CLI is unavailable"), { statusCode: 503 });
+      return trimCli.runReadOnly(tool.trimCliCommand, args);
+    }
+    if (id === "files.list") {
       if (!fileBrowser) throw Object.assign(new Error("File browser is unavailable"), { statusCode: 503 });
       return fileBrowser.list(args.path || "", args.limit ?? 100);
     }
