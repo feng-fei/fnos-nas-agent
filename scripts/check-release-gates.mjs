@@ -6,7 +6,7 @@ import { createPermissionPolicy } from "../apps/fnos-nas-agent/app/permission-po
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = path => readFile(join(root, path), "utf8");
-const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs, releaseVerifier, releaseVerifierTests, releaseVerifierDocs, provenanceDocs] = await Promise.all([
+const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs, releaseVerifier, releaseVerifierTests, releaseVerifierDocs, provenanceDocs, phase116Docs] = await Promise.all([
   read("package.json"),
   read(".github/workflows/build-fpk.yml"),
   read("apps/fnos-nas-agent/app/server.mjs"),
