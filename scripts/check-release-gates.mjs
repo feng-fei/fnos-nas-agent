@@ -127,7 +127,7 @@ assert.match(await read("apps/fnos-nas-agent/app/server.mjs"), /skillDeleteMatch
 assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /彻底移除/);
 assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /task-stats/);
 
-assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\\.list/);
-assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\\.preview/);
+assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\.list/);
+assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\.preview/);
 assert.match(await read("apps/fnos-nas-agent/app/agent-core.mjs"), /argsMatchSchema/);
 assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /task-stats/);
