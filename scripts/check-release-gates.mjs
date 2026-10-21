@@ -6,7 +6,7 @@ import { createPermissionPolicy } from "../apps/fnos-nas-agent/app/permission-po
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = path => readFile(join(root, path), "utf8");
-const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs, releaseVerifier, releaseVerifierTests, releaseVerifierDocs, provenanceDocs, phase116Docs] = await Promise.all([
+const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs, releaseVerifier, releaseVerifierTests, releaseVerifierDocs, provenanceDocs, phase116Docs, phase117Docs, lifecycleSmokeTests, fpkTestPlan, sessionCleanupTest, sessionCleanupDocs] = await Promise.all([
   read("package.json"),
   read(".github/workflows/build-fpk.yml"),
   read("apps/fnos-nas-agent/app/server.mjs"),
@@ -25,7 +25,12 @@ const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, audit
   read("tests/phase-26-release-artifact-verification.test.mjs"),
   read("docs/phase-26-release-artifact-verification.md"),
   read("docs/phase-27-build-provenance-attestation.md"),
-  read("docs/phase-116-attestation-verification.md")
+  read("docs/phase-116-attestation-verification.md"),
+  read("docs/phase-117-fpk-lifecycle-smoke.md"),
+  read("tests/phase-117-fpk-lifecycle-smoke.test.mjs"),
+  read("docs/fpk-test-plan.md"),
+  read("tests/phase-119-expired-session-cleanup.test.mjs"),
+  read("docs/phase-119-expired-session-cleanup.md")
 ].map(async promise => promise));
 const packageJson = JSON.parse(pkg);
 
@@ -78,6 +83,17 @@ assert.match(attestJobSource, /--source-ref refs\/heads\/main/);
 assert.match(provenanceDocs, /does not prove that the source code is safe/);
 assert.match(phase116Docs, /--signer-workflow/);
 assert.match(phase116Docs, /--source-ref refs\/heads\/main/);
+assert.match(phase117Docs, /start, status, and stop commands/);
+assert.match(lifecycleSmokeTests, /start must be idempotent/);
+assert.match(lifecycleSmokeTests, /stop must terminate the process/);
+assert.match(fpkTestPlan, /launcher binds to `0\.0\.0\.0`/);
+assert.doesNotMatch(fpkTestPlan, /LAN access remains disabled/);
+assert.match(readme, /\[Phase 117 — FPK Lifecycle Smoke Verification\]\(docs\/phase-117-fpk-lifecycle-smoke\.md\)/);
+assert.match(server, /void persistSessions\(\)\.catch\(\(\) => \{/);
+assert.match(server, /Expired session cleanup could not be persisted\./);
+assert.match(sessionCleanupTest, /expired-session persistence failures are handled and sanitized/);
+assert.match(sessionCleanupDocs, /unhandled rejection/);
+assert.match(readme, /\[Phase 119 — Expired Session Cleanup Error Handling\]\(docs\/phase-119-expired-session-cleanup\.md\)/);
 assert.match(attestJobSource, /id-token: write/);
 assert.match(attestJobSource, /attestations: write/);
 assert.match(attestJobSource, /artifact-metadata: write/);
