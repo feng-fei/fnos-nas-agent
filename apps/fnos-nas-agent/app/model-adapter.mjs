@@ -148,7 +148,7 @@ function providerFailure(status) {
   return modelError("MODEL_PROVIDER_ERROR", "Model provider request failed.", {
     category, statusCode: status,
     retryable: retryableStatus(status),
-    fallbackEligible: retryableStatus(status) || status === 401 || status === 403 || status === 404
+    fallbackEligible: retryableStatus(status)
   });
 }
 function networkFailure(error) {
