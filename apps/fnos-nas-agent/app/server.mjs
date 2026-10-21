@@ -73,7 +73,8 @@ async function loadSessions() {
     const raw = JSON.parse(await readFile(sessionFile, "utf8"));
     if (!Array.isArray(raw)) return;
     const now = Date.now();
-    for (const item of raw) {\n      if (sessions.size >= MAX_SESSIONS) break;
+    for (const item of raw) {
+      if (sessions.size >= MAX_SESSIONS) break;
       if (!Array.isArray(item) || typeof item[0] !== "string" || !item[1] || !Number.isFinite(item[1].expiresAt)) continue;
       if (item[1].expiresAt > now) sessions.set(item[0], { createdAt: item[1].createdAt, expiresAt: item[1].expiresAt });
     }
