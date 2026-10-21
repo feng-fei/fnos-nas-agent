@@ -36,7 +36,7 @@ assert.match(workflow, /^\s*- name: Inspect package and checksum$/m);
 assert.match(workflow, /fnpack-1\.2\.3-linux-amd64/);
 assert.match(workflow, /fnpack_sha256="54b97fa7b70968c4d05c79840f5daeff508957d0bb2062fdb0376d00d9615c93"/);
 assert.match(workflow, /sha256sum --check/);
-assert.match(workflow, /actions\/upload-artifact@v4/);
+assert.match(workflow, /actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4\.6\.2/);
 assert.match(workflow, /retention-days: 14/);
 assert.match(workflow, /phase-24-\*/);
 assert.match(workflow, /phase-25-\*/);
