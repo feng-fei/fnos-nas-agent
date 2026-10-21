@@ -212,6 +212,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/audit") return "audit.list";
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
+  if (/^\/api\/skills\/[a-f0-9]{24}\/source-files$/.test(pathname) || /^\/api\/skills\/[a-f0-9]{24}\/source-preview$/.test(pathname)) return "skills.list";
   if (/^\/api\/skills\/[a-f0-9]{24}$/.test(pathname)) return "skills.remove";
   if (pathname === "/api/skills/import" || pathname === "/api/skills/import-remote" || pathname === "/api/skills/import-remote-batch") return "skills.import";
   if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
@@ -496,6 +497,38 @@ const server = createServer(async (req, res) => {
       } catch (error) {
         const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
         return reply(res, status, { error: status >= 500 ? "Unable to process GitHub Skill batch." : error.message });
+      }
+    }
+
+    const skillSourceFilesMatch = url.pathname.match(/^\/api\/skills\/([a-f0-9]{24})\/source-files$/);
+    if (skillSourceFilesMatch) {
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!skillStore) return reply(res, 503, { error: "App data directory is not configured" });
+      const rawLimit = Number(url.searchParams.get("limit") || 100);
+      const rawOffset = Number(url.searchParams.get("offset") || 0);
+      if (!Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 100 ||
+          !Number.isInteger(rawOffset) || rawOffset < 0 || rawOffset > 10000)
+        return reply(res, 400, { error: "Invalid source file pagination" });
+      try {
+        return reply(res, 200, await skillStore.listSourceFiles(skillSourceFilesMatch[1], {
+          limit: rawLimit, offset: rawOffset
+        }));
+      } catch (error) {
+        const status = [400, 404, 409, 413, 415].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 500 ? "Unable to inspect quarantined Skill archive" : error.message });
+      }
+    }
+    const skillSourcePreviewMatch = url.pathname.match(/^\/api\/skills\/([a-f0-9]{24})\/source-preview$/);
+    if (skillSourcePreviewMatch) {
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!skillStore) return reply(res, 503, { error: "App data directory is not configured" });
+      try {
+        return reply(res, 200, await skillStore.previewSourceFile(skillSourcePreviewMatch[1], url.searchParams.get("path") || ""));
+      } catch (error) {
+        const status = [400, 404, 409, 413, 415].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 500 ? "Unable to preview quarantined Skill source" : error.message });
       }
     }
 
