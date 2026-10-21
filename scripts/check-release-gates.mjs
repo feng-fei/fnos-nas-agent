@@ -82,7 +82,7 @@ assert.match(provenanceDocs, /does not prove that the source code is safe/);
 assert.match(phase116Docs, /--signer-workflow/);
 assert.match(phase116Docs, /--source-ref refs\/heads\/main/);
 assert.match(phase117Docs, /start, status, and stop commands/);
-assert.match(lifecycleSmokeTests, /repeatedStart/);
+assert.match(lifecycleSmokeTests, /start must be idempotent/);
 assert.match(lifecycleSmokeTests, /stop must terminate the process/);
 assert.match(fpkTestPlan, /launcher explicitly sets HOST=0\.0\.0\.0/);
 assert.doesNotMatch(fpkTestPlan, /LAN access remains disabled/);
