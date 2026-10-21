@@ -47,6 +47,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 2 skeleton boundaries](docs/phase-2.md)
 - [Phase 3 Skill Manager contract](docs/phase-3-skill-manager.md)
 - [Phase 3 web authentication](docs/phase-3-web-auth.md)
+- [Phase 5 Skill manager](docs/phase-5-skill-manager-api.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
 

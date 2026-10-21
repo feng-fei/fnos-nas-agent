@@ -114,6 +114,41 @@ test("first-run setup stores only a salted password hash and protects session en
   assert.ok(Array.isArray(diagnostics.storage));
   assert.ok(diagnostics.storage.some(item => item.label === "root" && item.available));
 
+  const hiddenSkills = await fetch(baseUrl + "/api/skills");
+  assert.equal(hiddenSkills.status, 401);
+  const skillHash = "a".repeat(64);
+  const importMetadata = await fetch(baseUrl + "/api/skills", {
+    method: "POST", headers: { origin: baseUrl, cookie, "content-type": "application/json" },
+    body: JSON.stringify({ name: "fnos-official", version: "1.0", sourceLabel: "official skill archive", archiveSha256: skillHash, declaredCapabilities: ["read-only"] })
+  });
+  assert.equal(importMetadata.status, 201);
+  const skill = (await importMetadata.json()).skill;
+  assert.equal(skill.state, "pending_review");
+  assert.equal(skill.archiveSha256, skillHash);
+  assert.equal("payload" in skill, false);
+  assert.equal((await stat(join(dataDir, "skills.json"))).mode & 0o777, 0o600);
+
+  const listSkills = await fetch(baseUrl + "/api/skills?state=pending_review", { headers: { cookie } });
+  assert.equal(listSkills.status, 200);
+  assert.equal((await listSkills.json()).total, 1);
+  const invalidTransition = await fetch(baseUrl + "/api/skills/" + skill.id + "/transition", {
+    method: "POST", headers: { origin: baseUrl, cookie, "content-type": "application/json" },
+    body: JSON.stringify({ state: "enabled", note: "skip review" })
+  });
+  assert.equal(invalidTransition.status, 409);
+  const approve = await fetch(baseUrl + "/api/skills/" + skill.id + "/transition", {
+    method: "POST", headers: { origin: baseUrl, cookie, "content-type": "application/json" },
+    body: JSON.stringify({ state: "approved", note: "metadata reviewed; archive not uploaded" })
+  });
+  assert.equal(approve.status, 200);
+  const enable = await fetch(baseUrl + "/api/skills/" + skill.id + "/transition", {
+    method: "POST", headers: { origin: baseUrl, cookie, "content-type": "application/json" },
+    body: JSON.stringify({ state: "enabled", note: "still not executable" })
+  });
+  assert.equal(enable.status, 200);
+  assert.equal((await enable.json()).skill.state, "enabled");
+  assert.equal((await readFile(join(dataDir, "skills.json"), "utf8")).includes("payload"), false);
+
   const logout = await fetch(baseUrl + "/api/logout", {
     method: "POST", headers: { origin: baseUrl, cookie }
   });
