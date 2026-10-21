@@ -2,7 +2,7 @@
 
 The mobile file browser can select multiple files and upload them sequentially to the current directory.
 
-- Every selected file is checked against the existing 25 MiB per-file limit before any upload starts.
+- A batch is limited to 20 files, and every selected file is checked against the existing 25 MiB per-file limit before any upload starts.
 - Aggregate progress reflects completed files and current-file byte progress.
 - Cancellation or a failure stops the queue; already completed uploads remain in place and are reported as partial success.
 - Existing server-side configured-root checks, filename validation, and no-overwrite behavior remain authoritative.
