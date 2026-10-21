@@ -17,9 +17,15 @@ export function createAgentCore({ tools, model, now = () => new Date().toISOStri
   if (!model || typeof model.plan !== "function" || typeof model.status !== "function") throw new TypeError("A model adapter is required");
 
   async function executePlan(plan) {
+    const catalogue = new Map(tools.list().map(tool => [tool.id, tool]));
+    // Validate the complete plan before the first tool invocation.
+    for (const call of plan.toolCalls) {
+      if (!catalogue.has(call.id)) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
+      if (!call.args || typeof call.args !== "object" || Array.isArray(call.args) || Object.keys(call.args).length !== 0)
+        throw Object.assign(new Error("Invalid tool arguments"), { statusCode: 400 });
+    }
     const results = [];
     for (const call of plan.toolCalls) {
-      // Registry is the final authority; model output never defines executable code.
       const result = await tools.invoke(call.id, call.args);
       results.push({ tool: call.id, result });
     }
