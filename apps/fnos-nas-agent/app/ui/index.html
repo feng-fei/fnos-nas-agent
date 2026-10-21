@@ -398,7 +398,20 @@ let taskRefreshTimer=null,taskHistoryOffset=0;
     if(task.result.results.length>10){const note=document.createElement("p");note.className="muted";note.textContent="仅显示前 10 项。";details.append(note);}
     card.append(details);
    }
-   if(task.status==="queued"){const cancel=document.createElement("button");cancel.type="button";cancel.textContent="取消排队任务";cancel.addEventListener("click",async()=>{cancel.disabled=true;try{const cr=await api("/api/tasks/"+encodeURIComponent(task.taskId)+"/cancel",{method:"POST"});const cb=await cr.json();if(!cr.ok)throw Error(cb.error||"取消失败");await refreshRecentTasks();}catch(error){cancel.disabled=false;alert(error.message||"取消失败");}});card.append(cancel);}
+   if(task.status==="queued"||task.status==="running"){
+    const cancel=document.createElement("button");cancel.type="button";
+    cancel.textContent=task.status==="queued"?"取消排队任务":task.cancelRequested?"等待当前工具结束…":"请求停止";
+    cancel.disabled=task.status==="running"&&task.cancelRequested;
+    cancel.addEventListener("click",async()=>{
+     cancel.disabled=true;
+     try{
+      const cr=await api("/api/tasks/"+encodeURIComponent(task.taskId)+"/cancel",{method:"POST"});const cb=await cr.json();if(!cr.ok)throw Error(cb.error||"取消失败");
+      if(cb.cancelRequested)document.querySelector("#agent-error").textContent="已请求停止；当前工具会先完成，不会启动后续工具。";
+      await refreshRecentTasks();
+     }catch(error){cancel.disabled=false;alert(error.message||"取消失败");}
+    });
+    card.append(cancel);
+   }
    if(task.error){const error=document.createElement("p");error.className="error";error.textContent=task.error;card.append(error);}
    host.append(card);
   }

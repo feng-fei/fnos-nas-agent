@@ -64,7 +64,7 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
   const tasks = new Map(), queue = [];
   let active = 0;
   let persistQueue = Promise.resolve();
-  const publicTask = task => ({ taskId: task.taskId, createdAt: task.createdAt, startedAt: task.startedAt, completedAt: task.completedAt, status: task.status, progress: task.progress, stage: task.stage, result: task.result, error: task.error });
+  const publicTask = task => ({ taskId: task.taskId, createdAt: task.createdAt, startedAt: task.startedAt, completedAt: task.completedAt, status: task.status, progress: task.progress, stage: task.stage, cancelRequested: task.cancelRequested === true, result: task.result, error: task.error });
 
   function prune() {
     const terminal = [...tasks.values()].filter(task => TERMINAL.has(task.status)).sort((a,b) => a.createdAt.localeCompare(b.createdAt));
@@ -120,6 +120,7 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
         progress: Number.isInteger(saved.progress) ? Math.max(0, Math.min(100, saved.progress)) : (saved.status === "completed" ? 100 : 0),
         stage: typeof saved.stage === "string" ? saved.stage.slice(0, 80) : (interrupted ? "服务中断" : ""),
         input: null,
+        cancelRequested: false,
         result: null,
         error: interrupted ? INTERRUPTED_ERROR : (typeof saved.error === "string" ? saved.error : null)
       };
@@ -133,16 +134,17 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
     while (active < concurrency && queue.length) {
       const task = queue.shift(); active++; task.status = "running"; task.stage = "执行中"; task.startedAt = now(); void persist().catch(() => {});
       Promise.resolve().then(() => execute(task.input, Object.freeze({
+        shouldCancel() { return task.cancelRequested === true; },
         reportProgress(value, stage = "") {
           if (task.status !== "running" || !Number.isFinite(value)) return false;
           task.progress = Math.max(task.progress, Math.min(99, Math.max(0, Math.floor(value))));
-          task.stage = typeof stage === "string" ? stage.trim().slice(0, 80) : "";
+          task.stage = task.cancelRequested ? "等待当前工具结束后停止" : (typeof stage === "string" ? stage.trim().slice(0, 80) : "");
           void persist().catch(() => {});
           return true;
         }
       }))).then(
-        result => { task.status = "completed"; task.progress = 100; task.stage = "已完成"; task.result = boundedTaskResult(result); },
-        error => { task.status = "failed"; task.stage = "执行失败"; task.error = error?.statusCode === 400 ? "请求参数无效。" : "任务执行失败；未执行任意系统命令。"; }
+        result => { task.cancelRequested = false; task.status = "completed"; task.progress = 100; task.stage = "已完成"; task.result = boundedTaskResult(result); },
+        error => { if (error?.code === "TASK_CANCELLED") { task.cancelRequested = false; task.status = "cancelled"; task.stage = "已取消"; task.error = "任务已取消；当前工具已结束，未继续执行后续步骤。"; } else { task.cancelRequested = false; task.status = "failed"; task.stage = "执行失败"; task.error = error?.statusCode === 400 ? "请求参数无效。" : "任务执行失败；未执行任意系统命令。"; } }
       ).finally(() => { task.completedAt = now(); active--; prune(); void persist().catch(() => {}); pump(); });
     }
   }
@@ -152,13 +154,20 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
     async flush() { await ready; await persist(); await persistQueue; },
     submit(input) {
       if (queue.length >= queueLimit) throw Object.assign(new Error("Task queue is full"), { statusCode: 429 });
-      const task = { taskId: id(), createdAt: now(), startedAt: null, completedAt: null, status: "queued", progress: 0, stage: "排队中", input, result: null, error: null };
+      const task = { taskId: id(), createdAt: now(), startedAt: null, completedAt: null, status: "queued", progress: 0, stage: "排队中", cancelRequested: false, input, result: null, error: null };
       tasks.set(task.taskId, task); queue.push(task); void persist().catch(() => {}); pump(); return publicTask(task);
     },
     get(taskId) { const task = tasks.get(taskId); return task ? publicTask(task) : null; },
     cancel(taskId) {
       const task = tasks.get(taskId);
       if (!task) return null;
+      if (task.status === "running") {
+        if (task.cancelRequested) return { cancelled: false, cancelRequested: true, task: publicTask(task) };
+        task.cancelRequested = true;
+        task.stage = "等待当前工具结束后停止";
+        void persist().catch(() => {});
+        return { cancelled: false, cancelRequested: true, task: publicTask(task) };
+      }
       if (task.status !== "queued") return { cancelled: false, task: publicTask(task) };
       const index = queue.findIndex(item => item.taskId === taskId);
       if (index < 0) return { cancelled: false, task: publicTask(task) };

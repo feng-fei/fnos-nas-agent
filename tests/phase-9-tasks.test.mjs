@@ -118,3 +118,31 @@ test("task manager bounds oversized retained results while preserving the summar
   assert.equal(stored.truncated, true);
   assert.ok(Buffer.byteLength(JSON.stringify(stored), "utf8") <= 16 * 1024);
 });
+
+test("running task cancellation waits for the active operation and stops cooperative follow-up work", async () => {
+  let startedResolve, releaseResolve;
+  const started = new Promise(resolve => { startedResolve = resolve; });
+  const blocked = new Promise(resolve => { releaseResolve = resolve; });
+  const manager = createTaskManager({
+    execute: async (_input, context) => {
+      startedResolve();
+      await blocked;
+      if (context.shouldCancel()) throw Object.assign(new Error("private cancellation detail"), { code: "TASK_CANCELLED" });
+      return { ok: true };
+    }
+  });
+  const task = manager.submit({});
+  await started;
+  const requested = manager.cancel(task.taskId);
+  assert.equal(requested.cancelled, false);
+  assert.equal(requested.cancelRequested, true);
+  assert.equal(requested.task.status, "running");
+  assert.equal(requested.task.cancelRequested, true);
+  releaseResolve();
+  for (let i = 0; i < 50 && manager.get(task.taskId)?.status !== "cancelled"; i++) await tick();
+  const finalTask = manager.get(task.taskId);
+  assert.equal(finalTask.status, "cancelled");
+  assert.equal(finalTask.cancelRequested, false);
+  assert.match(finalTask.error, /当前工具已结束/);
+  assert.doesNotMatch(JSON.stringify(finalTask), /private cancellation detail/);
+});
