@@ -41,3 +41,23 @@ test("task failures are sanitized and history is bounded", async () => {
 test("task manager rejects invalid concurrency", () => {
   assert.throws(() => createTaskManager({ execute: () => {}, concurrency: 0 }), TypeError);
 });
+
+test("history limit retains the newest completed tasks without rejecting submissions", async () => {
+  const manager = createTaskManager({
+    historyLimit: 2,
+    execute: async input => {
+      if (input.fail) throw new Error("password=must-not-leak");
+      return { ok: true };
+    },
+    id: (() => { let n = 0; return () => "history-" + (++n); })()
+  });
+  const first = manager.submit({ fail: true });
+  const second = manager.submit({});
+  const third = manager.submit({});
+  for (let i = 0; i < 50 && !manager.get(third.taskId)?.completedAt; i++) await tick();
+  assert.equal(manager.get(first.taskId), null);
+  assert.equal(manager.get(second.taskId)?.status, "completed");
+  assert.equal(manager.get(third.taskId)?.status, "completed");
+  assert.equal(manager.list().length, 2);
+  assert.ok(!JSON.stringify(manager.list()).includes("must-not-leak"));
+});
