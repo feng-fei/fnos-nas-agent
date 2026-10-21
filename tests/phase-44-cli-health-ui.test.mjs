@@ -12,6 +12,7 @@ test("connection status distinguishes auth, scope, network, TLS, timeout and sta
   assert.match(html, /trim-cli-connection-detail/);
   assert.match(html, /cli\.errorCategory/);
   assert.match(html, /cli\.nextAction/);
+  assert.match(html, /trimPortInput\.value=trimSchemeInput\.value==="http"\?"5666":isIp\?"5667":"443"/);
   assert.match(html, /上次检测：/);
 });
 
