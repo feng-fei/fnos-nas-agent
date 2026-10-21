@@ -149,3 +149,76 @@ jobs:
           while IFS= read -r -d '' file; do node --check "$file"; done < <(find scripts -type f -name '*.mjs' -print0)
           python3 -c 'import re, pathlib; s=pathlib.Path("apps/fnos-nas-agent/app/ui/index.html").read_text(); m=re.search(r"<script>(.*?)</script>", s, re.S); assert m, "inline UI script not found"; pathlib.Path("/tmp/fnos-agent-ui-check.mjs").write_text(m.group(1))'
           node --check /tmp/fnos-agent-ui-check.mjs
+
+      
+      - name: Stage native FPK
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_app="apps/fnos-nas-agent"
+          stage="$RUNNER_TEMP/fnos-nas-agent-fpk"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          cp -a "$source_app/." "$stage/"
+          mkdir -p "$stage/app/bin"
+          install -m 0755 "$(command -v node)" "$stage/app/bin/node"
+          test "$("$stage/app/bin/node" --version)" = "$(node --version)"
+          python3 scripts/generate-fpk-icons.py "$stage"
+          test -s "$stage/app/server.mjs"
+          test -x "$stage/app/bin/node"
+          test -s "$stage/ICON.PNG"
+          test -s "$stage/ICON_256.PNG"
+          python3 -c 'import json, pathlib, sys; p=pathlib.Path(sys.argv[1]); json.loads((p/"config/privilege").read_text()); json.loads((p/"config/resource").read_text()); assert (p/"app"/"ui"/"config").is_file(); assert (p/"wizard").is_dir()' "$stage"
+
+      - name: Install verified fnpack
+        shell: bash
+        run: |
+          set -euo pipefail
+          fnpack_url="https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-amd64"
+          fnpack_sha256="54b97fa7b70968c4d05c79840f5daeff508957d0bb2062fdb0376d00d9615c93"
+          curl --fail --location --silent --show-error --retry 3 --connect-timeout 10 --max-time 120 "$fnpack_url" --output "$RUNNER_TEMP/fnpack"
+          printf '%s  %s\n' "$fnpack_sha256" "$RUNNER_TEMP/fnpack" | sha256sum --check
+          chmod 0755 "$RUNNER_TEMP/fnpack"
+          "$RUNNER_TEMP/fnpack" --help
+
+      - name: Build FPK
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/fnos-nas-agent-fpk"
+          (
+            cd "$stage"
+            "$RUNNER_TEMP/fnpack" build
+          )
+          shopt -s nullglob
+          artifacts=("$stage"/*.fpk)
+          artifact_count=\${#artifacts[@]}
+          if [ "$artifact_count" -ne 1 ]; then
+            printf 'Expected exactly one FPK output; found %s\n' "$artifact_count" >&2
+            find "$stage" -maxdepth 2 -type f -name '*.fpk' -print >&2
+            exit 1
+          fi
+          mkdir -p dist
+          install -m 0644 "\${artifacts[0]}" dist/fnos-nas-agent-test-node-26.fpk
+
+      - name: Inspect package and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="dist/fnos-nas-agent-test-node-26.fpk"
+          test -s "$artifact"
+          node scripts/verify-fpk-artifact.mjs "$artifact"
+          sha256sum "$artifact" > "$artifact.sha256"
+          node scripts/create-release-manifest.mjs "$artifact" dist/release-manifest.json
+          node scripts/verify-release-artifact.mjs "$artifact" "$artifact.sha256" dist/release-manifest.json
+
+      - name: Upload test FPK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fnos-nas-agent-test-fpk-node-26.x
+          path: |
+            dist/fnos-nas-agent-test-node-26.fpk
+            dist/fnos-nas-agent-test-node-26.fpk.sha256
+            dist/release-manifest.json
+          if-no-files-found: error
+          retention-days: 14
