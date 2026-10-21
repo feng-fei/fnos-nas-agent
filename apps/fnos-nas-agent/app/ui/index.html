@@ -240,9 +240,9 @@ async function refreshTools(){
      args[name]=rule.type==="integer"?Number(field.value):field.value;
     }
     const out=document.querySelector("#tool-result");out.textContent="正在读取 "+item.id+"…";btn.disabled=true;
-    try{const result=await api("/api/tools/"+encodeURIComponent(item.id)+"/run",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(args)});const payload=await result.json();if(!result.ok)throw Error(payload.error||"工具调用失败");out.textContent=JSON.stringify(payload.result,null,2);}
+    try{const result=await api("/api/tools/"+encodeURIComponent(item.id)+"/run",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(args)});const payload=await result.json();if(!result.ok){out.textContent=(payload.error||"工具调用失败")+(payload.nextAction?"\\n\\n建议："+payload.nextAction:"");return;}out.textContent=JSON.stringify(payload.result,null,2);}
     catch(error){out.textContent=error.message||"工具调用失败";}
-    finally{btn.disabled=false;}
+    finally{btn.disabled=false;if(item.id.startsWith("fnos."))await refreshAgentStatus();}
    });
    row.append(form);host.append(row);
   }
