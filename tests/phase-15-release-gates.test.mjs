@@ -14,6 +14,10 @@ test("CI uses Node 26 and builds a verified FPK test artifact", async () => {
   assert.match(workflow, /create-release-manifest\.mjs/);
   assert.match(workflow, /verify-release-artifact\.mjs/);
   assert.match(workflow, /actions\/upload-artifact@v4/);
+  assert.match(workflow, /  attest:/);
+  assert.match(workflow, /uses: actions\/attest@v4/);
+  assert.match(workflow, /Verify artifact bundle before attestation/);
+  assert.match(workflow, /if: github\.ref == 'refs\/heads\/main' && github\.event_name != 'pull_request'/);
   assert.doesNotMatch(workflow, /actions\/attest-build-provenance@v2/);
   assert.match(workflow, /run: npm test/);
   assert.match(workflow, /Validate app scripts and entry syntax/);
