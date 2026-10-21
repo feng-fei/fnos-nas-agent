@@ -2,6 +2,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import { access, constants } from "node:fs/promises";
 import { join } from "node:path";
+import { classifyTrimCliFailure, createTrimCliConnectionHealth } from "./trim-cli-health.mjs";
 
 const execFile = promisify(execFileCallback);
 const MAX_OUTPUT_BYTES = 1024 * 1024;
@@ -51,11 +52,14 @@ export function createTrimCliAdapter({
   execFileImpl = execFile,
   accessImpl = access,
   env = process.env,
-  timeoutMs = DEFAULT_TIMEOUT_MS
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  now = () => Date.now()
 } = {}) {
   if (typeof binaryPath !== "string" || binaryPath.length > 4096) throw new TypeError("Invalid trim-cli binary path");
   if (!/^[a-zA-Z0-9_-]{1,64}$/.test(profile)) throw new TypeError("Invalid trim-cli profile");
   if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > MAX_TIMEOUT_MS) throw new TypeError("Invalid trim-cli timeout");
+
+  const health = createTrimCliConnectionHealth({ now });
 
   async function resolveBinaryPath() {
     const candidate = typeof binaryPathProvider === "function" ? await binaryPathProvider() : binaryPath;
@@ -74,7 +78,8 @@ export function createTrimCliAdapter({
   }
 
   async function status() {
-    return statusFor(await resolveBinaryPath());
+    const state = await statusFor(await resolveBinaryPath());
+    return { ...state, ...health.snapshot(state.available) };
   }
 
   async function setupInfo() {
@@ -83,6 +88,7 @@ export function createTrimCliAdapter({
     const privateDataDir = typeof env.AGENT_DATA_DIR === "string" ? env.AGENT_DATA_DIR : "";
     return {
       ...state,
+      ...health.snapshot(state.available),
       binaryPath: executable || "",
       dataDirConfigured: Boolean(privateDataDir),
       dataDir: privateDataDir,
@@ -97,7 +103,11 @@ export function createTrimCliAdapter({
     validateInput(id, input);
     const executable = await resolveBinaryPath();
     const state = await statusFor(executable);
-    if (!state.available) throw Object.assign(new Error("Official fnOS CLI is not configured or executable"), { statusCode: 503 });
+    if (!state.available) {
+      const failure = classifyTrimCliFailure(Object.assign(new Error("Official fnOS CLI is not configured or executable"), { code: "TRIM_CLI_UNAVAILABLE" }));
+      health.failure(failure);
+      throw Object.assign(new Error(failure.message), { statusCode: failure.statusCode, code: "TRIM_CLI_" + failure.kind.toUpperCase(), errorCategory: failure.kind, connectionStatus: failure.connectionStatus, authenticated: failure.authenticated, nextAction: failure.nextAction });
+    }
     const args = ["--profile", profile, ...command.args(input)];
     try {
       const result = await execFileImpl(executable, args, {
@@ -118,16 +128,22 @@ export function createTrimCliAdapter({
       let data;
       try { data = JSON.parse(stdout); }
       catch { data = stdout.slice(0, 64_000); }
+      health.success(id);
       return { command: id, data };
     } catch (error) {
-      // Do not return stderr: CLI errors can accidentally include sensitive session details.
-      const timedOut = error?.code === "ETIMEDOUT" || error?.killed;
-      throw Object.assign(new Error(timedOut ? "trim-cli request timed out" : "trim-cli request failed; sensitive CLI output was suppressed"), {
-        statusCode: timedOut ? 504 : 502,
-        code: timedOut ? "TRIM_CLI_TIMEOUT" : "TRIM_CLI_FAILED"
+      // The classifier only reads CLI diagnostics to assign a category; raw stderr/stdout is never exposed.
+      const failure = classifyTrimCliFailure(error);
+      health.failure(failure);
+      throw Object.assign(new Error(failure.message), {
+        statusCode: failure.statusCode,
+        code: "TRIM_CLI_" + failure.kind.toUpperCase(),
+        errorCategory: failure.kind,
+        connectionStatus: failure.connectionStatus,
+        authenticated: failure.authenticated,
+        nextAction: failure.nextAction
       });
     }
   }
 
-  return Object.freeze({ status, setupInfo, runReadOnly, commands: Object.freeze(Object.keys(COMMANDS)) });
+  return Object.freeze({ status, setupInfo, runReadOnly, connectionHealth: () => health.snapshot(), commands: Object.freeze(Object.keys(COMMANDS)) });
 }
