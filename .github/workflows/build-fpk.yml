@@ -5,6 +5,7 @@ on:
     branches:
       - phase-2/fpk-packaging
       - "fix/**"
+      - "test/**"
     paths:
       - "apps/fnos-nas-agent/**"
       - "scripts/generate-fpk-icons.py"
@@ -23,9 +24,13 @@ concurrency:
 
 jobs:
   build:
-    name: Build and inspect x86 FPK
+    name: Build and inspect x86 FPK (Node ${{ matrix.node-version }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["24.x", "26.x"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,8 +40,8 @@ jobs:
       - name: Set up Node.js runtime
         uses: actions/setup-node@v4
         with:
-          # Track the latest patched Node.js 24 LTS release for security fixes.
-          node-version: "24.x"
+          # Compare maintained Node.js 24 LTS with Node.js 26 Current.
+          node-version: ${{ matrix.node-version }}
 
       - name: Show Node.js runtime version
         run: node --version
@@ -120,7 +125,7 @@ jobs:
       - name: Upload test FPK
         uses: actions/upload-artifact@v4
         with:
-          name: fnos-nas-agent-test-fpk
+          name: fnos-nas-agent-test-fpk-node-${{ matrix.node-version }}
           path: |
             dist/fnos-nas-agent-test.fpk
             dist/fnos-nas-agent-test.fpk.sha256
