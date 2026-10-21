@@ -235,7 +235,7 @@ async function refreshAgentStatus(){
   };
   const statusLabel=statuses[cli.connectionStatus]||"状态未知";
   const install=cli.available?"CLI 已安装且可执行":cli.configured?"CLI 路径已配置但不可执行":"官方 CLI 尚未安装";
-  document.querySelector("#agent-status").textContent="规则优先；模型："+(x.model.enabled?"已启用（"+x.model.model+"）":"未配置")+"；可用工具："+x.availableTools+"；官方 CLI："+install+"；连接状态："+statusLabel+"；任意命令执行：关闭。";
+  document.querySelector("#agent-status").textContent="规则优先；模型："+(x.model.enabled?"已启用（"+(x.model.providerName||x.model.model)+" / "+x.model.model+"）":"未配置")+"；可用工具："+x.availableTools+"；官方 CLI："+install+"；连接状态："+statusLabel+"；任意命令执行：关闭。";
   const detail=document.querySelector("#trim-cli-connection-detail");
   const parts=[cli.message||cli.note||"尚无连接状态信息。"];
   if(cli.checkedAt)parts.push("上次检测："+cli.checkedAt);
