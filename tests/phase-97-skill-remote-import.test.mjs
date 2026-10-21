@@ -25,7 +25,7 @@ test("remote import follows GitHub-to-codeload redirect and bounds the downloade
   const fetchImpl = async url => {
     calls.push(url);
     if (url === githubUrl) return new Response(null, { status: 302, headers: { location: codeloadUrl } });
-    return new Response(Buffer.from("PK\\x03\\x04fake"), { status: 200, headers: { "content-length": "8" } });
+    return new Response(Buffer.from([80, 75, 3, 4, 102, 97, 107, 101]), { status: 200, headers: { "content-length": "8" } });
   };
   const result = await fetchGitHubSkillArchive(githubUrl, { fetchImpl, maxBytes: 64 });
   assert.equal(result.repository, "example/project");
