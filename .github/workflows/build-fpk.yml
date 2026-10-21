@@ -192,14 +192,14 @@ jobs:
           )
           shopt -s nullglob
           artifacts=("$stage"/*.fpk)
-          artifact_count=\${#artifacts[@]}
+          artifact_count=${#artifacts[@]}
           if [ "$artifact_count" -ne 1 ]; then
             printf 'Expected exactly one FPK output; found %s\n' "$artifact_count" >&2
             find "$stage" -maxdepth 2 -type f -name '*.fpk' -print >&2
             exit 1
           fi
           mkdir -p dist
-          install -m 0644 "\${artifacts[0]}" dist/fnos-nas-agent-test-node-26.fpk
+          install -m 0644 "${artifacts[0]}" dist/fnos-nas-agent-test-node-26.fpk
 
       - name: Inspect package and checksum
         shell: bash
