@@ -1,5 +1,6 @@
-import { randomBytes } from "node:crypto";
-import { saveQuarantinedArchive } from "./skill-archives.mjs";
+import { createHash, randomBytes } from "node:crypto";
+import { extractZipEntry, inspectZipArchive, MAX_ARCHIVE_BYTES, saveQuarantinedArchive } from "./skill-archives.mjs";
+import { isPreviewableSkillTextPath, MAX_SKILL_SOURCE_PREVIEW_BYTES } from "./skill-source-review.mjs";
 import { inspectSkillManifest } from "./skill-manifest.mjs";
 import { mkdir, readFile, writeFile, rename, chmod, unlink, lstat } from "node:fs/promises";
 import { resolve, sep } from "node:path";
@@ -126,6 +127,90 @@ export function createSkillStore(dataDir) {
     return { ...record, declaredCapabilities: [...record.declaredCapabilities] };
   }
 
+  function skillById(id) {
+    if (typeof id !== "string" || !/^[a-f0-9]{24}$/i.test(id))
+      throw Object.assign(new Error("Invalid Skill ID"), { statusCode: 400 });
+    const item = records.find(record => record.id === id);
+    if (!item) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
+    if (!item.quarantineFile) throw Object.assign(new Error("Skill has no quarantined archive to inspect"), { statusCode: 409 });
+    return item;
+  }
+
+  async function readQuarantinedArchive(item) {
+    const quarantineRoot = resolve(dataDir, "skill-quarantine");
+    const archivePath = resolve(dataDir, item.quarantineFile);
+    const expectedPath = resolve(quarantineRoot, item.archiveSha256 + ".zip");
+    if (archivePath !== expectedPath || !archivePath.startsWith(quarantineRoot + sep) || !archivePath.endsWith(".zip"))
+      throw Object.assign(new Error("Quarantined archive path is invalid"), { statusCode: 500 });
+    let rootInfo, archiveInfo;
+    try {
+      [rootInfo, archiveInfo] = await Promise.all([lstat(quarantineRoot), lstat(archivePath)]);
+    } catch {
+      throw Object.assign(new Error("Quarantined archive is unavailable"), { statusCode: 404 });
+    }
+    if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory() ||
+        archiveInfo.isSymbolicLink() || !archiveInfo.isFile())
+      throw Object.assign(new Error("Quarantined archive filesystem type is unsafe"), { statusCode: 500 });
+    const buffer = await readFile(archivePath);
+    if (buffer.length > MAX_ARCHIVE_BYTES)
+      throw Object.assign(new Error("Quarantined archive exceeds the inspection size limit"), { statusCode: 413 });
+    const digest = createHash("sha256").update(buffer).digest("hex");
+    if (digest !== item.archiveSha256)
+      throw Object.assign(new Error("Quarantined archive integrity check failed"), { statusCode: 500 });
+    return { buffer, archive: inspectZipArchive(buffer) };
+  }
+
+  async function listSourceFiles(id, { limit = 100, offset = 0 } = {}) {
+    const item = skillById(id);
+    const boundedLimit = Number.isInteger(limit) ? Math.min(100, Math.max(1, limit)) : 100;
+    const boundedOffset = Number.isInteger(offset) ? Math.min(10000, Math.max(0, offset)) : 0;
+    const { archive } = await readQuarantinedArchive(item);
+    const files = archive.entries
+      .filter(entry => !entry.name.endsWith("/") && isPreviewableSkillTextPath(entry.name))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(entry => ({
+        path: entry.name,
+        sizeBytes: entry.uncompressedSize,
+        previewable: entry.uncompressedSize <= MAX_SKILL_SOURCE_PREVIEW_BYTES
+      }));
+    return {
+      skillId: item.id, name: item.name, total: files.length,
+      limit: boundedLimit, offset: boundedOffset,
+      maxPreviewBytes: MAX_SKILL_SOURCE_PREVIEW_BYTES,
+      files: files.slice(boundedOffset, boundedOffset + boundedLimit)
+    };
+  }
+
+  async function previewSourceFile(id, path) {
+    if (typeof path !== "string" || !path.trim() || path.length > 1024 ||
+        /[\\x00-\\x1f\\x7f]/.test(path))
+      throw Object.assign(new Error("Provide a valid archive file path"), { statusCode: 400 });
+    const item = skillById(id);
+    const { buffer, archive } = await readQuarantinedArchive(item);
+    const entry = archive.entries.find(candidate => candidate.name === path);
+    if (!entry || entry.name.endsWith("/"))
+      throw Object.assign(new Error("Source file not found in this archive"), { statusCode: 404 });
+    if (!isPreviewableSkillTextPath(entry.name))
+      throw Object.assign(new Error("Preview is limited to recognized text/source files"), { statusCode: 415 });
+    if (entry.uncompressedSize > MAX_SKILL_SOURCE_PREVIEW_BYTES)
+      throw Object.assign(new Error("Source preview is limited to 64 KiB per file"), { statusCode: 413 });
+    let data;
+    try { data = extractZipEntry(buffer, entry.name, MAX_SKILL_SOURCE_PREVIEW_BYTES); }
+    catch (error) {
+      throw Object.assign(new Error("Unable to read this validated source file"), {
+        statusCode: Number.isInteger(error?.statusCode) ? error.statusCode : 400
+      });
+    }
+    let content;
+    try { content = new TextDecoder("utf-8", { fatal: true }).decode(data); }
+    catch { throw Object.assign(new Error("Preview supports UTF-8 text files only"), { statusCode: 415 }); }
+    return {
+      skillId: item.id, name: item.name, path: entry.name,
+      bytes: data.length, content,
+      note: "Read from quarantine in memory only; not extracted to disk or executed."
+    };
+  }
+
   async function importArchive(input, buffer) {
     const manifestReview = inspectSkillManifest(buffer);
     const archive = await saveQuarantinedArchive(dataDir, buffer);
@@ -190,7 +275,7 @@ export function createSkillStore(dataDir) {
     return { ...item, declaredCapabilities: [...item.declaredCapabilities] };
   }
 
-  return { load, list, register, importArchive, transition, remove };
+  return { load, list, register, importArchive, listSourceFiles, previewSourceFile, transition, remove };
 }
 
 export const skillStates = [...STATES];
