@@ -243,3 +243,10 @@ assert.match(phase48TaskManager, /reportProgress\(value, stage = ""\)/);
 assert.match(phase48TaskManager, /progress: task\.progress/);
 assert.match(phase48Tests, /progress is bounded, monotonic/);
 assert.match(readme, /\[Phase 48 — Bounded Task Progress\]\(docs\/phase-48-task-progress\.md\)/);
+
+const phase49FileManager = await read("apps/fnos-nas-agent/app/file-manager.mjs");
+const phase49Tests = await read("tests/practical-file-management.test.mjs");
+assert.match(phase49FileManager, /async function operateBatch\(input\)/);
+assert.match(phase49FileManager, /input\.operations\.length > 20/);
+assert.match(phase49Tests, /batch file operations are bounded/);
+assert.match(readme, /\[Phase 49 — Bounded Batch File Operations\]\(docs\/phase-49-batch-file-operations\.md\)/);
