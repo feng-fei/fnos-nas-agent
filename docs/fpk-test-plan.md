@@ -38,4 +38,4 @@ Only install the CI artifact after verifying its checksum, and only on a disposa
 - No shell/Skill/model execution is enabled.
 - Logs contain no tokens, passwords, or environment dumps.
 - No runtime download or package installation occurs on the NAS.
-- LAN access remains disabled until an authentication flow is implemented and verified.
+- The launcher binds to `0.0.0.0`; the first-run setup page is reachable from the LAN before a password is configured. Install only on a trusted private network, complete setup immediately, and never expose the HTTP port to the public internet. Real fnOS authentication/session validation remains required.
