@@ -20,6 +20,7 @@ on:
       - "phase-16/**"
       - "phase-17/**"
       - "phase-18/**"
+      - "phase-19/**"
       - "fix/**"
       - "test/**"
     paths:
