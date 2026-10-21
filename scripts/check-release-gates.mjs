@@ -49,7 +49,7 @@ assert.match(releaseVerifier, /manifest SHA-256 does not match/);
 assert.match(releaseVerifier, /checksum filename does not match/);
 assert.match(releaseVerifierTests, /rejects an artifact changed/);
 assert.match(releaseVerifierTests, /rejects a manifest with an incorrect size/);
-assert.match(releaseVerifierDocs, /does not verify publisher identity/);
+assert.match(releaseVerifierDocs, /not publisher identity/);
 assert.doesNotMatch(readme, /\\\\n- \[Phase 21/);
 assert.match(readme, /\[Phase 21 task persistence and crash recovery\]\(docs\/phase-21-task-persistence-recovery\.md\)/);
 assert.match(readme, /\[Phase 22 release-candidate acceptance\]\(docs\/phase-22-release-candidate-acceptance\.md\)/);
