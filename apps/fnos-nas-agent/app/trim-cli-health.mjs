@@ -70,7 +70,7 @@ export function classifyTrimCliFailure(error) {
 
   let kind;
   if (["ETIMEDOUT", "ETIME", "ESOCKETTIMEDOUT"].includes(code) || error?.killed) kind = "timeout";
-  else if (["ENOENT"].includes(code)) kind = "executable_missing";
+  else if (["ENOENT", "TRIM_CLI_UNAVAILABLE"].includes(code)) kind = "executable_missing";
   else if (["EACCES", "EPERM"].includes(code)) kind = "permission_denied";
   else if (["ENOBUFS"].includes(code) || /maxbuffer|output.{0,24}too large|buffer length exceeded/.test(diagnostic)) kind = "output_too_large";
   else if (["CERT_HAS_EXPIRED", "DEPTH_ZERO_SELF_SIGNED_CERT", "SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "ERR_TLS_CERT_ALTNAME_INVALID"].includes(code) ||
