@@ -47,7 +47,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 2 skeleton boundaries](docs/phase-2.md)
 - [Phase 3 Skill Manager contract](docs/phase-3-skill-manager.md)
 - [Phase 3 web authentication](docs/phase-3-web-auth.md)
-- [Phase 5 Skill manager](docs/phase-5-skill-manager-api.md)
+- [Phase 5 Skill manager](docs/phase-5-skill-manager-api.md)\n- [Phase 6 safe Skill ZIP import](docs/phase-6-skill-archive-import.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
 
@@ -55,7 +55,7 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 
 1. **Specification** — architecture, risk tiers, Skill lifecycle, and tool contracts.
 2. **Core skeleton** — minimal Node.js HTTP service, mobile UI, configuration, and tests.
-3. **Skill manager** — safe ZIP import, quarantine, inventory, hashing, review, and lifecycle.
+3. **Skill manager** — inventory/review lifecycle and bounded ZIP import into quarantine (no extraction or execution).
 4. **fnOS adapter** — a small set of verified read-only operations.
 5. **Model adapter** — structured plans, schema validation, bounded retries, and token-saving routing.
 6. **FPK packaging** — GitHub Actions builds a test FPK; then validate install/start/stop/upgrade/uninstall on a test fnOS system.
