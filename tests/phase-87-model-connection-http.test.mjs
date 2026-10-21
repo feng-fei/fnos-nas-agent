@@ -22,7 +22,7 @@ test("model connection tests use the configured endpoint and sanitize provider f
     for await (const chunk of req) body += chunk;
     assert.match(req.headers.authorization || "", /^Bearer /);
     assert.equal(JSON.parse(body).messages[0].content, "Reply with OK.");
-    if (req.url === "/bad") {
+    if (req.url === "/bad/chat/completions") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "upstream-secret-diagnostic" }));
       return;
@@ -94,7 +94,7 @@ test("model connection tests use the configured endpoint and sanitize provider f
   assert.match(success.test.message, /连接成功/);
   assert.equal(JSON.stringify(success).includes("integration-secret-key"), false);
 
-  const malformedProvider = await createProvider("Malformed Mock Provider", "/bad");
+  const malformedProvider = await createProvider("Malformed Mock Provider", "/bad/chat/completions");
   const failureResponse = await request(`/api/models/${malformedProvider.id}/test`, { method: "POST", body: "{}" });
   assert.equal(failureResponse.status, 200);
   const failure = await failureResponse.json();
