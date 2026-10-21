@@ -706,6 +706,47 @@ async function refreshSkills(){
    const meta=document.createElement("p");meta.className="muted";meta.textContent="版本："+(item.version||"未填写")+"；SHA-256："+item.archiveSha256+(item.quarantineFile?"；隔离归档："+item.archiveSizeBytes+" 字节 / "+item.archiveEntryCount+" 个条目":"；仅登记元数据");card.append(meta);
    if(item.manifestReview){const review=document.createElement("p");review.className=item.manifestReview.findings?.length?"warning":"muted";review.textContent="静态清单："+(item.manifestReview.name||"未识别名称")+"；"+(item.manifestReview.description||"无描述")+"；源码扫描 "+(item.manifestReview.sourceFilesScanned||0)+" 个 / "+(item.manifestReview.sourceBytesScanned||0)+" 字节"+(item.manifestReview.sourceReviewIncomplete?"（部分源码未扫描）":"")+"；发现："+((item.manifestReview.findings||[]).join("、")||"未发现规则提示")+"。此结果仅供人工审核，不代表安全认证。";card.append(review);}
    if(item.reviewNote){const note=document.createElement("p");note.textContent="审核备注："+item.reviewNote;card.append(note);}
+   if(item.quarantineFile){
+    const sourceDetails=document.createElement("details");
+    const sourceSummary=document.createElement("summary");sourceSummary.textContent="只读查看隔离源码";sourceDetails.append(sourceSummary);
+    const sourceNote=document.createElement("p");sourceNote.className="muted";sourceNote.textContent="以纯文本预览归档内的受支持文件，单文件上限 64 KiB；不会解压到磁盘或执行。预览内容仅显示在当前页面。";sourceDetails.append(sourceNote);
+    const sourceLoad=document.createElement("button");sourceLoad.type="button";sourceLoad.textContent="加载文件清单";sourceDetails.append(sourceLoad);
+    const sourceSelectLabel=document.createElement("label");sourceSelectLabel.textContent="选择要预览的归档文件";
+    const sourceSelect=document.createElement("select");sourceSelect.disabled=true;sourceSelectLabel.append(sourceSelect);sourceDetails.append(sourceSelectLabel);
+    const sourcePreviewButton=document.createElement("button");sourcePreviewButton.type="button";sourcePreviewButton.textContent="预览选中文件";sourcePreviewButton.disabled=true;sourceDetails.append(sourcePreviewButton);
+    const sourceStatus=document.createElement("p");sourceStatus.className="muted";sourceStatus.setAttribute("role","status");sourceStatus.textContent="文件清单尚未加载。";sourceDetails.append(sourceStatus);
+    const sourceMeta=document.createElement("p");sourceMeta.className="muted";sourceDetails.append(sourceMeta);
+    const sourceOutput=document.createElement("pre");sourceOutput.className="skill-source-preview";sourceOutput.style.whiteSpace="pre-wrap";sourceOutput.style.overflowWrap="anywhere";sourceOutput.style.maxHeight="28rem";sourceOutput.style.overflow="auto";sourceOutput.textContent="";sourceDetails.append(sourceOutput);
+    sourceLoad.addEventListener("click",async()=>{
+     sourceLoad.disabled=true;sourceStatus.textContent="正在检查隔离归档…";sourceOutput.textContent="";sourceMeta.textContent="";
+     try{
+      const response=await api("/api/skills/"+encodeURIComponent(item.id)+"/source-files?limit=100"),data=await response.json();
+      if(!response.ok)throw Error(data.error||"读取源文件清单失败");
+      sourceSelect.replaceChildren();
+      for(const file of data.files||[]){
+       const option=document.createElement("option");option.value=file.path;option.textContent=file.path+" · "+file.sizeBytes+" 字节"+(file.previewable?"":" · 超出预览上限");option.disabled=!file.previewable;sourceSelect.append(option);
+      }
+      const available=(data.files||[]).some(file=>file.previewable);
+      sourceSelect.disabled=!available;sourcePreviewButton.disabled=!available;
+      sourceStatus.textContent="找到 "+data.total+" 个可识别的文本/源码文件；单文件预览上限 "+data.maxPreviewBytes+" 字节。"+(data.total>data.files.length?" 当前显示 "+data.files.length+" 项。":"");
+      if(!available)sourceStatus.textContent+=" 没有可预览的文件。";
+     }catch(error){sourceStatus.className="error";sourceStatus.textContent=error.message||"读取源文件清单失败";}
+     finally{sourceLoad.disabled=false;}
+    });
+    sourcePreviewButton.addEventListener("click",async()=>{
+     const path=sourceSelect.value;if(!path)return;
+     sourcePreviewButton.disabled=true;sourceStatus.className="muted";sourceStatus.textContent="正在读取选中文件…";sourceOutput.textContent="";sourceMeta.textContent="";
+     try{
+      const response=await api("/api/skills/"+encodeURIComponent(item.id)+"/source-preview?path="+encodeURIComponent(path)),data=await response.json();
+      if(!response.ok)throw Error(data.error||"源码预览失败");
+      sourceMeta.textContent=data.path+" · "+data.bytes+" 字节";
+      sourceOutput.textContent=data.content;
+      sourceStatus.textContent=data.note||"已读取隔离归档文本。";
+     }catch(error){sourceStatus.className="error";sourceStatus.textContent=error.message||"源码预览失败";}
+     finally{sourcePreviewButton.disabled=false;}
+    });
+    card.append(sourceDetails);
+   }
    if(item.name?.toLowerCase()==="fnos"&&item.quarantineFile&&item.manifestReview?.name?.toLowerCase()==="fnos"&&["approved","enabled"].includes(item.state)){
     const install=document.createElement("button");install.type="button";install.textContent="安装官方 CLI（当前平台）";
     install.addEventListener("click",async()=>{if(!confirm("仅提取官方 Skill 包中与当前 Linux 架构匹配的 trim-cli 二进制；不会解压其他文件，也不会执行 Skill 指令。继续安装？"))return;install.disabled=true;try{const ir=await api("/api/skills/"+item.id+"/install-cli",{method:"POST"});const result=await ir.json();if(!ir.ok)throw Error(result.error||"CLI 安装失败");alert("CLI 已安装："+result.installation.platform+"，"+result.installation.sizeBytes+" 字节。请启用 Skill 后再使用官方只读工具。");await refreshSkills();}catch(error){document.querySelector("#skill-error").textContent=error.message||"CLI 安装失败";}finally{install.disabled=false;}});
