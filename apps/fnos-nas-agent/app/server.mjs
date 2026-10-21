@@ -709,7 +709,7 @@ const server = createServer(async (req, res) => {
       const search = url.searchParams.get("q") || undefined;
       const allowedStatuses = new Set(["queued", "running", "completed", "failed", "cancelled"]);
       if (status && !allowedStatuses.has(status)) return reply(res, 400, { error: "Invalid task status filter" });
-      if (search && (search.length > 100 || /[\\x00-\\x1f\\x7f]/.test(search)))
+      if (search && (search.length > 100 || /[\x00-\x1f\x7f]/.test(search)))
         return reply(res, 400, { error: "Invalid task search query" });
       if (!Number.isFinite(requested) || !Number.isFinite(requestedOffset) || requestedOffset < 0 || requestedOffset > 10000)
         return reply(res, 400, { error: "Invalid task pagination" });
