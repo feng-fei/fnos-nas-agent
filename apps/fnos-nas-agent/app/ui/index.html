@@ -149,6 +149,36 @@ async function refreshModels(){
     document.querySelector("#model-provider-error").textContent="";
     document.querySelector("#model-provider-name").focus();
    });
+   const discoverButton=document.createElement("button");discoverButton.type="button";discoverButton.textContent="发现可用模型";discoverButton.disabled=!item.hasApiKey;
+   discoverButton.addEventListener("click",async()=>{
+    discoverButton.disabled=true;discoverButton.textContent="读取中…";
+    try{
+     const response=await api("/api/models/"+encodeURIComponent(item.id)+"/catalog",{method:"POST"});
+     const payload=await response.json();if(!response.ok)throw Error(payload.error||"读取模型列表失败");
+     if(!payload.ok)throw Error(payload.message||"服务商不支持模型列表接口");
+     const choices=payload.models||[];
+     if(!choices.length){document.querySelector("#model-provider-error").textContent="连接成功，但服务商未返回可用模型 ID。";return;}
+     const selected=prompt("发现 "+choices.length+" 个模型，请输入要使用的模型 ID：\n"+choices.slice(0,50).map(model=>model.id).join("\n"),choices.some(model=>model.id===item.model)?item.model:choices[0].id);
+     if(selected===null)return;
+     const modelId=selected.trim();
+     if(!choices.some(model=>model.id===modelId))throw Error("请输入列表中完整且匹配的模型 ID。");
+     document.querySelector("#model-provider-id").value=item.id;
+     document.querySelector("#model-provider-name").value=item.name;
+     document.querySelector("#model-provider-endpoint").value=item.endpoint;
+     document.querySelector("#model-provider-model").value=modelId;
+     document.querySelector("#model-provider-key").value="";
+     document.querySelector("#model-provider-key").placeholder=item.hasApiKey?"留空保留已保存的 API Key":"请输入 API Key";
+     document.querySelector("#model-provider-enabled").checked=item.enabled;
+     document.querySelector("#model-provider-fallback").checked=item.fallback===true;
+     document.querySelector("#model-provider-clear-key").checked=false;
+     document.querySelector("#model-provider-preset").value="";
+     document.querySelector("#model-provider-preset-help").textContent="已从服务商目录选择模型；点击保存修改以应用。";
+     document.querySelector("#model-provider-save").textContent="保存修改";
+     document.querySelector("#model-provider-error").textContent="已选择模型 "+modelId+"，尚未保存。";
+     document.querySelector("#model-provider-model").focus();
+    }catch(error){document.querySelector("#model-provider-error").textContent=error.message||"读取模型列表失败";}
+    finally{discoverButton.disabled=false;discoverButton.textContent="发现可用模型";}
+   });
    const testButton=document.createElement("button");testButton.type="button";testButton.textContent="测试连接";testButton.disabled=!item.hasApiKey;
    testButton.addEventListener("click",async()=>{
     testButton.disabled=true;testButton.textContent="测试中…";
@@ -183,7 +213,7 @@ async function refreshModels(){
     try{const response=await api("/api/models/"+encodeURIComponent(item.id),{method:"DELETE"});const payload=await response.json();if(!response.ok)throw Error(payload.error||"删除模型失败");if(document.querySelector("#model-provider-id").value===item.id)clearModelProviderForm();await refreshModels();await refreshAgentStatus();}
     catch(error){document.querySelector("#model-provider-error").textContent=error.message||"删除模型失败";remove.disabled=false;}
    });
-   actions.append(edit,testButton,makeDefault,toggle,remove);card.append(actions);host.append(card);
+   actions.append(edit,discoverButton,testButton,makeDefault,toggle,remove);card.append(actions);host.append(card);
   }
  }catch(error){
   status.textContent="无法读取大模型配置。";

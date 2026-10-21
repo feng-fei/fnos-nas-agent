@@ -249,6 +249,46 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
       return publicProvider(item, activeProviderId);
     });
   }
+  async function discoverModels(idInput) {
+    ready();
+    const id = idValue(idInput), item = providers.find(provider => provider.id === id);
+    if (!item) fail(404, "Model provider not found.", "MODEL_PROVIDER_NOT_FOUND");
+    if (!item.apiKey) fail(409, "Save an API key before discovering models.", "MODEL_KEY_REQUIRED");
+    const catalogUrl = item.endpoint.replace(/\/chat\/completions\/?$/, "/models");
+    const started = Date.now();
+    try {
+      const response = await fetchImpl(catalogUrl, {
+        method: "GET",
+        headers: { authorization: "Bearer " + item.apiKey, accept: "application/json" },
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => {});
+        return { ok: false, message: errorHint(response.status), statusCode: response.status, models: [], durationMs: Math.max(0, Date.now() - started) };
+      }
+      let parsed;
+      try { parsed = JSON.parse(await responseText(response)); }
+      catch (error) {
+        if (error?.code === "MODEL_TEST_RESPONSE_TOO_LARGE") throw error;
+        return { ok: false, message: "服务商返回的模型列表不是有效 JSON。", statusCode: 502, models: [], durationMs: Math.max(0, Date.now() - started) };
+      }
+      if (!Array.isArray(parsed?.data)) return { ok: false, message: "服务商未返回兼容 OpenAI 的 data 模型列表。", statusCode: 502, models: [], durationMs: Math.max(0, Date.now() - started) };
+      const seen = new Set(), models = [];
+      for (const entry of parsed.data) {
+        if (!entry || typeof entry.id !== "string") continue;
+        const modelId = entry.id.trim();
+        if (!modelId || modelId.length > 160 || /[\x00-\x1f\x7f]/.test(modelId) || seen.has(modelId)) continue;
+        seen.add(modelId); models.push({ id: modelId, ownedBy: typeof entry.owned_by === "string" ? entry.owned_by.slice(0, 80) : null });
+        if (models.length >= 100) break;
+      }
+      return { ok: true, message: "已读取 " + models.length + " 个模型。", statusCode: 200, models, durationMs: Math.max(0, Date.now() - started) };
+    } catch (error) {
+      return { ok: false, message: error?.name === "TimeoutError" || error?.name === "AbortError"
+        ? "读取模型列表超时，请检查服务商地址和网络。"
+        : error?.code === "MODEL_TEST_RESPONSE_TOO_LARGE" ? "服务商返回的模型列表超过大小限制。"
+        : "读取模型列表失败，请确认服务商支持 GET /models。", models: [], durationMs: Math.max(0, Date.now() - started) };
+    }
+  }
   async function test(idInput) {
     return series(async () => {
       ready(); const id = idValue(idInput), item = providers.find(provider => provider.id === id);
@@ -284,7 +324,7 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
       return { provider: publicProvider(updated, activeProviderId), test: { ...result, durationMs: Math.max(0, Date.now() - started) } };
     });
   }
-  return Object.freeze({ load, list, runtimeConfig, runtimeFallbackConfigs, add, update, remove, setDefault, test, status() {
+  return Object.freeze({ load, list, runtimeConfig, runtimeFallbackConfigs, add, update, remove, setDefault, test, discoverModels, status() {
     return { configured: loaded && !unavailable, providerCount: providers.length, activeProviderId };
   } });
 }
