@@ -62,7 +62,8 @@ document.querySelector("#agent-form").addEventListener("submit",async e=>{
    const result=task.result,details=[result.message,"任务："+taskId+"；模式："+result.mode+"；状态："+result.status];
    for(const item of result.results||[])details.push("工具 "+item.tool+"：\n"+JSON.stringify(item.result,null,2));
    renderAgentTurn("NAS Agent",details.join("\n\n"));
-  }else if(task.status==="failed")renderAgentTurn("NAS Agent","任务失败："+(task.error||"未知错误")+"\n任务 ID："+taskId);\n  else if(task.status==="cancelled")renderAgentTurn("NAS Agent","任务已取消。任务 ID："+taskId);
+  }else if(task.status==="failed")renderAgentTurn("NAS Agent","任务失败："+(task.error||"未知错误")+"\n任务 ID："+taskId);
+  else if(task.status==="cancelled")renderAgentTurn("NAS Agent","任务已取消。任务 ID："+taskId);
   else renderAgentTurn("NAS Agent","任务仍在执行。任务 ID："+taskId+"。可在“最近任务”中刷新查看。");
   await refreshRecentTasks();
  }catch(error){err.textContent=error.message||"请求失败";}
