@@ -1372,6 +1372,13 @@ function showWorkspace(requestedId){
  const login=document.querySelector("#login-card"),setup=document.querySelector("#setup-card");
  if(login)login.classList.add("hidden");if(setup)setup.classList.add("hidden");
  buildWorkspaceLayout();
+ // Keep the legacy reveal contract for authenticated feature cards; the page router below hides inactive pages.
+ document.querySelector("#status-card").classList.remove("hidden");
+ document.querySelector("#models-card").classList.remove("hidden");
+ document.querySelector("#files-card").classList.remove("hidden");
+ document.querySelector("#tools-card").classList.remove("hidden");
+ document.querySelector("#agent-card").classList.remove("hidden");
+ document.querySelector("#skills-card").classList.remove("hidden");
  let target=requestedId; if(!target){try{target=decodeURIComponent(location.hash.slice(1));}catch{target="status-card";}}
  setWorkspacePage(target||"status-card",false);
 }
