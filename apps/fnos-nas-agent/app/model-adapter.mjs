@@ -32,7 +32,8 @@ function safeEndpoint(value) {
   if (!value) return null;
   let url;
   try { url = new URL(value); } catch { return null; }
-  if (url.protocol !== "https:" || url.username || url.password || url.hash) return null;
+  const loopbackHttp = url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname.toLowerCase());
+  if ((url.protocol !== "https:" && !loopbackHttp) || url.username || url.password || url.hash) return null;
   return url.toString();
 }
 export function modelConfiguration(env = process.env) {
