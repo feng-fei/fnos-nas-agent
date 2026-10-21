@@ -77,3 +77,22 @@ test("file browser searches names with bounded traversal and ignores symlinks", 
     assert.equal(limited.truncated, true);
   } finally { await rm(temp, { recursive: true, force: true }); }
 });
+
+test("file browser paginates sorted entries with bounded offsets", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "fnos-browser-pages-"));
+  try {
+    const root = join(temp, "vol1");
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(join(root, "z.txt"), "z");
+    await writeFile(join(root, "a.txt"), "a");
+    const browser = createFileBrowser({ roots: [root] });
+    const first = await browser.list(root, 2, 0);
+    const second = await browser.list(root, 2, 2);
+    assert.equal(first.totalEntries, 3);
+    assert.equal(first.offset, 0);
+    assert.deepEqual(first.entries.map(item => item.name), ["docs", "a.txt"]);
+    assert.equal(second.offset, 2);
+    assert.deepEqual(second.entries.map(item => item.name), ["z.txt"]);
+    assert.equal((await browser.list(root, 2, 999999)).entries.length, 0);
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
