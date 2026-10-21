@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-const TERMINAL = new Set(["completed", "failed"]);
+const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 export function createTaskManager({ execute, now = () => new Date().toISOString(), id = randomUUID, concurrency = 2, historyLimit = 50, queueLimit = 20 } = {}) {
   if (typeof execute !== "function") throw new TypeError("execute must be a function");
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8) throw new TypeError("Invalid concurrency");
@@ -29,6 +29,17 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
       tasks.set(task.taskId, task); queue.push(task); pump(); return publicTask(task);
     },
     get(taskId) { const task = tasks.get(taskId); return task ? publicTask(task) : null; },
+    cancel(taskId) {
+      const task = tasks.get(taskId);
+      if (!task) return null;
+      if (task.status !== "queued") return { cancelled: false, task: publicTask(task) };
+      const index = queue.findIndex(item => item.taskId === taskId);
+      if (index < 0) return { cancelled: false, task: publicTask(task) };
+      queue.splice(index, 1);
+      task.status = "cancelled"; task.completedAt = now(); task.error = "任务已取消。";
+      prune();
+      return { cancelled: true, task: publicTask(task) };
+    },
     list({ limit = 20 } = {}) {
       const bounded = Number.isInteger(limit) ? Math.min(50, Math.max(1, limit)) : 20;
       return [...tasks.values()].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).slice(0, bounded).map(publicTask);
