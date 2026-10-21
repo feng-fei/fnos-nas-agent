@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { listModelProviderPresets } from "../apps/fnos-nas-agent/app/model-provider-presets.mjs";
 
-test("model provider presets contain verified OpenAI-compatible HTTPS Chat Completions endpoints", () => {
+test("model provider presets contain verified HTTPS endpoints and a loopback-only local model endpoint", () => {
   const presets = listModelProviderPresets();
   const byId = Object.fromEntries(presets.map(item => [item.id, item]));
   assert.equal(presets.length >= 5, true);
@@ -12,7 +12,10 @@ test("model provider presets contain verified OpenAI-compatible HTTPS Chat Compl
   assert.equal(byId["dashscope-beijing"].endpoint, "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions");
   for (const preset of presets.filter(item => item.endpoint)) {
     const endpoint = new URL(preset.endpoint);
-    assert.equal(endpoint.protocol, "https:");
+    if (preset.id === "ollama-local") {
+      assert.equal(endpoint.protocol, "http:");
+      assert.equal(endpoint.hostname, "127.0.0.1");
+    } else assert.equal(endpoint.protocol, "https:");
     assert.equal(endpoint.username, "");
     assert.equal(endpoint.password, "");
     assert.equal(endpoint.pathname.endsWith("/chat/completions"), true);
@@ -22,6 +25,7 @@ test("model provider presets contain verified OpenAI-compatible HTTPS Chat Compl
   assert.equal(byId.moonshot.endpoint, "https://api.moonshot.cn/v1/chat/completions");
   assert.equal(byId.zhipu.endpoint, "https://open.bigmodel.cn/api/paas/v4/chat/completions");
   assert.equal(byId.openrouter.endpoint, "https://openrouter.ai/api/v1/chat/completions");
+  assert.equal(byId["ollama-local"].endpoint, "http://127.0.0.1:11434/v1/chat/completions");
   assert.equal(byId.custom.endpoint, "");
   assert.ok(byId.openai.docsUrl.startsWith("https://"));
 });
