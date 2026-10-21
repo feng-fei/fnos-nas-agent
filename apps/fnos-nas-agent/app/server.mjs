@@ -8,6 +8,8 @@ import { randomBytes, timingSafeEqual, createHash, scryptSync } from "node:crypt
 import { createSkillStore, skillStates } from "./skills.mjs";
 import { MAX_ARCHIVE_BYTES } from "./skill-archives.mjs";
 import { createReadOnlyToolRegistry } from "./read-only-tools.mjs";
+import { createModelAdapter } from "./model-adapter.mjs";
+import { createAgentCore } from "./agent-core.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -150,6 +152,8 @@ async function readOnlyDiagnostics() {
   };
 }
 const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics });
+const modelAdapter = createModelAdapter();
+const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter });
 function limited(req) {
   const key = req.socket.remoteAddress || "unknown", now = Date.now();
   let item = attempts.get(key);
@@ -271,6 +275,19 @@ const server = createServer(async (req, res) => {
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
       return reply(res, 200, { skill: await skillStore.transition(transitionMatch[1], await jsonBody(req)) });
+    }
+    if (url.pathname === "/api/agent/status") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, agentCore.status());
+    }
+    if (url.pathname === "/api/agent/message") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      return reply(res, 200, await agentCore.run(await jsonBody(req)));
     }
     if (url.pathname === "/api/tools") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
