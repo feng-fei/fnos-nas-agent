@@ -22,31 +22,52 @@ const definitions = [
     title: "网络接口",
     description: "读取非内部网络接口及其 IP/CIDR 信息。",
     risk: "read-only"
+  },
+  {
+    id: "files.list", title: "浏览文件目录", description: "列出允许存储卷中的目录和文件元数据，不读取文件内容。", risk: "read-only",
+    inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, limit: { type: "integer", minimum: 1, maximum: 200 } }, additionalProperties: false }
+  },
+  {
+    id: "files.preview", title: "预览文本文件", description: "读取允许存储卷中不超过 1 MiB 的 UTF-8 文本文件。", risk: "read-only",
+    inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path"], additionalProperties: false }
   }
 ];
 
-function emptyArgs(args) {
-  return args && typeof args === "object" && !Array.isArray(args) && Object.keys(args).length === 0;
+function validArgs(args, schema) {
+  if (!args || typeof args !== "object" || Array.isArray(args)) return false;
+  const properties = schema.properties || {};
+  if (schema.additionalProperties === false && Object.keys(args).some(key => !Object.hasOwn(properties, key))) return false;
+  for (const key of schema.required || []) if (!Object.hasOwn(args, key)) return false;
+  for (const [key, value] of Object.entries(args)) {
+    const rule = properties[key]; if (!rule) return false;
+    if (rule.type === "string" && (typeof value !== "string" || (rule.minLength && value.length < rule.minLength) || (rule.maxLength && value.length > rule.maxLength))) return false;
+    if (rule.type === "integer" && (!Number.isInteger(value) || (rule.minimum !== undefined && value < rule.minimum) || (rule.maximum !== undefined && value > rule.maximum))) return false;
+  }
+  return true;
 }
 
-export function createReadOnlyToolRegistry({ getDiagnostics }) {
+export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null, fileManager = null }) {
   if (typeof getDiagnostics !== "function") throw new TypeError("getDiagnostics must be a function");
 
   function list() {
-    return definitions.map(({ id, title, description, risk }) => ({
-      id,
-      title,
-      description,
-      risk,
-      inputSchema: { type: "object", properties: {}, additionalProperties: false }
+    return definitions.map(({ id, title, description, risk, inputSchema }) => ({
+      id, title, description, risk,
+      inputSchema: inputSchema || { type: "object", properties: {}, additionalProperties: false }
     }));
   }
 
   async function invoke(id, args = {}) {
     const tool = definitions.find(item => item.id === id);
     if (!tool) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
-    if (!emptyArgs(args)) throw Object.assign(new Error("This read-only tool accepts no arguments"), { statusCode: 400 });
-
+    if (!validArgs(args, tool.inputSchema || { type: "object", properties: {}, additionalProperties: false })) throw Object.assign(new Error("Invalid tool arguments"), { statusCode: 400 });
+    if (id === "files.list") {
+      if (!fileBrowser) throw Object.assign(new Error("File browser is unavailable"), { statusCode: 503 });
+      return fileBrowser.list(args.path || "", args.limit ?? 100);
+    }
+    if (id === "files.preview") {
+      if (!fileManager) throw Object.assign(new Error("File preview is unavailable"), { statusCode: 503 });
+      return fileManager.preview(args.path);
+    }
     const snapshot = await getDiagnostics();
     switch (id) {
       case "system.status":
