@@ -56,7 +56,7 @@ test("model plans can invoke only registered tools with empty args", async () =>
 
 test("model plans can use validated arguments for scoped read-only tools", async () => {
   const f = fixture({ enabled: true, plan: { message: "正在浏览", toolCalls: [{ id: "files.list", args: { path: "/vol1", limit: 10 } }] } });
-  const result = await f.agent.run({ text: "列出文件" });
+  const result = await f.agent.run({ text: "请帮我浏览 /vol1 下的目录" });
   assert.equal(result.status, "completed");
   assert.deepEqual(f.calls, [{ id: "files.list", args: { path: "/vol1", limit: 10 } }]);
 });
