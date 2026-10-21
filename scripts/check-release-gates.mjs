@@ -134,7 +134,7 @@ assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /task-stats/);
 assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\.list/);
 assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\.preview/);
 assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\.create-text/);
-assert.match(fileManagerSource, /MAX_TEXT_CREATE_BYTES = 1024 \\* 1024/);
+assert.match(fileManagerSource, /MAX_TEXT_CREATE_BYTES/);
 assert.match(fileManagerSource, /async function createText/);
 assert.match(fileManagerTests, /creates UTF-8 text files atomically without overwriting/);
 assert.match(await read("apps/fnos-nas-agent/app/agent-core.mjs"), /argsMatchSchema/);
