@@ -95,6 +95,8 @@ assert.equal(policy.snapshot().executionEnabled, false);
 
 const fileBrowserSource = await read("apps/fnos-nas-agent/app/file-browser.mjs");
 const fileBrowserTests = await read("tests/phase-28-file-browser.test.mjs");
+const fileManagerSource = await read("apps/fnos-nas-agent/app/file-manager.mjs");
+const fileManagerTests = await read("tests/practical-file-management.test.mjs");
 assert.match(fileBrowserSource, /AGENT_FILE_ROOTS/);
 assert.match(fileBrowserSource, /Path is outside configured storage roots/);
 assert.match(fileBrowserSource, /MAX_ENTRIES = 200/);
@@ -103,3 +105,12 @@ assert.match(fileBrowserTests, /refuses a symlink that escapes the volume/);
 assert.match(readme, /\[Phase 28 practical read-only file browser\]\(docs\/phase-28-practical-file-browser\.md\)/);
 
 console.log("Release readiness gates passed: runtime dependency, CI matrix, packaging, and safety invariants.");
+
+assert.match(fileManagerSource, /MAX_UPLOAD_BYTES = 25 \* 1024 \* 1024/);
+assert.match(fileManagerSource, /Symbolic links are not supported/);
+assert.match(fileManagerSource, /Explicit confirmation is required/);
+assert.match(fileManagerTests, /refuses paths outside configured roots/);
+assert.match(fileManagerTests, /requires explicit confirmation before deletion/);
+assert.match(server, /\/api\/files\/upload/);
+assert.match(server, /\/api\/files\/preview/);
+assert.match(ui, /file-upload-button/);
