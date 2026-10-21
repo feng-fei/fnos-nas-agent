@@ -2,30 +2,29 @@
 
 ## What changes
 
-- Introduces an in-memory bounded task manager with queued/running/completed/failed states, timestamps, stable task IDs, concurrency limits, bounded history, and sanitized errors.
-- The Agent message endpoint submits work and returns HTTP 202 with a task ID rather than holding the HTTP request open for a model call.
-- Authenticated task listing and task detail endpoints support mobile polling and recent task history.
-- Adds a process-count-only diagnostic. It counts numeric proc entries and never reads command lines, environment, or process memory.
+- Adds an in-memory bounded task manager with queued/running/completed/failed states, timestamps, opaque task IDs, concurrency limits, bounded history, and sanitized errors.
+- Agent message submission returns HTTP 202 and a task ID; clients poll task status instead of holding the request open during model calls.
+- Authenticated task listing, detail, and queue-statistics endpoints support the mobile workbench.
+- Adds a process-count-only diagnostic using Linux proc directory names. It does not read process command lines, environment variables, or process memory.
 - Adds a direct intent for process count; all tools remain code-defined, read-only, and argument-free.
-- The UI polls task state and displays recent tasks.
 
 ## API
 
-- POST /api/agent/message: submits a task; returns 202 { task }.
-- GET /api/tasks?limit=20: latest in-memory task summaries.
-- GET /api/tasks/:taskId: one task status and result.
+- POST /api/agent/message: submits a task and returns 202 with a task summary.
+- GET /api/tasks?limit=20: lists recent in-memory tasks.
+- GET /api/tasks/:taskId: reads one task's status and result.
 - GET /api/tasks/status: queue/running/retained counts.
 
-All routes require authentication. POST remains same-origin and JSON-only. Task IDs are opaque random identifiers; task endpoints reveal no tasks without a valid session.
+All task endpoints require authentication. Submission is same-origin and JSON-only.
 
 ## Safety and operational limits
 
-- Task history is in memory and is cleared on service restart; it does not persist task prompts or results to disk.
-- At most two tasks execute concurrently by default, at most 20 may wait in the queue, and at most 50 recent tasks are retained.
+- Task history is in memory and cleared on service restart; prompts and results are not persisted to disk.
+- At most two tasks execute concurrently by default, up to 20 waiting tasks are allowed, and up to 50 recent tasks are retained.
 - No shell, subprocess, Docker socket, file mutation, service control, Skill execution, or arbitrary tool loading.
 - Process diagnostics expose counts only, not process names, command lines, or environment variables.
-- Task cancellation and durable history are deliberately deferred until their semantics can be tested safely.
+- Task cancellation and durable history are deferred until their semantics can be tested safely.
 
 ## Validation
 
-CI runs the complete Node.js test suite on Node.js 24 and 26 and builds/inspects the FPK on Node.js 26.
+CI runs the full Node.js test suite on Node.js 24 and 26 and builds/inspects the FPK on Node.js 26.

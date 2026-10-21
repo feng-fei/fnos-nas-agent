@@ -36,7 +36,7 @@ test("first-run setup stores only a salted password hash and protects session en
   const port = await freePort();
   baseUrl = `http://127.0.0.1:${port}`;
   child = spawn(process.execPath, [entry], {
-    env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", AGENT_DATA_DIR: dataDir, AGENT_ACCESS_TOKEN: "" },
+    env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", AGENT_DATA_DIR: dataDir, AGENT_ACCESS_TOKEN: "", AGENT_MODEL_ENABLED: "false" },
     stdio: ["ignore", "pipe", "pipe"]
   });
   let stderr = "";
@@ -103,7 +103,75 @@ test("first-run setup stores only a salted password hash and protects session en
   assert.equal(protectedDiagnostics.status, 401);
   const tools = await fetch(baseUrl + "/api/tools", { headers: { cookie } });
   assert.equal(tools.status, 200);
-  assert.deepEqual(await tools.json(), { tools: [], executionEnabled: false });
+  const toolCatalogue = await tools.json();
+  assert.equal(toolCatalogue.executionEnabled, false);
+  assert.equal(toolCatalogue.readOnlyExecutionEnabled, true);
+  assert.deepEqual(toolCatalogue.tools.map(tool => tool.id), ["system.status", "storage.summary", "system.process-summary", "network.interfaces"]);
+  assert.ok(toolCatalogue.tools.every(tool => tool.risk === "read-only" && tool.inputSchema.additionalProperties === false));
+
+  const hiddenToolRun = await fetch(baseUrl + "/api/tools/system.status/run", {
+    method: "POST", headers: { "content-type": "application/json" }, body: "{}"
+  });
+  assert.equal(hiddenToolRun.status, 401);
+  const wrongOriginToolRun = await fetch(baseUrl + "/api/tools/system.status/run", {
+    method: "POST", headers: { cookie, origin: "http://attacker.invalid", "content-type": "application/json" }, body: "{}"
+  });
+  assert.equal(wrongOriginToolRun.status, 403);
+  const statusToolRun = await fetch(baseUrl + "/api/tools/system.status/run", {
+    method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: "{}"
+  });
+  assert.equal(statusToolRun.status, 200);
+  const statusToolResult = await statusToolRun.json();
+  assert.equal(statusToolResult.tool, "system.status");
+  assert.ok(statusToolResult.result.cpu.logicalCores > 0);
+  const invalidToolArgs = await fetch(baseUrl + "/api/tools/system.status/run", {
+    method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: JSON.stringify({ command: "id" })
+  });
+  assert.equal(invalidToolArgs.status, 400);
+  const unknownToolRun = await fetch(baseUrl + "/api/tools/shell.run/run", {
+    method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: "{}"
+  });
+  assert.equal(unknownToolRun.status, 404);
+  const hiddenAgent = await fetch(baseUrl + "/api/agent/message", {
+    method: "POST", headers: { "content-type": "application/json", origin: baseUrl }, body: JSON.stringify({ text: "查看系统状态" })
+  });
+  assert.equal(hiddenAgent.status, 401);
+  const agentStatus = await fetch(baseUrl + "/api/agent/status", { headers: { cookie } });
+  assert.equal(agentStatus.status, 200);
+  const agentStatusBody = await agentStatus.json();
+  assert.equal(agentStatusBody.rulesFirst, true);
+  assert.equal(agentStatusBody.arbitraryExecutionEnabled, false);
+  assert.equal("apiKey" in agentStatusBody.model, false);
+  const wrongOriginAgent = await fetch(baseUrl + "/api/agent/message", {
+    method: "POST", headers: { cookie, origin: "http://attacker.invalid", "content-type": "application/json" }, body: JSON.stringify({ text: "查看系统状态" })
+  });
+  assert.equal(wrongOriginAgent.status, 403);
+  const directAgent = await fetch(baseUrl + "/api/agent/message", {
+    method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: JSON.stringify({ text: "查看系统状态" })
+  });
+  assert.equal(directAgent.status, 202);
+  const acceptedTask = (await directAgent.json()).task;
+  assert.ok(acceptedTask.taskId);
+  assert.ok(["queued", "running"].includes(acceptedTask.status));
+  const hiddenTaskList = await fetch(baseUrl + "/api/tasks");
+  assert.equal(hiddenTaskList.status, 401);
+  const taskStatus = await fetch(baseUrl + "/api/tasks/status", { headers: { cookie } });
+  assert.equal(taskStatus.status, 200);
+  assert.ok((await taskStatus.json()).retained >= 1);
+  let completedTask;
+  for (let i = 0; i < 40; i++) {
+    const taskResponse = await fetch(baseUrl + "/api/tasks/" + acceptedTask.taskId, { headers: { cookie } });
+    assert.equal(taskResponse.status, 200);
+    completedTask = (await taskResponse.json()).task;
+    if (completedTask.status === "completed" || completedTask.status === "failed") break;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.equal(completedTask.status, "completed");
+  assert.equal(completedTask.result.mode, "rules");
+  assert.equal(completedTask.result.results[0].tool, "system.status");
+  const taskList = await fetch(baseUrl + "/api/tasks?limit=10", { headers: { cookie } });
+  assert.equal(taskList.status, 200);
+  assert.ok((await taskList.json()).tasks.some(task => task.taskId === acceptedTask.taskId));
   const diagnosticResponse = await fetch(baseUrl + "/api/diagnostics", { headers: { cookie } });
   assert.equal(diagnosticResponse.status, 200);
   const diagnostics = await diagnosticResponse.json();

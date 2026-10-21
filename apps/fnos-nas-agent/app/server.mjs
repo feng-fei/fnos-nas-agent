@@ -1,12 +1,18 @@
 import { createServer } from "node:http";
 import os from "node:os";
 import { statfs } from "node:fs/promises";
-import { readFile, writeFile, mkdir, rename, chmod } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename, chmod, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, timingSafeEqual, createHash, scryptSync } from "node:crypto";
 import { createSkillStore, skillStates } from "./skills.mjs";
 import { MAX_ARCHIVE_BYTES } from "./skill-archives.mjs";
+import { createReadOnlyToolRegistry } from "./read-only-tools.mjs";
+import { createModelAdapter } from "./model-adapter.mjs";
+import { createAgentCore } from "./agent-core.mjs";
+import { createTaskManager } from "./task-manager.mjs";
+import { createFixedWindowLimiter } from "./request-limiter.mjs";
+import { createAuditLogger } from "./audit-log.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -15,8 +21,10 @@ const sessionFile = dataDir ? join(dataDir, "sessions.json") : "";
 const passwordFile = dataDir ? join(dataDir, "password.json") : "";
 let passwordRecord = null;
 const sessions = new Map();
-const attempts = new Map();
+const authLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
+const MAX_SESSIONS = 1000;
 const skillStore = dataDir ? createSkillStore(dataDir) : null;
+const auditLogger = dataDir ? createAuditLogger({ dataDir }) : null;
 const SESSION_TTL = 8 * 60 * 60 * 1000;
 const REMEMBER_TTL = 30 * 24 * 60 * 60 * 1000;
 const MAX_BODY = 4096;
@@ -68,6 +76,7 @@ async function loadSessions() {
     if (!Array.isArray(raw)) return;
     const now = Date.now();
     for (const item of raw) {
+      if (sessions.size >= MAX_SESSIONS) break;
       if (!Array.isArray(item) || typeof item[0] !== "string" || !item[1] || !Number.isFinite(item[1].expiresAt)) continue;
       if (item[1].expiresAt > now) sessions.set(item[0], { createdAt: item[1].createdAt, expiresAt: item[1].expiresAt });
     }
@@ -133,6 +142,11 @@ async function diskUsage(path, label) {
 }
 async function readOnlyDiagnostics() {
   const cpus = os.cpus();
+  let processes = { available: false };
+  try {
+    const entries = await readdir("/proc", { withFileTypes: true });
+    processes = { available: true, count: entries.filter(entry => entry.isDirectory() && /^[0-9]+$/.test(entry.name)).length };
+  } catch { /* Non-Linux environments simply report process count unavailable. */ }
   const interfaces = Object.entries(os.networkInterfaces()).map(([name, entries]) => ({
     name,
     addresses: (entries || []).filter(entry => !entry.internal).map(entry => ({ address: entry.address, family: entry.family, cidr: entry.cidr }))
@@ -145,19 +159,41 @@ async function readOnlyDiagnostics() {
     cpu: { logicalCores: cpus.length, model: cpus[0]?.model || "unknown", loadAverage: os.loadavg() },
     memory: { totalBytes: os.totalmem(), freeBytes: os.freemem(), usedBytes: os.totalmem() - os.freemem() },
     network: interfaces,
+    processes,
     storage
   };
 }
-function limited(req) {
-  const key = req.socket.remoteAddress || "unknown", now = Date.now();
-  let item = attempts.get(key);
-  if (!item || now - item.start > 60_000) { item = { start: now, count: 0 }; attempts.set(key, item); }
-  item.count++;
-  return item.count > 10;
+const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics });
+const modelAdapter = createModelAdapter();
+const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter });
+const taskManager = createTaskManager({ execute: input => agentCore.run(input), concurrency: 2, historyLimit: 50, queueLimit: 20 });
+
+function auditRoute(pathname, method) {
+  if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method) || !pathname.startsWith("/api/") || pathname === "/api/health") return null;
+  if (pathname === "/api/setup") return "setup";
+  if (pathname === "/api/session") return method === "POST" ? "login" : "other_api";
+  if (pathname === "/api/logout") return "logout";
+  if (pathname === "/api/diagnostics") return "diagnostics";
+  if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
+  if (pathname === "/api/skills/import") return "skills.import";
+  if (/^\/api\/skills\/[a-f0-9]{24}\/transition$/.test(pathname)) return "skills.transition";
+  if (pathname === "/api/agent/status") return "agent.status";
+  if (pathname === "/api/agent/message") return "agent.message";
+  if (pathname === "/api/tasks/status") return "tasks.status";
+  if (pathname === "/api/tasks") return "tasks.list";
+  if (/^\/api\/tasks\/[a-f0-9-]{8,64}\/cancel$/i.test(pathname)) return "tasks.cancel";
+  if (/^\/api\/tasks\/[a-f0-9-]{8,64}$/i.test(pathname)) return "tasks.get";
+  if (pathname === "/api/tools") return "tools.list";
+  if (/^\/api\/tools\/[a-z][a-z0-9.-]{0,63}\/run$/.test(pathname)) return "tools.run";
+  return "other_api";
 }
+
+function limited(req) { return !authLimiter.allow(req.socket.remoteAddress || "unknown"); }
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", "http://localhost");
+    const auditRouteName = auditRoute(url.pathname, req.method);
+    if (auditLogger && auditRouteName) res.once("finish", () => { void auditLogger.record({ method: req.method, route: auditRouteName, statusCode: res.statusCode }); });
     if (req.method === "GET" && url.pathname === "/api/health")
       return reply(res, 200, { ok: true, app: "fnos-nas-agent", version: "0.2.1", executionEnabled: false, authenticationConfigured: Boolean(passwordRecord) });
     if (req.method === "GET" && url.pathname === "/")
@@ -184,7 +220,7 @@ const server = createServer(async (req, res) => {
         return reply(res, 500, { error: "Unable to save password securely" });
       }
       passwordRecord = record;
-      attempts.delete(req.socket.remoteAddress || "unknown");
+      authLimiter.reset(req.socket.remoteAddress || "unknown");
       return reply(res, 201, { configured: true });
     }
     if (req.method === "POST" && url.pathname === "/api/session") {
@@ -197,6 +233,9 @@ const server = createServer(async (req, res) => {
       if (!passwordValid(body.password)) return reply(res, 401, { error: "Invalid password" });
       const remember = body.remember === true;
       const ttl = remember ? REMEMBER_TTL : SESSION_TTL;
+      const now = Date.now();
+      for (const [key, session] of sessions) if (session.expiresAt <= now) sessions.delete(key);
+      if (sessions.size >= MAX_SESSIONS) return reply(res, 503, { error: "Session capacity is full; try again later." });
       const id = randomBytes(32).toString("base64url");
       const key = sessionKey(id);
       sessions.set(key, { createdAt: Date.now(), expiresAt: Date.now() + ttl });
@@ -205,9 +244,9 @@ const server = createServer(async (req, res) => {
         sessions.delete(key);
         return reply(res, 500, { error: "Unable to persist session securely" });
       }
-      attempts.delete(req.socket.remoteAddress || "unknown");
+      authLimiter.reset(req.socket.remoteAddress || "unknown");
       return reply(res, 200, { authenticated: true, remembered: remember }, "application/json; charset=utf-8", {
-        "set-cookie": `nas_agent_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(ttl / 1000)}`
+        "set-cookie": `nas_agent_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(ttl / 1000)}${req.socket.encrypted ? "; Secure" : ""}`
       });
     }
     if (req.method === "POST" && url.pathname === "/api/logout") {
@@ -215,7 +254,7 @@ const server = createServer(async (req, res) => {
       const active = sessionFor(req);
       if (active) { sessions.delete(active.key); await persistSessions(); }
       return reply(res, 200, { authenticated: false }, "application/json; charset=utf-8", {
-        "set-cookie": "nas_agent_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"
+        "set-cookie": `nas_agent_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${req.socket.encrypted ? "; Secure" : ""}`
       });
     }
     if (req.method === "GET" && url.pathname === "/api/diagnostics") {
@@ -270,9 +309,74 @@ const server = createServer(async (req, res) => {
         return reply(res, 415, { error: "Expected application/json" });
       return reply(res, 200, { skill: await skillStore.transition(transitionMatch[1], await jsonBody(req)) });
     }
-    if (req.method === "GET" && url.pathname === "/api/tools") {
+    if (url.pathname === "/api/agent/status") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
-      return reply(res, 200, { tools: [], executionEnabled: false });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, agentCore.status());
+    }
+    if (url.pathname === "/api/agent/message") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      if (!input || typeof input !== "object" || Array.isArray(input) || typeof input.text !== "string" || !input.text.trim() || input.text.trim().length > 2000)
+        return reply(res, 400, { error: "Message must contain 1 to 2000 characters" });
+      let task;
+      try { task = taskManager.submit({ text: input.text.trim() }); }
+      catch (error) {
+        const status = Number.isInteger(error?.statusCode) && [429, 503].includes(error.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 429 ? "Task queue is full; try again shortly." : status === 503 ? "Task capacity is temporarily full; try again shortly." : "Unable to accept task." }, "application/json; charset=utf-8", status === 429 ? { "retry-after": "2" } : {});
+      }
+      return reply(res, 202, { task });
+    }
+    if (url.pathname === "/api/tasks/status") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, taskManager.stats());
+    }
+    if (url.pathname === "/api/tasks") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const requested = Number(url.searchParams.get("limit") || 20);
+      return reply(res, 200, { tasks: taskManager.list({ limit: Number.isFinite(requested) ? Math.trunc(requested) : 20 }) });
+    }
+    const cancelMatch = url.pathname.match(/^\/api\/tasks\/([a-f0-9-]{8,64})\/cancel$/i);
+    if (cancelMatch) {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      const result = taskManager.cancel(cancelMatch[1]);
+      if (!result) return reply(res, 404, { error: "Task not found" });
+      if (!result.cancelled) return reply(res, 409, { error: "Only queued tasks can be cancelled", task: result.task });
+      return reply(res, 200, result);
+    }
+    const taskMatch = url.pathname.match(new RegExp("^/api/tasks/([a-f0-9-]{8,64})$", "i"));
+    if (taskMatch) {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const task = taskManager.get(taskMatch[1]);
+      return task ? reply(res, 200, { task }) : reply(res, 404, { error: "Task not found" });
+    }
+    if (url.pathname === "/api/tools") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method === "GET") return reply(res, 200, {
+        tools: readOnlyTools.list(),
+        executionEnabled: false,
+        readOnlyExecutionEnabled: true
+      });
+      return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+    }
+    const toolRunMatch = url.pathname.match(/^\/api\/tools\/([a-z][a-z0-9.-]{0,63})\/run$/);
+    if (toolRunMatch) {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const args = await jsonBody(req);
+      return reply(res, 200, { tool: toolRunMatch[1], result: await readOnlyTools.invoke(toolRunMatch[1], args) });
     }
     return reply(res, 404, { error: "Not found" });
   } catch (error) {
@@ -284,6 +388,6 @@ await loadSessions();
 if (skillStore) await skillStore.load();
 // First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
 server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; execution disabled`));
-function shutdown() { server.close(() => process.exit(0)); }
+function shutdown() { server.close(() => { void (auditLogger?.flush() || Promise.resolve()).finally(() => process.exit(0)); }); }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);

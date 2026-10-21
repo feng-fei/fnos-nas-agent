@@ -8,6 +8,21 @@ on:
       - "phase-3/**"
       - "phase-5/**"
       - "phase-6/**"
+      - "phase-7/**"
+      - "phase-8/**"
+      - "phase-9/**"
+      - "phase-10/**"
+      - "phase-11/**"
+      - "phase-12/**"
+      - "phase-13/**"
+      - "phase-14/**"
+      - "phase-15/**"
+      - "phase-16/**"
+      - "phase-17/**"
+      - "phase-18/**"
+      - "phase-19/**"
+      - "phase-20/**"
+      - "phase-20-*"
       - "fix/**"
       - "test/**"
     paths:
@@ -19,11 +34,26 @@ on:
       - ".github/workflows/build-fpk.yml"
   pull_request:
     branches:
+      - main
       - phase-2/fpk-packaging
       - "phase-2/**"
       - "phase-3/**"
       - "phase-5/**"
       - "phase-6/**"
+      - "phase-7/**"
+      - "phase-8/**"
+      - "phase-9/**"
+      - "phase-10/**"
+      - "phase-11/**"
+      - "phase-12/**"
+      - "phase-13/**"
+      - "phase-14/**"
+      - "phase-15/**"
+      - "phase-16/**"
+      - "phase-17/**"
+      - "phase-18/**"
+      - "phase-19/**"
+      - "phase-20/**"
       - "fix/**"
       - "test/**"
     paths:
@@ -69,6 +99,9 @@ jobs:
       - name: Run core tests
         run: npm test
 
+      - name: Check release safety invariants
+        run: npm run check:release
+
       - name: Validate app scripts and entry syntax
         shell: bash
         run: |
@@ -82,6 +115,18 @@ jobs:
           node --check "$app/app/server.mjs"
           node --check "$app/app/skills.mjs"
           node --check "$app/app/skill-archives.mjs"
+          node --check "$app/app/read-only-tools.mjs"
+          node --check "$app/app/model-adapter.mjs"
+          node --check "$app/app/agent-core.mjs"
+          node --check "$app/app/task-manager.mjs"
+          node --check "$app/app/audit-log.mjs"
+          python3 -c 'import re, pathlib; s=pathlib.Path("apps/fnos-nas-agent/app/ui/index.html").read_text(); m=re.search(r"<script>(.*?)</script>", s, re.S); assert m, "inline UI script not found"; pathlib.Path("/tmp/fnos-agent-ui-check.mjs").write_text(m.group(1))'
+          node --check /tmp/fnos-agent-ui-check.mjs
+          node --check "$app/app/permission-policy.mjs"
+          node --check "$app/app/skill-manifest.mjs"
+          node --check "$app/app/request-limiter.mjs"
+          node --check "$app/app/approval-ledger.mjs"
+          node --check scripts/verify-fpk-artifact.mjs
 
       - name: Prepare app payload and icons
         if: matrix.node-version == '26.x'
@@ -149,10 +194,8 @@ jobs:
           test -s dist/fnos-nas-agent-test.fpk
           sha256sum dist/fnos-nas-agent-test.fpk | tee dist/fnos-nas-agent-test.fpk.sha256
           file dist/fnos-nas-agent-test.fpk
+          node scripts/verify-fpk-artifact.mjs dist/fnos-nas-agent-test.fpk
           tar -tzf dist/fnos-nas-agent-test.fpk > dist/fpk-contents.txt
-          grep -qx "manifest" dist/fpk-contents.txt
-          grep -q "app.tgz" dist/fpk-contents.txt
-          grep -q "cmd/main" dist/fpk-contents.txt
           ls -lh dist/fnos-nas-agent-test.fpk*
 
       - name: Upload Node.js 26 test FPK

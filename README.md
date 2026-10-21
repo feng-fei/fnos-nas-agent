@@ -2,7 +2,7 @@
 
 A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS, designed around a mobile-friendly web interface, controlled NAS operations, and a reviewable Skill manager.
 
-> **Status: Phase 6 in progress.** The app has password-based web authentication, read-only diagnostics, Skill inventory/review, and bounded ZIP quarantine import. Skill archives are not extracted or executed; the tool registry remains empty and `executionEnabled=false`. Require Node.js 24/26 CI and Node 26 FPK packaging before merge.
+> **Status: Phase 20 implementation in progress.** The FPK app has password/session authentication, read-only diagnostics, Skill inventory/review, bounded ZIP quarantine import, a code-defined allowlist of three read-only tools, a rules-first Agent API, an optional server-configured model adapter, a bounded asynchronous task engine with recent-task status, and a privacy-safe bounded audit trail for API outcomes. Uploaded Skills are not extracted or executed; arbitrary command execution remains disabled. Require Node.js 24/26 CI and Node 26 FPK packaging before merge.
 
 ## Goals
 
@@ -31,7 +31,7 @@ npm test
 npm start
 ```
 
-Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, set a management password (only a salted scrypt hash is stored), then log in. Authenticated users can view a read-only diagnostics snapshot for OS, CPU, memory, network interfaces, and disk capacity. NAS command execution, Skill execution, and model calls remain disabled. See [Phase 3 web authentication](docs/phase-3-web-auth.md) and [Phase 4 read-only diagnostics](docs/phase-4-read-only-diagnostics.md). HTTP is unencrypted; do not expose the service to untrusted networks or the public internet.
+Open `http://<NAS-IP>:18787` from a trusted LAN. On first run, set a management password (only a salted scrypt hash is stored), then log in. Authenticated users can view a read-only diagnostics snapshot and invoke three allowlisted read-only tools for system status, storage summary, and network interfaces. Arbitrary command execution, Skill execution, and model calls remain disabled. See [Phase 3 web authentication](docs/phase-3-web-auth.md) and [Phase 4 read-only diagnostics](docs/phase-4-read-only-diagnostics.md). HTTP is unencrypted; do not expose the service to untrusted networks or the public internet.
 
 ## Planned first capability
 
@@ -49,6 +49,20 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 - [Phase 3 web authentication](docs/phase-3-web-auth.md)
 - [Phase 5 Skill manager](docs/phase-5-skill-manager-api.md)
 - [Phase 6 safe Skill ZIP import](docs/phase-6-skill-archive-import.md)
+- [Phase 7 read-only tool registry](docs/phase-7-read-only-tool-registry.md)
+- [Phase 8 Agent core and model routing](docs/phase-8-agent-core-model-routing.md)
+- [Phase 9 operations task engine](docs/phase-9-operations-task-engine.md)
+- [Phase 10 permission policy foundation](docs/phase-10-permission-policy-foundation.md)
+- [Phase 11 static Skill manifest review](docs/phase-11-static-skill-manifest-review.md)
+- [Phase 12 one-time approval ledger](docs/phase-12-one-time-approval-ledger.md)
+- [Phase 13 mobile operations workbench](docs/phase-13-mobile-operations-workbench.md)
+- [Phase 14 authentication security hardening](docs/phase-14-auth-security-hardening.md)
+- [Phase 15 release readiness gates](docs/phase-15-release-readiness-gates.md)
+- [Phase 16 FPK integration smoke tests](docs/phase-16-integration-smoke-tests.md)
+- [Phase 17 HTTP authentication contract tests](docs/phase-17-http-auth-contract-tests.md)
+- [Phase 18 FPK artifact integrity](docs/phase-18-fpk-artifact-integrity.md)
+- [Phase 19 model adapter contract tests](docs/phase-19-model-adapter-contract-tests.md)
+- [Phase 20 audit trail and operation trace](docs/phase-20-audit-trail.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [Security policy](SECURITY.md)
 
@@ -64,3 +78,8 @@ The supplied official fnOS Skill package is the first integration candidate. It 
 ## License
 
 No license has been selected yet. Until one is added, do not assume this repository grants permission to redistribute or reuse its code.
+
+
+## Current safety boundary
+
+Phase 11 reads only a bounded `SKILL.md` manifest from a validated archive for static review. It does not extract or execute imported content. Manifest findings are advisory, and write/destructive execution remains disabled.
