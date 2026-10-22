@@ -58,9 +58,11 @@ document.querySelector("#model-provider-preset").addEventListener("change",()=>{
 });
 async function refreshModels(){
  const host=document.querySelector("#model-provider-list"),status=document.querySelector("#model-provider-status"),error=document.querySelector("#model-provider-error");
+  const renderToken=beginRender(host);
  host.replaceChildren();error.textContent="";
  try{
   const r=await api("/api/models"),data=await r.json();
+   if(!renderIsCurrent(host,renderToken))return;
   if(!r.ok)throw Error(data.error||"读取模型配置失败");
   const active=data.providers.find(item=>item.id===data.activeProviderId);
   status.textContent=active
@@ -433,8 +435,10 @@ let taskRefreshTimer=null,taskHistoryOffset=0;
 }
 async function refreshPendingActions(){
  const host=document.querySelector("#pending-actions");if(!host)return;host.replaceChildren();
+  const renderToken=beginRender(host);
  try{
   const r=await api("/api/actions/pending"),data=await r.json();if(!r.ok)throw Error(data.error||"读取待确认操作失败");
+   if(!renderIsCurrent(host,renderToken))return;
   if(!data.actions.length){const p=document.createElement("p");p.className="muted";p.textContent="没有待确认操作。";host.append(p);return;}
   for(const action of data.actions){
    const card=document.createElement("div");card.className="card warning";
@@ -502,16 +506,19 @@ document.querySelector("#agent-form").addEventListener("submit",async e=>{
 let currentFilePath="",currentFileOffset=0;
 async function refreshFiles(pathValue=currentFilePath,pageOffset=0){
  const host=document.querySelector("#file-list"),roots=document.querySelector("#file-roots"),err=document.querySelector("#file-error"),parent=document.querySelector("#file-parent"),field=document.querySelector("#file-path");
+  const renderToken=beginRender(host);
  err.textContent="";host.replaceChildren();roots.replaceChildren();
  try{
   const params=new URLSearchParams({limit:"100",offset:String(pageOffset),sort:document.querySelector("#file-sort").value,type:document.querySelector("#file-type-filter").value,q:document.querySelector("#file-search").value.trim()});if(pathValue)params.set("path",pathValue);
   const r=await api("/api/files?"+params.toString()),data=await r.json();if(!r.ok)throw Error(data.error||"目录读取失败");
+   if(!renderIsCurrent(host,renderToken))return;
   currentFilePath=data.path||"";currentFileOffset=data.offset||0;field.value=currentFilePath;parent.disabled=!data.parentPath;
   document.querySelector("#file-page-info").textContent="匹配 "+(data.totalEntries||0)+" 项 / 目录共 "+(data.totalDirectoryEntries||0)+" 项 · 显示 "+(data.totalEntries?currentFileOffset+1:0)+"–"+Math.min(currentFileOffset+(data.entries||[]).length,data.totalEntries||0);
   document.querySelector("#file-page-prev").disabled=currentFileOffset<=0;
   document.querySelector("#file-page-next").disabled=currentFileOffset+(data.entries||[]).length>=(data.totalEntries||0);
   parent.onclick=()=>{if(data.parentPath)refreshFiles(data.parentPath);};
   for(const root of data.roots||[]){const btn=document.createElement("button");btn.type="button";btn.textContent=root.name;btn.addEventListener("click",()=>refreshFiles(root.path));roots.append(btn);}
+   const rootsCount=document.querySelector("#file-roots-count");if(rootsCount)rootsCount.textContent=(data.roots||[]).length?"共 "+(data.roots||[]).length+" 个":"";
   const breadcrumbs=document.querySelector("#file-breadcrumbs");breadcrumbs.replaceChildren();
   const matchingRoot=(data.roots||[]).filter(root=>currentFilePath===root.path||currentFilePath.startsWith(root.path.replace(/\/+$/,"")+"/")).sort((a,b)=>b.path.length-a.path.length)[0];
   if(matchingRoot){

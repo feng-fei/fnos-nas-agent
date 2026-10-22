@@ -179,7 +179,13 @@
 
         <div class="card card--flat">
           <div class="card__body">
-            <div class="stack" id="file-roots"></div>
+            <details class="roots-panel" id="file-roots-panel" open>
+              <summary class="roots-panel__summary">
+                <span>存储卷</span>
+                <span class="muted" id="file-roots-count"></span>
+              </summary>
+              <div class="stack" id="file-roots"></div>
+            </details>
             <nav id="file-breadcrumbs" aria-label="目录路径" class="breadcrumbs"></nav>
             <form class="row row--wrap" id="file-form">
               <label class="visually-hidden" for="file-path">当前目录</label>
