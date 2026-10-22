@@ -1,4 +1,4 @@
-import { appendFile, chmod, mkdir, rename, rm, stat } from "node:fs/promises";
+import { appendFile, chmod, mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
@@ -6,7 +6,7 @@ const ROUTES = new Set([
   "setup", "login", "logout", "diagnostics", "audit.list", "files.list", "files.manage", "files.checksum", "skills.list", "skills.register",
   "skills.import", "skills.transition", "skills.remove", "skills.install-cli", "agent.status", "agent.trim-cli-test", "agent.trim-cli-login-command", "agent.message",
   "tasks.status", "tasks.list", "tasks.cancel", "tasks.clear", "tasks.get", "actions.pending", "actions.confirm", "tools.list",
-  "tools.run", "health-checks.list", "health-checks.create", "health-checks.update", "health-checks.delete", "health-checks.run", "models.presets", "models.list", "models.add", "models.update", "models.remove", "models.default", "models.test", "execution.mode", "other_api"
+  "tools.run", "health-checks.list", "health-checks.create", "health-checks.update", "health-checks.delete", "health-checks.run", "models.presets", "models.list", "models.add", "models.update", "models.remove", "models.default", "models.test", "models.usage", "execution.mode", "system.snapshot", "diagnostics.report", "security.inspection", "other_api"
 ]);
 
 // Audit events are written from a response "finish" listener that runs outside the
@@ -93,6 +93,40 @@ export function createAuditLogger({ dataDir, filename = "audit.jsonl", maxBytes 
       return queue;
     },
     flush() { return queue; },
-    filePath() { return file; }
+    filePath() { return file; },
+    /**
+     * Reads the recorded audit events.
+     *
+     * The reader is read-only and bounded: it never rotates and never writes.
+     * A damaged line is skipped instead of failing the whole read, because a
+     * single broken line must not hide the rest of the history.
+     *
+     * @param {{limit?: number}} [options]
+     * @returns {Promise<Array<object>>}
+     */
+    async read({ limit = 500 } = {}) {
+      const max = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 5000) : 500;
+      const lines = [];
+      for (const target of [file, rotated]) {
+        let raw = "";
+        try {
+          raw = await readFile(target, "utf8");
+        } catch (error) {
+          if (error.code === "ENOENT") continue;
+          throw error;
+        }
+        for (const line of raw.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) lines.push(parsed);
+          } catch {
+            // A damaged line is skipped: the reader reports what it could read.
+          }
+        }
+      }
+      return lines.slice(-max);
+    }
   });
 }

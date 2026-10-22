@@ -32,6 +32,8 @@ Core development is active. The repository currently includes:
 - A tool call observer: the built-in catalogue, the agent plan and the external MCP tools all leave a trace entry, so a real run produces the same evidence the tests do.
 - An MCP tool bridge: a tool of a foreign server enters the catalogue under a namespaced identifier (`mcp__server__tool`), the risk comes from the tool name alone, an unknown name is treated as destructive, and a write or destructive tool needs a one time approval while the read-only mode and the kill switch still cover it (Phases 147, 148, 153).
 - A migration record that maps every migrated Marvis capability to its implementation, its phase and its file, next to the naming and risk rules of the bridge, the red lines of the round and the limits that are still open (Phase 156).
+- A read-only observation surface: the system snapshot reports the real state of the machine and marks an unmeasured section as unknown, the security inspection turns the audit log into a report, the model usage counts the requests and tokens without keeping a prompt, and the diagnostic report ranks the likely causes and filters every destructive suggestion (Phases 160–166).
+- An MCP stdio entry point: an external client can discover the read-only tool catalogue over JSON-RPC 2.0, under the same tool contract and risk rules as the HTTP side (Phases 164, 166).
 
 **Runtime and validation:** Node.js 26.x is the supported development and CI runtime. GitHub Actions builds an unsigned x86 CI test FPK, inspects the archive, verifies SHA-256 and release-manifest consistency, and uploads the artifact for 14 days. A separate job creates GitHub build-provenance attestation only for verified `main` builds; pull requests do not receive OIDC/attestation permissions. CI success does not mean the package has been installed or validated on a real fnOS NAS; lifecycle acceptance remains a separate manual staging gate.
 
@@ -142,6 +144,13 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 156 — Marvis Migration Integration](docs/phase-156-marvis-migration-integration.md)
 - [Phase 157 — UI Integration Verification](docs/phase-157-ui-integration.md)
 - [Phase 158 — Windows Absolute Path Guard](docs/phase-158-windows-absolute-path.md)
+- [Phase 160 — Security Audit Report](docs/phase-160-security-audit.md)
+- [Phase 161 — System Snapshot](docs/phase-161-system-snapshot.md)
+- [Phase 162 — Diagnostics](docs/phase-162-diagnostics.md)
+- [Phase 163 — Duplicate Detector](docs/phase-163-duplicate-detector.md)
+- [Phase 164 — MCP Server](docs/phase-164-mcp-server.md)
+- [Phase 165 — Model Usage](docs/phase-165-model-usage.md)
+- [Phase 166 — Agent Insights](docs/phase-166-agent-insights.md)
 
 - [Phase 94 — Model Catalog HTTP Integration](docs/phase-94-model-catalog-http.md)
 - [Phase 95 — Searchable Model Catalog Picker](docs/phase-95-model-catalog-search.md)

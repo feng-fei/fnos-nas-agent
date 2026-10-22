@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 161 documents (148 phase documents and 12 non-phase documents, plus this file).
+This index lists 170 documents (155 phase documents and 14 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -15,6 +15,8 @@ This index lists 161 documents (148 phase documents and 12 non-phase documents, 
 - [FPK CI build](fpk-ci-build.md) — GitHub Actions builds an unsigned x86 CI test FPK from an isolated copy of apps/fnos-nas-agent/. On main, a separate job additionally produces a GitHub artifact attestation for the FPK…
 - [Native FPK validation plan](fpk-test-plan.md) — Official reference material:
 - [Official fnOS trim-cli read-only adapter](official-trim-cli-adapter.md) — The Agent integrates the official trim-cli as an optional capability provider. An explicit TRIM_CLI_PATH override takes precedence; otherwise the Agent uses the CLI installed from the…
+- [Marvis feature checklist](marvis-feature-checklist.md) — The product checklist this repository is migrating against: sixteen modules with numbered items (A01–A15, S01–S20, D01–D15, F01–F25, C01–C15, APP01–APP18, N01–N12, SEC01–SEC18, W01–W16, B01–B10, AI01–AI14, K01–K10, R01–R10, SK01–SK12, UI01–UI18, O01–O15), the priority model and the delivery order. It is the reference the capability matrix measures against.
+- [Marvis capability matrix](marvis-capability-matrix.md) — Every numbered item of the Marvis feature checklist with its state in this repository, the phase and the file that implements it, and the gap that is still open. This is the trace between the checklist and the code.
 - [Marvis-inspired feature parity](marvis-feature-parity.md) — Translate Marvis-style file, system, knowledge, automation, and cross-device capabilities into a security-first fnOS NAS roadmap; document the bounded text-content search milestone.
 - [Practical file management](practical-file-management.md) — Extends the authenticated mobile file browser with bounded UTF-8 text preview, streaming downloads, binary uploads up to 25 MiB, folder creation, rename, move, and delete.
 - [Private remote access from a phone](private-remote-access.md) — The Agent is a self-hosted web service. For access away from home, use a private VPN overlay such as Tailscale or WireGuard rather than exposing port 18787 directly to the internet.
@@ -602,6 +604,34 @@ This index lists 161 documents (148 phase documents and 12 non-phase documents, 
 ### Phase 158
 
 - [Phase 158 — Windows absolute path guard](phase-158-windows-absolute-path.md) — The installer decided that an absolute path starts with a slash, which is true on POSIX and false on Windows, so the service refused to start with a data directory and 18 unrelated HTTP tests failed on a Windows machine. This phase replaces the check with the platform independent isAbsolute() and keeps a regression test for it.
+
+### Phase 160
+
+- [Phase 160 — Security audit report](phase-160-security-audit.md) — The audit log had a writer but no reader, so the recorded evidence could never be shown to the operator. This phase adds a read-only inspection that turns the log entries into a report of six security sections, a tool permission table and an audit summary, without changing anything on the NAS.
+
+### Phase 161
+
+- [Phase 161 — System snapshot](phase-161-system-snapshot.md) — The agent could answer questions but could not show the real state of the machine. This phase reads the official trim-cli sources and produces a six section snapshot; a section that could not be measured stays "unknown" instead of being reported as healthy.
+
+### Phase 162
+
+- [Phase 162 — Diagnostics](phase-162-diagnostics.md) — A symptom without evidence produced guesswork. This phase ranks the likely causes from the evidence, grades the confidence, and filters every suggested next step through a safety rule that rejects destructive actions.
+
+### Phase 163
+
+- [Phase 163 — Duplicate detector](phase-163-duplicate-detector.md) — The same request could be issued twice and the agent would run it twice. This phase compares the new request with the recent ones and reports the duplicates before anything is executed.
+
+### Phase 164
+
+- [Phase 164 — MCP server](phase-164-mcp-server.md) — The agent could call an external MCP server but no external client could call the agent. This phase publishes the read-only tool catalogue over a stdio JSON-RPC 2.0 entry point, with the same tool contract and the same risk rules as the HTTP side.
+
+### Phase 165
+
+- [Phase 165 — Model usage](phase-165-model-usage.md) — The agent used the model but did not know what it spent. This phase counts the requests, the tokens and the latency per model, keeps no prompt text, and reports an unpriced model as unpriced instead of guessing a price.
+
+### Phase 166
+
+- [Phase 166 — Agent insights](phase-166-agent-insights.md) — The observation modules of Phase 160–165 existed but had no common exit. This phase exposes the system snapshot, the security inspection, the model usage and the diagnostic report over authenticated read-only routes, adds the MCP stdio entry point, and proves the whole chain with a test that starts a real server.
 
 ## This index
 

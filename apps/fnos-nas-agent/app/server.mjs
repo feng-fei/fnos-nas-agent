@@ -39,6 +39,11 @@ import { createMcpToolBridge } from "./mcp-tool-bridge.mjs";
 import { createToolTracer } from "./tool-trace.mjs";
 import { createToolCallObserver } from "./tool-call-observer.mjs";
 import { createStructuredLogger } from "./structured-logger.mjs";
+import { buildSystemSnapshot } from "./system-snapshot.mjs";
+import { buildDiagnosticReport } from "./diagnostics.mjs";
+import { runSecurityInspection, buildToolPermissionTable, summarizeAuditEntries } from "./security-audit.mjs";
+import { createUsageMeter, applyPrivacyMode, describeModelCapabilities } from "./model-usage.mjs";
+import { createSystemCollector, buildUsageEntry } from "./agent-insights.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -342,6 +347,39 @@ const modelProviderStore = dataDir ? createModelProviderStore({ dataDir }) : nul
 // The direct chat channel is separate from the planner. The planner returns a
 // JSON plan, the chat channel streams the answer of the model token by token.
 const modelChatAdapter = modelProviderStore ? createModelChatAdapter({ providerStore: modelProviderStore }) : null;
+// The usage meter counts the calls of the chat channel. A record holds the
+// counters and the model names only: neither the prompt nor the answer of the
+// operator is ever stored.
+const usageMeter = createUsageMeter({ maxEntries: 500 });
+// Privacy mode is a read-only report flag: it says how many cloud calls the
+// meter saw. It is not a gate, the gate would have to live in the adapter.
+const privacyModeEnabled = /^(1|true|on|yes)$/i.test(String(process.env.AGENT_PRIVACY_MODE || ""));
+
+// Records one call of the chat channel in the usage meter. Only the counters
+// are kept: neither the prompt nor the answer is stored.
+function recordChatUsage({ messages = [], completionText = "", outcome = "ok", latencyMs = 0 } = {}) {
+  try {
+    const status = modelChatAdapter?.status?.() || {};
+    const provider = status.providerName || status.providerId || "unknown";
+    const promptText = Array.isArray(messages)
+      ? messages.map(item => (typeof item?.content === "string" ? item.content : "")).join("\n")
+      : "";
+    const entry = buildUsageEntry({
+      provider,
+      model: typeof status.model === "string" ? status.model : "",
+      endpoint: "",
+      outcome,
+      promptText,
+      completionText,
+      latencyMs,
+      privacyMode: privacyModeEnabled
+    });
+    if (entry) usageMeter.record(entry);
+  } catch (error) {
+    // The meter is an observation, it never breaks a chat turn.
+    console.error(`[usage] Could not record the model call: ${error?.message || "unknown error"}`);
+  }
+}
 const modelAdapter = createModelAdapter({
   configProvider: () => {
     const managed = modelProviderStore?.runtimeConfig();
@@ -405,6 +443,10 @@ const toolRegistry = createToolRegistry({
   observer: toolObserver
 });
 const actionApprovals = createActionApprovalService({ tools: toolRegistry });
+// The system snapshot is collected from the official CLI and from the local
+// process. The collector never decides what is healthy, it only reports what
+// it could measure.
+const systemCollector = createSystemCollector({ trimCli, fileManager });
 const agentCore = createAgentCore({ tools: toolRegistry, model: modelAdapter, requestApproval: action => actionApprovals.request(action) });const taskManager = createTaskManager({ execute: (input, context) => agentCore.run(input, context), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "", taskTimeoutMs: taskTimeoutMsFromEnv() });
 
 // A state file that could not be restored leaves the service running in a degraded
@@ -529,6 +571,10 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/chat/status") return "chat.status";
   if (pathname === "/api/agent/trace") return "agent.trace";
   if (pathname === "/api/mcp/status") return "mcp.status";
+  if (pathname === "/api/system/snapshot") return "system.snapshot";
+  if (pathname === "/api/diagnostics/report") return "diagnostics.report";
+  if (pathname === "/api/security/inspection") return "security.inspection";
+  if (pathname === "/api/models/usage") return "models.usage";
   if (pathname === "/api/tasks/clear-history") return "tasks.clear";
   if (pathname === "/api/health-checks") return method === "GET" ? "health-checks.list" : method === "POST" ? "health-checks.create" : "other_api";
   if (/^\/api\/health-checks\/[a-f0-9-]{36}\/run$/i.test(pathname)) return "health-checks.run";
@@ -1264,15 +1310,18 @@ const server = createServer(async (req, res) => {
       const write = (type, payload) => {
         try { res.write(`event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`); } catch { /* the client is gone */ }
       };
+      const startedAt = Date.now();
       try {
         const text = await modelChatAdapter.chat({
           messages: input.messages,
           signal: controller.signal,
           onDelta: chunk => { write("delta", { text: chunk }); }
         });
+        recordChatUsage({ messages: input.messages, completionText: typeof text === "string" ? text : "", outcome: "ok", latencyMs: Date.now() - startedAt });
         write("done", { text: typeof text === "string" ? text : "" });
       } catch (error) {
         const status = Number.isInteger(error?.statusCode) ? error.statusCode : 502;
+        recordChatUsage({ messages: input.messages, completionText: "", outcome: "error", latencyMs: Date.now() - startedAt });
         write("error", {
           code: typeof error?.code === "string" ? error.code : "MODEL_CHAT_UPSTREAM_ERROR",
           message: typeof error?.message === "string" ? error.message : "模型直聊失败。",
@@ -1288,6 +1337,68 @@ const server = createServer(async (req, res) => {
       if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
       if (!modelChatAdapter) return reply(res, 503, { error: "模型直聊通道不可用：未配置应用数据目录。" });
       return reply(res, 200, modelChatAdapter.status());
+    }
+    if (url.pathname === "/api/system/snapshot") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // The snapshot is a read-only measurement. A section that could not be
+      // measured is reported as "unknown", it is never presented as healthy.
+      const snapshot = await buildSystemSnapshot({ collect: (sectionId) => systemCollector.collect(sectionId) });
+      return reply(res, 200, snapshot);
+    }
+    if (url.pathname === "/api/diagnostics/report") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const symptom = typeof input?.symptom === "string" ? input.symptom.slice(0, 2000) : "";
+      const evidence = Array.isArray(input?.evidence) ? input.evidence.slice(0, 50) : [];
+      // The report is a read-only diagnosis: it names the most likely causes
+      // and the checks that would confirm them. It never performs a change.
+      const report = buildDiagnosticReport({ symptom, evidence, causes: [], now: new Date().toISOString() });
+      return reply(res, 200, report);
+    }
+    if (url.pathname === "/api/security/inspection") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const auditEntries = auditLogger ? await auditLogger.read({ limit: 500 }) : [];
+      const toolCatalog = toolRegistry.list();
+      const storageRoots = fileManager ? await fileManager.getRoots() : [];
+      const inspection = runSecurityInspection({
+        toolCatalog,
+        auditEntries,
+        config: { listenAddress: String(process.env.AGENT_HOST || "127.0.0.1") },
+        scheduledChecks: scheduledHealthChecks ? scheduledHealthChecks.list() : [],
+        storageRoots
+      });
+      return reply(res, 200, {
+        ...inspection,
+        toolPermissions: buildToolPermissionTable(toolCatalog),
+        auditSummary: summarizeAuditEntries(auditEntries)
+      });
+    }
+    if (url.pathname === "/api/models/usage") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const summary = applyPrivacyMode(usageMeter.summary(), { privacyMode: privacyModeEnabled });
+      return reply(res, 200, {
+        summary,
+        byModel: usageMeter.byModel(),
+        privacy: {
+          enabled: privacyModeEnabled,
+          // The flag is a report flag. It does not block a cloud request, the
+          // gate would have to live in the adapter of the provider.
+          enforced: false,
+          note: "隐私模式当前只统计云端调用，不拦截已发出的请求。"
+        },
+        capabilities: modelProviderStore ? describeModelCapabilities(modelProviderStore.runtimeConfig?.() || {}) : null
+      });
     }
     if (url.pathname === "/api/health-checks") {
       const active = sessionFor(req);
