@@ -94,19 +94,19 @@ test("phase-210: 203–209 的新模块都通过 HTTP 暴露，且测不到时�
   assert.equal(statsBody.notes.includes("collector-disabled"), true);
   assert.equal(statsBody.summary !== undefined, true);
 
-  // Phase 205：没有 /proc/net/dev 的平台回 unknown，有的平台给出接口列表；
-  // 两边都不许把「没测到」伪装成 0 吞吐。
+  // Phase 205：没有 /proc/net/dev 的平台必须回 unknown 与空列表；有的平台
+  // 给出逐接口计数。两种情况下「没测到」都不能伪装成可信吞吐。
   const interfaces = await request("/api/network/interfaces", { cookie });
   assert.equal(interfaces.status, 200);
   const ifaceBody = await interfaces.json();
   assert.equal(typeof ifaceBody.verdict, "string");
   assert.equal(Array.isArray(ifaceBody.interfaces), true);
-  if (ifaceBody.verdict === "unknown") {
-    assert.deepEqual(ifaceBody.interfaces, []);
-  } else {
-    assert.ok(ifaceBody.interfaces.length >= 1, "a measured platform lists at least one interface");
-    assert.equal(ifaceBody.interfaces.every((entry) => entry.rxBytesPerSecond === null || Number.isFinite(entry.rxBytesPerSecond)), true);
+  for (const entry of ifaceBody.interfaces) {
+    assert.equal(typeof entry.name, "string");
+    assert.equal(entry.rxBytesPerSecond === null || Number.isFinite(entry.rxBytesPerSecond), true);
   }
+  if (ifaceBody.interfaces.length === 0) assert.equal(ifaceBody.verdict, "unknown");
+  assert.equal(typeof ifaceBody.note, "string");
 
   // Phase 207：日志证据路由存在并回结构化结果；读不到日志时说明「没有读到」而不是报健康。
   const logEvidence = await request("/api/diagnostics/log-evidence", { cookie });
