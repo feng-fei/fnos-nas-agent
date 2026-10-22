@@ -5,11 +5,12 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 202 documents (187 phase documents and 14 non-phase documents, plus this file).
+This index lists 211 documents (195 phase documents and 15 non-phase documents, plus this file).
 
 ## Non-phase documents
 
 - [Architecture](architecture.md) — Build a small, self-hosted fnOS NAS Agent distributed as an FPK. The first release prioritizes a mobile-friendly LAN web console, low-token task routing, and tightly controlled access to…
+- [Marvis remaining work](marvis-remaining-work.md) — 清单剩余项的逐条现状与下一步（2026-10-22 盘点：Implemented 67 / Partly 123 / Partial 4 / Open 49），供下一轮挑选迁移顺序。
 - [Development and Validation](development.md) — All six milestones below are implemented in main. The code columns name the delivered artifacts; the only remaining acceptance work is the manual fnOS device gate described in FPK test plan.
 - [fnOS Official Skill Tool Mapping](fnos-tool-mapping.md) — The supplied official fnOS Skill ZIP is the reference for task instructions and trim-cli usage. This document is a design mapping, not a claim that each command has already been validated…
 - [FPK CI build](fpk-ci-build.md) — GitHub Actions builds an unsigned x86 CI test FPK from an isolated copy of apps/fnos-nas-agent/. On main, a separate job additionally produces a GitHub artifact attestation for the FPK…
@@ -731,6 +732,30 @@ This index lists 202 documents (187 phase documents and 14 non-phase documents, 
 
 ### Phase 202
 - [Phase 202 — Deploy, certificate and idempotency wiring](phase-202-deploy-cert-wiring.md) — Gives the three pure layers an outlet: two guarded POST routes that only judge what the caller supplied, optional `x-idempotency-key` replay/conflict handling, and audit route names.
+
+### Phase 203
+- [Phase 203 - 系统只读工具定义模块](phase-203-system-tools.md) — 把服务状态、SMART、温度、系统事件、快照、能力体检与容量预测包装成七个只读工具定义，让工具面板和 MCP 桥接自动看见它们。
+
+### Phase 204
+- [Phase 204 — Docker 实时资源采样的解析与判定层](phase-204-docker-stats.md) — 解析 `docker stats --no-stream` 的列式输出，给出用量/瓶颈判定与 `unknown` 语义，解析失败不留半截数据。
+
+### Phase 205
+- [Phase 205 — 网络采样的解析 / 增量 / 打包层](phase-205-network-collectors.md) — 解析 `/proc/net/dev` 计算增量吞吐；取不到样本时明确回 `unknown`，而不是把缺失当成零流量。
+
+### Phase 206
+- [Phase 206 — 工作流的事件触发判定层](phase-206-workflow-triggers.md) — 按阈值/事件/定时规则判定该触发哪些工作流，只产触发结果、绝不自行执行，非法规则进 `notes`。
+
+### Phase 207
+- [Phase 207 — 日志证据化层（D02 日志关联 / S13 系统事件）](phase-207-log-evidence.md) — 把日志尾部压成可引用的证据：只保留类别、级别、计数与脱敏摘要，原始行不出后端。
+
+### Phase 208
+- [Phase 208 - 设备与用户偏好档案](phase-208-device-profile.md) — 记录机主自述的硬件与偏好；凭据字段入库前丢弃，序列号只留后 4 位，写操作串行化并带新鲜度判定。
+
+### Phase 209
+- [Phase 209：技能组合（纯函数层）](phase-209-skill-composition.md) — 技能组合的归一化、七类校验、拓扑排序与运行计划；权限只升不降，被条件跳过的破坏性步骤也会抬高整体权限。
+
+### Phase 210
+- [Phase 210 — 把 203–209 接到 HTTP 上，并修好审计白名单](phase-210-wiring.md) — 给七个纯函数层补上 HTTP 与工具注册表出口，并把审计白名单从 44 个名字补到 97 个、加一条静态防回退用例。
 
 ## This index
 

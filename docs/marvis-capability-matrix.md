@@ -26,7 +26,7 @@ State values:
 | A02 Automatic task decomposition | Partly | `app/agent-core.mjs` plan validation | Plans come from the model; no template library |
 | A03 Specialist agent scheduling | Partly | Phase 144 skill packages, Phase 148/153 MCP tools | Capability packages exist, orchestration does not |
 | A04 Parallel task execution | Open | — | Plans run step by step |
-| A05 Task dependency management | Open | — | No dependency graph between plan steps |
+| A05 Task dependency management | Partly | Phase 209 `app/skill-composition.mjs` dependency validation and topological plan | Composition steps have an order; ordinary agent plan steps still have no dependency graph |
 | A06 Shared task context | Implemented | `app/task-manager.mjs`, Phase 146 event stream | — |
 | A07 Result aggregation | Partly | `app/task-manager.mjs`, chat window | Results are shown, not cross-checked |
 | A08 Failure retry | Open | — | — |
@@ -47,21 +47,21 @@ State values:
 | S03 CPU monitoring | Partly | trim-cli `monitor.cpu` | No history series |
 | S04 Memory monitoring | Partly | trim-cli `monitor.memory` | Swap and pressure detail is not parsed |
 | S05 Disk capacity | Partly | trim-cli `monitor.disk`, `file.usage` | — |
-| S06 Disk health (SMART) | Partial | Phase 192 parse/judgement, Phase 197 default-off `smartctl` collector + `GET /api/system/smart` | Needs `smartctl` and raw-device access; NVMe logs are not parsed yet |
+| S06 Disk health (SMART) | Partial | Phase 192 parse/judgement, Phase 197 default-off `smartctl` collector + `GET /api/system/smart`, Phase 203 `smart.summary` agent tool | Needs `smartctl` and raw-device access; NVMe logs are not parsed yet |
 | S07 Storage pool monitoring | Partly | trim-cli `storage.pools` | Degradation interpretation is missing |
 | S08 Filesystem monitoring | Partly | Phase 161 snapshot | Read-only mount detection is missing |
-| S09 Network status | Partly | trim-cli `monitor.net` | Throughput and packet loss are not parsed |
+| S09 Network status | Partly | trim-cli `monitor.net`, Phase 205 `/proc/net/dev` parsing with incremental sampling, Phase 210 `GET /api/network/interfaces` | Packet loss and per-interface errors are not parsed; no history series |
 | S10 Service status | Implemented | Phase 190 parse layer, Phase 191 `GET /api/system/services` | Units come from a fixed server-side whitelist; no restart action by design |
-| S11 Docker status | Partly | trim-cli `docker.stats`, `docker.container.ls` | — |
-| S12 Temperature monitoring | Partial | Phase 193 judgement, Phase 196 `/sys/class/thermal` collector, Phase 197 `GET /api/system/thermal` | Thresholds are not per-model; no history |
-| S13 System events | Partial | Phase 194 parser, Phase 196 log tail, Phase 197 `GET /api/system/events` | Only three log formats; multi-line stack traces are dropped after the first line |
+| S11 Docker status | Partly | trim-cli `docker.stats`, `docker.container.ls`, Phase 204 stats parsing with bottleneck verdicts, Phase 210 `GET /api/docker/stats` | A disabled collector reports `unknown`; there is no history series |
+| S12 Temperature monitoring | Partial | Phase 193 judgement, Phase 196 `/sys/class/thermal` collector, Phase 197 `GET /api/system/thermal`, Phase 203 `thermal.status` agent tool | Thresholds are not per-model; no history |
+| S13 System events | Partial | Phase 194 parser, Phase 196 log tail, Phase 197 `GET /api/system/events`, Phase 207 evidence route, Phase 203 `events.recent` agent tool | Only three log formats; multi-line stack traces are dropped after the first line |
 | S14 Historical trends | Implemented | Phase 188 `summarizeTrend`, Phase 191 hourly history | Sampling follows page views, not a timer |
 | S15 Health score | Implemented | Phase 161 `scoreHealth` | Unknown data lowers the confidence of the score |
 | S16 Natural-language query | Partly | Phase 150 direct chat over registered tools | — |
 | S17 Capacity forecast | Implemented | Phase 188 `forecastCapacity`, Phase 191 forecast route | A fill date is only given when growth and sample count support it |
 | S18 Anomaly detection | Partly | Phase 162 evidence rules | No time-series baseline |
 | S19 Correlation analysis | Partly | Phase 162 `rankCauses` | — |
-| S20 Hardware capability assessment | Open | — | — |
+| S20 Hardware capability assessment | Partly | `app/device-capability.mjs`, Phase 186 `GET /api/system/capabilities` | Five dimensions only; no model-fit simulation |
 
 Data honesty rule: a section whose collector returns nothing is reported as
 `unknown` / 未采集. A value is never defaulted to a healthy-looking number.
@@ -71,7 +71,7 @@ Data honesty rule: a section whose collector returns nothing is reported as
 | Item | State | Where | Gap |
 | --- | --- | --- | --- |
 | D01 Fault intake | Partly | Phase 162 `buildDiagnosticReport` | The symptom is supplied by the caller |
-| D02 Log correlation | Partly | `app/diagnostic-evidence.mjs` collects the audit log and the tool trace | Log files and SMART are still not connected |
+| D02 Log correlation | Partly | `app/diagnostic-evidence.mjs` collects the audit log and the tool trace; Phase 207 log tail becomes evidence at `GET /api/diagnostics/log-evidence` | Kernel/journal files are collected, but correlation only ranks the evidence; SMART is still not connected |
 | D03 Fault classification | Implemented | Phase 162 `classifyEvidence` | — |
 | D04 Root-cause candidates | Implemented | Phase 162 `rankCauses` | — |
 | D05 Confidence statement | Implemented | Phase 162 `confirmed` / `likely` / `suspected` | — |
@@ -126,7 +126,7 @@ can only escalate to a human instead of proposing them.
 | --- | --- | --- | --- |
 | C01 Query system state | Partly | Phase 150 chat, Phase 161 snapshot, Phase 166 `GET /api/system/snapshot` | — |
 | C02 Query resource usage | Partly | trim-cli `monitor.*` | — |
-| C03 Query service state | Open | — | No service collector yet |
+| C03 Query service state | Partly | `app/service-status.mjs`, Phase 191 `GET /api/system/services`, Phase 203 `services.list` agent tool | Service control (C07) is deliberately out of scope |
 | C04 Query disk state | Partly | trim-cli `monitor.disk` | — |
 | C05 Query network state | Partly | trim-cli `monitor.net` | — |
 | C06 Query Docker | Partly | trim-cli `docker.*` | — |
@@ -153,7 +153,7 @@ per-intent command string builder in the chat path.
 | APP04 Dependency analysis | Partly | `app/docker-advisor.mjs` `describeComposeDependencies` | Declared configuration only; no image resolution |
 | APP05 Compose analysis | Partly | trim-cli `docker.compose.ls` | — |
 | APP06 Deployment plan | Open | — | — |
-| APP07 Pre-deployment validation | Open | — | — |
+| APP07 Pre-deployment validation | Partly | `app/deployment-precheck.mjs`, Phase 202 `POST /api/deploy/precheck` | Judges the plan the caller sends; does not probe Docker or the host |
 | APP08 Configuration diff | Partly | `app/docker-advisor.mjs` `diffComposeConfiguration` | Diff is computed; applying it stays manual |
 | APP09 Deploy or update | Open | — | — |
 | APP10 Health check | Partly | `health-checks.*` Docker plan | — |
@@ -172,13 +172,13 @@ per-intent command string builder in the chat path.
 | --- | --- | --- | --- |
 | N01 Interface detection | Partly | trim-cli `monitor.net` | — |
 | N02 DNS diagnosis | Partly | `app/network-diagnostics.mjs` `diagnoseDns` | Runs on collected resolver output; no live query |
-| N03 Gateway detection | Open | — | — |
+| N03 Gateway detection | Partly | `detectGateway` (Phase 178), `parseRouteOutput`/`buildGatewayInput` (Phase 205) | Needs a route snapshot and a ping result; no sampling scheduler |
 | N04 Port detection | Partly | Server port state only | No host-wide port inventory |
 | N05 Service connectivity | Partly | `app/network-diagnostics.mjs` `checkServiceConnectivity` | Uses recorded probes; the Agent does not open a socket |
-| N06 Throughput analysis | Open | — | — |
+| N06 Throughput analysis | Partly | `analyzeThroughput` (Phase 178), `diffInterfaceCounters` (Phase 205) | Needs two counter samples; the collector is not scheduled |
 | N07 Connection failure location | Partly | `app/network-diagnostics.mjs` `locateConnectionFailure` | Limited to the evidence that was collected |
 | N08 Certificate check | Partly | Phase 198 `app/certificate-check.mjs` (verdict, wildcard-aware hostname match), Phase 202 `POST /api/network/certificate-check` | The certificate record is supplied by the caller: no TLS handshake, no collector, no alerting yet |
-| N09 Reverse proxy check | Open | — | — |
+| N09 Reverse proxy check | Partly | `inspectReverseProxy` (Phase 178), `buildProxyInput` (Phase 205) | Consumes parsed upstream/location data; nginx text is not parsed |
 | N10 Repair advice | Partly | Phase 162 read-only checks | — |
 | N11 Network configuration change | Open | — | No remote-access-safe change path exists |
 | N12 Connectivity inspection | Partly | `app/network-diagnostics.mjs` `runConnectivityPatrol` | Manual run only; no scheduled patrol |
@@ -220,7 +220,7 @@ require an explicit confirmation with a server-issued capability.
 | W04 Multi-step orchestration | Partly | `app/agent-core.mjs` plans, `app/workflow-engine.mjs`, Phase 168 | Workflow plans exist but cannot be authored in the UI |
 | W05 Conditional branches | Partly | `app/workflow-engine.mjs` skip rules | Branches are skip-on-failure, not user-defined conditions |
 | W06 Failure handling | Partly | Failure records are kept, workflow skip policy | No retry policy yet |
-| W07 Idempotency control | Open | — | — |
+| W07 Idempotency control | Partly | `app/idempotency.mjs`, Phase 202 `x-idempotency-key` on two routes | Two routes only; the store is in memory and resets on restart |
 | W08 Task lock | Partly | `app/workflow-engine.mjs` per-workflow lock | Only workflow runs are locked, tasks are not |
 | W09 Execution record | Implemented | Health-check history, task history | — |
 | W10 Notification system | Partly | `app/workflow-engine.mjs` notify hook | No delivery target yet, the hook is in-process only |
@@ -271,7 +271,7 @@ tool argument, so an untrusted page cannot drive the NAS.
 | AI11 Model health | Partly | Provider store health state | — |
 | AI12 Task reproduction | Partly | Tool trace and task history | — |
 | AI13 Provider adapter layer | Implemented | `app/model-chat-adapter.mjs` | — |
-| AI14 Local inference resource assessment | Open | — | — |
+| AI14 Local inference resource assessment | Partly | Phase 186 `device-capability.mjs` for the `agent-host` profile | No model-fit simulation and no accelerator probing |
 
 Missing capabilities are reported as unknown, never as a working feature.
 

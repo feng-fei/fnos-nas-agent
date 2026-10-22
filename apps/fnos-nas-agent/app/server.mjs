@@ -53,7 +53,15 @@ import { createNetworkPolicy } from "./network-policy.mjs";
 import { createWebFetcher } from "./web-fetch.mjs";
 import { createKnowledgeBase } from "./knowledge-base.mjs";
 import { buildDockerReport } from "./docker-advisor.mjs";
-import { runConnectivityPatrol } from "./network-diagnostics.mjs";
+import { runConnectivityPatrol, analyzeThroughput } from "./network-diagnostics.mjs";
+// Phase 204–209 的纯函数层：解析、判定、计划都在这些模块里，server 只负责
+// 取一次只读事实、把结果回给调用方，不在这里写业务判断。
+import { summarizeStats, detectStatsAnomalies, buildStatsEvidence } from "./docker-stats.mjs";
+import { createDockerStatsCollector } from "./docker-stats-collector.mjs";
+import { parseProcNetDev, diffInterfaceCounters, buildThroughputInput } from "./network-collectors.mjs";
+import { parseLogLines as parseEvidenceLogLines, buildLogEvidence } from "./log-evidence.mjs";
+import { normalizeComposition, validateComposition, planCompositionRun } from "./skill-composition.mjs";
+import { normalizeTriggerRule, evaluateTriggers } from "./workflow-triggers.mjs";
 import { createDuplicateScanner } from "./duplicate-scan.mjs";
 import { evaluateDeviceCapabilities, deviceEnvironment, DEVICE_PROFILES } from "./device-capability.mjs";
 import { collectServiceStatus } from "./service-status.mjs";
@@ -73,6 +81,8 @@ import { createLogTailCollector } from "./log-tail-collector.mjs";
 import { buildUpdateVerdict } from "./update-check.mjs";
 import { parseSmartInfo, parseSmartAttributes, summarizeSmartHealth } from "./smart-health.mjs";
 import { createSmartctlCollector } from "./smart-collector.mjs";
+import { createSystemToolDefinitions } from "./system-tools.mjs";
+import { createDeviceProfileStore, mergeProfile, profileFreshness } from "./device-profile.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -502,6 +512,96 @@ const mcpToolSource = {
     tool.risk === "read-only" ? tool : { ...tool, risk: "destructive" }),
   invoke: (toolId, args, options) => mcpBridge.invoke(toolId, args, options)
 };
+// Phase 203：已经采集到的只读事实同时作为 Agent 工具暴露。没有这一步，模型
+// 只能在页面上看到「服务状态 / 磁盘健康 / 温度」，问它却答不上来。
+// 七个工具全部 risk: "read-only"，只读采集器、不写任何状态；采集器没启用时
+// 返回 null，由模块归一成 collector-unavailable（没测到 ≠ 正常）。
+const systemToolDefinitions = createSystemToolDefinitions({
+  services: () => collectServiceStatus({ units: FNOS_SERVICE_UNITS, run: serviceStatusCollector }),
+  smart: async () => {
+    if (!smartCollector) return null;
+    const collected = await smartCollector();
+    return {
+      devices: (Array.isArray(collected?.devices) ? collected.devices : []).map((entry) => {
+        const health = summarizeSmartHealth({
+          info: parseSmartInfo(entry.text),
+          attributes: parseSmartAttributes(entry.text)
+        });
+        return { device: entry.device, verdict: health.verdict, findings: health.findings };
+      }),
+      notes: collected?.notes ?? []
+    };
+  },
+  thermal: () => {
+    if (!thermalCollector) return null;
+    const collected = thermalCollector();
+    const normalized = normalizeThermalReadings(collected.readings);
+    return summarizeThermals(normalized.readings);
+  },
+  events: () => {
+    if (!logTailCollector) return null;
+    const collected = logTailCollector();
+    const parsed = parseLogLines(collected?.text ?? "");
+    return summarizeEvents(parsed.events, { limit: 20 });
+  },
+  snapshot: () => buildSystemSnapshot({ collect: (sectionId) => systemCollector.collect(sectionId) }),
+  capabilities: () => evaluateDeviceCapabilities(
+    deviceEnvironment({
+      platform: process.platform,
+      arch: process.arch,
+      cpuCores: os.cpus().length,
+      totalMemoryBytes: os.totalmem(),
+      storageType: process.env.AGENT_STORAGE_TYPE || ""
+    }),
+    { profile: "agent-host" }
+  ),
+  // 趋势与 /api/system/capacity-forecast 走同一条路：读快照→采样→按盘算趋势。
+  forecast: async (args = {}) => {
+    const parsedHorizon = Number.parseInt(String(args.horizonDays ?? ""), 10);
+    const horizonDays = Number.isSafeInteger(parsedHorizon) ? Math.min(Math.max(parsedHorizon, 1), 365) : 30;
+    const diskSnapshot = await buildSystemSnapshot({ collect: (sectionId) => systemCollector.collect(sectionId) });
+    const storage = diskSnapshot.sections.find((section) => section.id === "storage");
+    const disks = [];
+    for (const disk of Array.isArray(storage?.values?.disks) ? storage.values.disks : []) {
+      const name = typeof disk?.name === "string" ? disk.name : "";
+      if (!name) continue;
+      const usedBytes = typeof disk.usedBytes === "number" ? disk.usedBytes : null;
+      const totalBytes = typeof disk.totalBytes === "number" ? disk.totalBytes : null;
+      if (usedBytes === null && totalBytes === null) continue;
+      disks.push({ name, usedBytes, totalBytes });
+    }
+    const at = new Date().toISOString();
+    const sampling = disks.length
+      ? capacityHistory.append({ at, disks: disks.map((disk) => ({ name: disk.name, totalBytes: disk.totalBytes, usedBytes: disk.usedBytes })) })
+      : { appended: false, reason: "no-disk-data", records: capacityHistory.read().records };
+    const records = Array.isArray(sampling.records) ? sampling.records : [];
+    return {
+      generatedAt: at,
+      horizonDays,
+      storageStatus: typeof storage?.status === "string" ? storage.status : "unknown",
+      sampling: { appended: sampling.appended === true, reason: sampling.reason ?? null, storedRecords: records.length },
+      disks: disks.slice(0, MAX_TREND_DISKS).map((disk) => {
+        const series = [];
+        for (const record of records) {
+          const hit = record.disks.find((item) => item.name === disk.name);
+          if (!hit || hit.usedBytes === null) continue;
+          series.push({ at: record.at, diskUsedBytes: hit.usedBytes, diskTotalBytes: hit.totalBytes });
+        }
+        return { disk: disk.name, sampleCount: series.length, ...buildTrendVerdict(series, { horizonDays }) };
+      })
+    };
+  }
+});
+const systemToolSource = {
+  id: "system",
+  kind: "builtin",
+  label: "系统只读事实",
+  list: () => systemToolDefinitions.map(({ invoke: _invoke, ...definition }) => definition),
+  invoke: (toolId, args) => {
+    const definition = systemToolDefinitions.find((entry) => entry.id === toolId);
+    return definition ? definition.invoke(args) : { ok: false, reason: "unknown-tool" };
+  }
+};
 const toolRegistry = createToolRegistry({
   sources: [
     {
@@ -511,6 +611,7 @@ const toolRegistry = createToolRegistry({
       list: () => readOnlyTools.list(),
       invoke: (toolId, args, options) => readOnlyTools.invoke(toolId, args, options)
     },
+    systemToolSource,
     mcpToolSource
   ],
   executionPolicy,
@@ -563,6 +664,41 @@ const serviceStatusCollector = process.env.FNOS_AGENT_SERVICE_COLLECTOR === "off
 // Disk usage history for the trend forecast. Samples are written next to the
 // other agent data, one record per hour at most, capped at 720 records.
 const capacityHistory = createCapacityHistory({ dataDir });
+// Phase 208：设备档案与用户偏好。只存「这台机器是什么、机主偏好什么」，
+// 不存凭据；序列号写盘前只保留后 4 位。
+const deviceProfiles = createDeviceProfileStore({ dataDir });
+
+// Phase 204：容器实时统计只采一次快照（--no-stream），固定 argv、带超时。
+// 采集器可用环境变量关掉；关掉后路由返回 collector-disabled，不伪造数据。
+const dockerStatsCollector = process.env.FNOS_AGENT_DOCKER_STATS_COLLECTOR === "off"
+  ? null
+  : createDockerStatsCollector();
+const DOCKER_STATS_HISTORY_LIMIT = 200;
+const dockerStatsHistory = [];
+
+// Phase 206：触发规则来自 dataDir 下的 JSON 文件（[{...rule}]）。判定结果只
+// 返回给调用方，本进程不自动执行 workflow：是否真的跑，交给操作员决定。
+const triggerRulesPath = dataDir ? join(dataDir, "workflow-triggers.json") : "";
+async function loadTriggerRules() {
+  if (!triggerRulesPath) return { rules: [], note: "no-data-dir" };
+  try {
+    const raw = await readFile(triggerRulesPath, "utf8");
+    const parsed = JSON.parse(raw);
+    const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.triggers) ? parsed.triggers : null;
+    if (!list) return { rules: [], note: "rules-invalid" };
+    const rules = [];
+    const notes = [];
+    for (const [index, entry] of list.entries()) {
+      const normalized = normalizeTriggerRule(entry);
+      if (normalized.ok === true) rules.push(normalized.rule);
+      else notes.push(`invalid-rule:${index}:${normalized.reason}`);
+    }
+    return { rules, note: notes.join(",") };
+  } catch (error) {
+    if (error?.code === "ENOENT") return { rules: [], note: "no-rules-file" };
+    return { rules: [], note: "rules-unreadable" };
+  }
+}
 const MAX_TREND_DISKS = 4;
 const MAX_BATCH_RENAME_APPLY = 50;
 
@@ -793,6 +929,12 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/system/thermal") return "system.thermal";
   if (pathname === "/api/system/events") return "system.events";
   if (pathname === "/api/system/smart") return "system.smart";
+  if (pathname === "/api/system/device-profiles") return "system.device-profiles";
+  if (pathname.startsWith("/api/system/device-profiles/")) {
+    if (method === "PUT") return "system.device-profile.write";
+    if (method === "DELETE") return "system.device-profile.delete";
+    return "system.device-profile";
+  }
   if (pathname === "/api/system/update-check") return "system.update-check";
   if (pathname === "/api/diagnostics/report") return "diagnostics.report";
   if (pathname === "/api/diagnostics/evidence") return "diagnostics.evidence";
@@ -810,6 +952,12 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/network/policy") return "network.policy";
   if (pathname === "/api/network/check") return "network.check";
   if (pathname === "/api/network/diagnostics") return "network.diagnostics";
+  if (pathname === "/api/network/interfaces") return "network.interfaces";
+  if (pathname === "/api/docker/stats") return "docker.stats";
+  if (pathname === "/api/diagnostics/log-evidence") return "diagnostics.log-evidence";
+  if (pathname === "/api/compositions/validate") return "compositions.validate";
+  if (pathname === "/api/compositions/plan") return "compositions.plan";
+  if (pathname === "/api/workflows/triggers/evaluate") return "workflows.triggers";
   if (pathname === "/api/web/fetch") return "web.fetch";
   if (pathname === "/api/knowledge") return "knowledge.list";
   if (pathname === "/api/knowledge/stats") return "knowledge.stats";
@@ -1823,6 +1971,57 @@ const server = createServer(async (req, res) => {
           : "温度来自 /sys/class/thermal 的只读读数；65℃ 预警、80℃ 危险，阈值未按机型标定。"
       });
     }
+    // Phase 208：设备档案与用户偏好。读接口给出 freshness（unknown 不等于新鲜），
+    // 写接口只接受白名单字段，序列号落盘前只留后 4 位，凭据键一律删掉。
+    if (url.pathname === "/api/system/device-profiles") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const stored = await deviceProfiles.list();
+      const list = Array.isArray(stored) ? stored : Array.isArray(stored?.profiles) ? stored.profiles : [];
+      const profiles = list.map((profile) => ({
+        ...profile,
+        freshness: profileFreshness(profile)
+      }));
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        profiles,
+        state: await deviceProfiles.state(),
+        note: "档案只记录机主描述过的硬件与偏好；freshness=unknown 表示没有可信时间，不代表新鲜。"
+      });
+    }
+    const deviceProfileMatch = url.pathname.match(/^\/api\/system\/device-profiles\/([a-z0-9][a-z0-9._-]{0,63})$/);
+    if (deviceProfileMatch) {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      const profileId = deviceProfileMatch[1];
+      if (req.method === "GET") {
+        const found = await deviceProfiles.get(profileId);
+        if (found.ok !== true) return reply(res, 404, { error: "Unknown device profile" });
+        return reply(res, 200, { profile: { ...found.profile, freshness: profileFreshness(found.profile) } });
+      }
+      if (req.method === "PUT") {
+        if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+        if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+          return reply(res, 415, { error: "Expected application/json" });
+        const body = await jsonBody(req);
+        const existing = await deviceProfiles.get(profileId);
+        const merged = mergeProfile(existing.ok === true ? existing.profile : null, { ...(body ?? {}), id: profileId });
+        if (merged.ok === false) return reply(res, 400, { error: merged.reason });
+        const written = await deviceProfiles.put(merged.profile);
+        if (written.ok !== true) return reply(res, 409, { error: written.reason });
+        return reply(res, 200, {
+          profile: { ...written.profile, freshness: profileFreshness(written.profile) },
+          changedFields: merged.changedFields,
+          droppedFields: merged.droppedFields
+        });
+      }
+      if (req.method === "DELETE") {
+        if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+        const removed = await deviceProfiles.remove(profileId);
+        if (removed.ok !== true) return reply(res, 404, { error: "Unknown device profile" });
+        return reply(res, 200, { removed: true, id: profileId });
+      }
+      return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, PUT, DELETE" });
+    }
     if (url.pathname === "/api/system/events") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
@@ -2062,6 +2261,163 @@ const server = createServer(async (req, res) => {
       const input = await jsonBody(req);
       if (!input || typeof input !== "object" || Array.isArray(input)) return reply(res, 400, { error: "An object of probe data is required" });
       return reply(res, 200, runConnectivityPatrol(input));
+    }
+    // Phase 204：容器实时统计。采集器失败或关闭时如实说「没测到」，不补零。
+    if (url.pathname === "/api/docker/stats") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      let collected = null;
+      let collectorNote = "";
+      if (!dockerStatsCollector) collectorNote = "collector-disabled";
+      else {
+        try {
+          collected = await dockerStatsCollector();
+        } catch {
+          collectorNote = "collector-failed";
+        }
+      }
+      const fresh = Array.isArray(collected?.samples) ? collected.samples : [];
+      if (fresh.length) {
+        dockerStatsHistory.push(...fresh.map((sample) => ({ ...sample, at: collected.collectedAt })));
+        while (dockerStatsHistory.length > DOCKER_STATS_HISTORY_LIMIT) dockerStatsHistory.shift();
+      }
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        samples: fresh.length,
+        summary: summarizeStats(dockerStatsHistory),
+        anomalies: detectStatsAnomalies(dockerStatsHistory),
+        evidence: buildStatsEvidence(dockerStatsHistory),
+        dropped: collected?.dropped ?? [],
+        notes: [...(collected?.notes ?? []), ...(collectorNote ? [collectorNote] : [])],
+        note: fresh.length
+          ? "样本来自 docker stats --no-stream；CPU% 未按核数归一化，阈值只做参考。"
+          : "这次没有取到容器统计；这不代表容器健康，只代表没测到。"
+      });
+    }
+    // Phase 205：接口吞吐。读 /proc/net/dev 两次取 1 秒窗口的差分，是唯一一次
+    // 本进程发起的只读采样；采不到就是 collector-disabled/failed。
+    if (url.pathname === "/api/network/interfaces") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      let firstText = "";
+      try {
+        firstText = await readFile("/proc/net/dev", "utf8");
+      } catch {
+        return reply(res, 200, {
+          generatedAt: new Date().toISOString(),
+          verdict: "unknown",
+          interfaces: [],
+          notes: ["collector-disabled"],
+          note: "这台机器没有 /proc/net/dev（不是 Linux），接口吞吐无法测量。"
+        });
+      }
+      const first = parseProcNetDev(firstText);
+      const startedAt = Date.now();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      try {
+        const second = parseProcNetDev(await readFile("/proc/net/dev", "utf8"));
+        const windowMs = Date.now() - startedAt;
+        const diffs = diffInterfaceCounters(first, second, { elapsedMs: windowMs });
+        const throughput = analyzeThroughput(buildThroughputInput({ diffs, windowMs }));
+        return reply(res, 200, {
+          generatedAt: new Date().toISOString(),
+          windowMs,
+          verdict: throughput.verdict ?? "unknown",
+          interfaces: diffs?.interfaces ?? diffs ?? [],
+          throughput,
+          note: "吞吐来自 1 秒窗口的计数器差分；窗口内没有流量就报 0，不补零也不猜。"
+        });
+      } catch {
+        return reply(res, 200, {
+          generatedAt: new Date().toISOString(),
+          verdict: "unknown",
+          interfaces: first.interfaces,
+          notes: ["collector-failed"],
+          note: "第二次读 /proc/net/dev 失败，这次没有可信吞吐。"
+        });
+      }
+    }
+    // Phase 207：日志证据化。只解析日志尾部，证据里不带原文，避免把整行日志
+    // 搬进模型上下文。
+    if (url.pathname === "/api/diagnostics/log-evidence") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      let collected = null;
+      let collectorNote = "";
+      if (!logTailCollector) collectorNote = "collector-disabled";
+      else {
+        try {
+          collected = logTailCollector();
+        } catch {
+          collectorNote = "collector-failed";
+        }
+      }
+      const parsedLines = parseEvidenceLogLines(collected?.text ?? "");
+      const entries = Array.isArray(parsedLines?.entries)
+        ? parsedLines.entries
+        : Array.isArray(parsedLines)
+          ? parsedLines
+          : [];
+      const evidence = buildLogEvidence(entries);
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        sources: collected?.sources ?? [],
+        parsed: entries.length,
+        dropped: parsedLines?.dropped ?? [],
+        evidence,
+        notes: [...(collected?.notes ?? []), ...(parsedLines?.notes ?? []), ...(collectorNote ? [collectorNote] : [])],
+        note: evidence.evidence?.length
+          ? "证据只保留类别、级别与计数，不携带原始日志行。"
+          : "这次没有读到可疑日志行；这不等于系统没有错误。"
+      });
+    }
+    // Phase 209：技能组合的校验与运行计划。这里只判不跑：计划里的 destructive
+    // 步骤仍然要走审批，路由不会代替操作员执行任何技能。
+    if (url.pathname === "/api/compositions/validate" || url.pathname === "/api/compositions/plan") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      if (!input || typeof input !== "object" || Array.isArray(input)) return reply(res, 400, { error: "A composition object is required" });
+      const normalized = normalizeComposition(input.composition ?? input);
+      if (normalized.ok === false) return reply(res, 400, { error: normalized.reason });
+      const skills = Array.isArray(input.skills) ? input.skills : [];
+      if (url.pathname === "/api/compositions/validate") {
+        return reply(res, 200, {
+          generatedAt: new Date().toISOString(),
+          composition: normalized.composition,
+          report: validateComposition(normalized.composition, { skills })
+        });
+      }
+      const plan = planCompositionRun(normalized.composition, {
+        resolveSkill: (skillId) => skills.find((skill) => skill?.id === skillId) ?? null,
+        facts: input.facts && typeof input.facts === "object" ? input.facts : {}
+      });
+      return reply(res, 200, { generatedAt: new Date().toISOString(), composition: normalized.composition, plan });
+    }
+    // Phase 206：触发判定。规则来自 dataDir/workflow-triggers.json，事实由调用方
+    // 传入；本路由只回「哪些该触发」，不会自动执行 workflow。
+    if (url.pathname === "/api/workflows/triggers/evaluate") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const body = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+      const loaded = Array.isArray(body.rules) ? { rules: body.rules, note: "" } : await loadTriggerRules();
+      const state = body.state && typeof body.state === "object" ? body.state : {};
+      const facts = body.facts && typeof body.facts === "object" ? body.facts : {};
+      const evaluated = evaluateTriggers(loaded.rules, facts, { now: Date.now(), state });
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        ruleCount: loaded.rules.length,
+        ...evaluated,
+        notes: [...(loaded.note ? [loaded.note] : []), ...(Array.isArray(evaluated.notes) ? evaluated.notes : [])],
+        note: "判定结果不会自动执行；要跑 workflow 请调用 POST /api/workflows/:id/run 并走审批。"
+      });
     }
     if (url.pathname === "/api/network/check") {
       const active = sessionFor(req);

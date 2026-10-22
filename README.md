@@ -52,6 +52,14 @@ Core development is active. The repository currently includes:
 - System events from the log tail: kmsg, journalctl-short and `LEVEL:` lines are normalised, repeats are grouped, and the log is graded ok/warning/critical — with dropped lines accounted for exactly (Phase 194/196/197).
 - SMART health that never guesses: the ATA attribute table is parsed for reallocated/pending/offline sectors, CRC errors and temperature; a disc that cannot be read is `unknown`, and `smartctl` stays off unless `FNOS_AGENT_SMART_COLLECTOR=on` (Phase 192/197).
 - An upgrade check that does not phone home: strict SemVer comparison against a version the caller supplies, `unknown` when either side cannot be parsed, and downgrades are never offered (Phase 195/197).
+- System facts as tools: services, SMART, thermal, events, the snapshot, the capability map and the capacity forecast are defined once and reachable both as HTTP routes and as registry tools, so the agent, the tool panel and the MCP bridge see the same contract (Phase 203/210).
+- Docker samples with a stated gap: `docker stats --no-stream` is parsed into usage and bottleneck verdicts, and a disabled or failing collector reports `unknown` instead of a healthy-looking zero (Phase 204/210).
+- Network throughput from `/proc/net/dev` with incremental sampling: a missing counter is `unknown`, never zero traffic (Phase 205/210).
+- Workflow trigger evaluation that only judges: threshold, event and timer rules produce the workflows that would fire, the invalid rules are listed by name, and nothing is executed (Phase 206/210).
+- Log evidence instead of log dumps: the tail is compressed into categories, severities and counts with a redacted summary, and the original line never leaves the server (Phase 207/210).
+- Device profiles that the owner writes: credentials are dropped before writing, a serial number keeps only its last four characters, and freshness is `unknown` when no trustworthy time exists (Phase 208/210).
+- Skill composition: a composition is normalised, validated across seven error classes, topologically ordered and planned without running anything, and its permissions can only escalate (Phase 209/210).
+- An audit whitelist that keeps up with the routes: every name returned by the route table is whitelisted, so a new route records its own name instead of collapsing to `other_api`, and a static test fails the build when the two drift apart (Phase 210).
 
 **Runtime and validation:** Node.js 26.x is the supported development and CI runtime. GitHub Actions builds an unsigned x86 CI test FPK, inspects the archive, verifies SHA-256 and release-manifest consistency, and uploads the artifact for 14 days. A separate job creates GitHub build-provenance attestation only for verified `main` builds; pull requests do not receive OIDC/attestation permissions. CI success does not mean the package has been installed or validated on a real fnOS NAS; lifecycle acceptance remains a separate manual staging gate.
 
@@ -197,6 +205,14 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 199 — Idempotency](docs/phase-199-idempotency.md)
 - [Phase 201 — Deployment Precheck](docs/phase-201-deployment-precheck.md)
 - [Phase 202 — Deploy, Certificate and Idempotency Wiring](docs/phase-202-deploy-cert-wiring.md)
+- [Phase 203 — System Read-only Tool Definitions](docs/phase-203-system-tools.md)
+- [Phase 204 — Docker Stats Parsing](docs/phase-204-docker-stats.md)
+- [Phase 205 — Network Collectors](docs/phase-205-network-collectors.md)
+- [Phase 206 — Workflow Triggers](docs/phase-206-workflow-triggers.md)
+- [Phase 207 — Log Evidence](docs/phase-207-log-evidence.md)
+- [Phase 208 — Device Profiles](docs/phase-208-device-profile.md)
+- [Phase 209 — Skill Composition](docs/phase-209-skill-composition.md)
+- [Phase 210 — Wiring 203–209 and the Audit Whitelist](docs/phase-210-wiring.md)
 
 - [Phase 94 — Model Catalog HTTP Integration](docs/phase-94-model-catalog-http.md)
 - [Phase 95 — Searchable Model Catalog Picker](docs/phase-95-model-catalog-search.md)
