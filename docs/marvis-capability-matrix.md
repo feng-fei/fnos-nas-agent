@@ -1,4 +1,4 @@
-﻿# Marvis capability matrix
+# Marvis capability matrix
 
 Every numbered item of the product checklist in
 [marvis-feature-checklist.md](marvis-feature-checklist.md) with its state in
@@ -51,14 +51,14 @@ State values:
 | S07 Storage pool monitoring | Partly | trim-cli `storage.pools` | Degradation interpretation is missing |
 | S08 Filesystem monitoring | Partly | Phase 161 snapshot | Read-only mount detection is missing |
 | S09 Network status | Partly | trim-cli `monitor.net` | Throughput and packet loss are not parsed |
-| S10 Service status | Open | — | — |
+| S10 Service status | Implemented | Phase 190 parse layer, Phase 191 `GET /api/system/services` | Units come from a fixed server-side whitelist; no restart action by design |
 | S11 Docker status | Partly | trim-cli `docker.stats`, `docker.container.ls` | — |
 | S12 Temperature monitoring | Open | — | — |
 | S13 System events | Open | — | — |
-| S14 Historical trends | Open | — | — |
+| S14 Historical trends | Implemented | Phase 188 `summarizeTrend`, Phase 191 hourly history | Sampling follows page views, not a timer |
 | S15 Health score | Implemented | Phase 161 `scoreHealth` | Unknown data lowers the confidence of the score |
 | S16 Natural-language query | Partly | Phase 150 direct chat over registered tools | — |
-| S17 Capacity forecast | Open | — | — |
+| S17 Capacity forecast | Implemented | Phase 188 `forecastCapacity`, Phase 191 forecast route | A fill date is only given when growth and sample count support it |
 | S18 Anomaly detection | Partly | Phase 162 evidence rules | No time-series baseline |
 | S19 Correlation analysis | Partly | Phase 162 `rankCauses` | — |
 | S20 Hardware capability assessment | Open | — | — |
@@ -103,7 +103,7 @@ can only escalate to a human instead of proposing them.
 | F07 Duplicate file detection | Implemented | Phase 163 `detectDuplicates`, Phase 184 scan route, Phase 186 UI entry | Two-stage size plus hash, bounded; single-directory scope by design |
 | F08 Temporary file identification | Implemented | `files.inspect` | — |
 | F09 Automatic archiving | Partly | Phase 163 `planArchive` | Produces a plan, never moves files |
-| F10 Batch rename | Open | — | — |
+| F10 Batch rename | Implemented | Phase 189 planner, Phase 191 plan/apply routes and UI | Single directory only, 50 items per apply, no swap rename |
 | F11 Organising preview | Implemented | Phase 163 dry-run plan | — |
 | F12 Image OCR | Open | — | — |
 | F13 AI gallery | Partly | trim-cli `photos.search` | — |
@@ -376,10 +376,12 @@ risk of the action it performs and goes through the same execution policy.
 Ordered by the checklist's own priority and by how much the gap blocks the
 operating loop:
 
-1. **Diagnosis source connection (D02, S06, S10, S13).** The diagnosis engine
+1. **Diagnosis source connection (D02, S06, S13).** The diagnosis engine
    now ranks causes from evidence, and the audit log, the tool trace, the
-   health checks and the system snapshot feed it (Phase 167). Log files,
-   SMART and service events are still missing.
+   health checks and the system snapshot feed it (Phase 167). Service state
+   became readable in Phase 191 (S10) but is not yet one of the diagnosis
+   evidence sources; log files, SMART data and service event streams are
+   still missing.
 2. **Verified write paths (C07–C10, APP09, D08–D11).** Every mutation is
    still absent. They must arrive one at a time, each with a preview, a
    capability-issued approval and a verification step.

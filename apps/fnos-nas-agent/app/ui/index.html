@@ -201,6 +201,25 @@
           </div>
         </details>
 
+        <details class="card card--flat">
+          <summary class="card__head">
+            <div>
+              <h3 class="card__title">服务状态与容量趋势</h3>
+              <p class="card__sub">fnOS 核心服务是否在跑，以及磁盘用量的历史趋势（只读；每次刷新记一次采样，同小时不重复记）。</p>
+            </div>
+          </summary>
+          <div class="card__body">
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" id="runtime-refresh" type="button">刷新服务与趋势</button>
+            </div>
+            <p class="field__hint" id="runtime-status" role="status">登录后点击刷新读取服务状态与容量趋势。</p>
+            <h4 class="card__title">服务状态</h4>
+            <pre id="runtime-services">尚未读取。</pre>
+            <h4 class="card__title">容量趋势</h4>
+            <pre id="runtime-capacity">尚未读取。</pre>
+          </div>
+        </details>
+
 
     <section class="page hidden" id="files-card" data-title="文件管理" data-sub="浏览、上传与整理 NAS 文件">
       <div class="page__head">
@@ -242,6 +261,40 @@
           <div class="card__body">
             <p class="field__hint" id="file-duplicates-status" role="status">点击工具栏「查找重复」后在此显示结果。</p>
             <pre id="file-duplicates-result">尚未扫描。</pre>
+          </div>
+        </details>
+
+        <details class="card card--flat">
+          <summary class="card__head">
+            <h3 class="card__title">批量重命名（先规划、再执行）</h3>
+            <p class="card__sub">对当前目录里匹配的文件生成改名计划；执行时逐个改名，任何一步失败会自动回滚已改的项。</p>
+          </summary>
+          <div class="card__body">
+            <div class="row row--wrap">
+              <label class="field__label" for="rename-mode">模式</label>
+              <select id="rename-mode">
+                <option value="replace">字面替换</option>
+                <option value="prefix-suffix">加前缀/后缀</option>
+                <option value="sequence">顺序编号</option>
+                <option value="normalize">规范化空白与大小写</option>
+              </select>
+              <label class="field__label" for="rename-filter">只处理匹配</label>
+              <input id="rename-filter" type="text" placeholder="例如 *.jpg，留空表示全部" />
+            </div>
+            <div class="row row--wrap">
+              <input id="rename-find" type="text" placeholder="查找（字面替换）" />
+              <input id="rename-replace" type="text" placeholder="替换为" />
+              <input id="rename-prefix" type="text" placeholder="前缀" />
+              <input id="rename-suffix" type="text" placeholder="后缀" />
+              <input id="rename-start" type="number" min="1" step="1" value="1" title="起始编号" />
+              <input id="rename-step" type="number" min="1" step="1" value="1" title="步长" />
+            </div>
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" id="rename-preview" type="button">生成计划</button>
+              <button class="btn btn--primary" id="rename-apply" type="button" disabled>执行计划</button>
+            </div>
+            <p class="field__hint" id="rename-status" role="status">先生成计划，核对无误后再执行。</p>
+            <pre id="rename-result">尚未生成计划。</pre>
           </div>
         </details>
 

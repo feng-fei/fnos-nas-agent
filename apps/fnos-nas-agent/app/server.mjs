@@ -56,6 +56,11 @@ import { buildDockerReport } from "./docker-advisor.mjs";
 import { runConnectivityPatrol } from "./network-diagnostics.mjs";
 import { createDuplicateScanner } from "./duplicate-scan.mjs";
 import { evaluateDeviceCapabilities, deviceEnvironment, DEVICE_PROFILES } from "./device-capability.mjs";
+import { collectServiceStatus } from "./service-status.mjs";
+import { createSystemctlCollector, FNOS_SERVICE_UNITS } from "./service-status-collector.mjs";
+import { buildTrendVerdict } from "./capacity-forecast.mjs";
+import { createCapacityHistory } from "./capacity-history.mjs";
+import { planBatchRename, applyBatchRenamePlan } from "./batch-rename.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -538,6 +543,17 @@ function registerBuiltInWorkflows(engine) {
 // it could measure.
 const systemCollector = createSystemCollector({ trimCli, fileManager });
 
+// Reads systemd unit state for the fixed whitelist above. Opt out with
+// FNOS_AGENT_SERVICE_COLLECTOR=off (the route then reports every unit as
+// unknown, which is what "not measured" should look like).
+const serviceStatusCollector = process.env.FNOS_AGENT_SERVICE_COLLECTOR === "off" ? null : createSystemctlCollector({});
+
+// Disk usage history for the trend forecast. Samples are written next to the
+// other agent data, one record per hour at most, capped at 720 records.
+const capacityHistory = createCapacityHistory({ dataDir });
+const MAX_TREND_DISKS = 4;
+const MAX_BATCH_RENAME_APPLY = 50;
+
 // Reads the docker inventory the advisor analyses. A read that fails leaves the
 // section empty and the report says the section is unknown: a missing answer is
 // never turned into a healthy one. The collector only reads, it never changes a
@@ -683,6 +699,8 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/audit") return "audit.list";
   if (pathname === "/api/files/checksum") return "files.checksum";
   if (pathname === "/api/files/duplicates") return "files.duplicates";
+  if (pathname === "/api/files/rename-plan") return "files.rename-plan";
+  if (pathname === "/api/files/rename-apply") return "files.rename-apply";
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
   if (/^\/api\/skills\/[a-f0-9]{24}\/source-files$/.test(pathname) || /^\/api\/skills\/[a-f0-9]{24}\/source-preview$/.test(pathname)) return "skills.list";
@@ -705,6 +723,8 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/mcp/status") return "mcp.status";
   if (pathname === "/api/system/snapshot") return "system.snapshot";
   if (pathname === "/api/system/capabilities") return "system.capabilities";
+  if (pathname === "/api/system/services") return "system.services";
+  if (pathname === "/api/system/capacity-forecast") return "system.capacity-forecast";
   if (pathname === "/api/diagnostics/report") return "diagnostics.report";
   if (pathname === "/api/diagnostics/evidence") return "diagnostics.evidence";
   if (pathname === "/api/security/inspection") return "security.inspection";
@@ -981,6 +1001,45 @@ const server = createServer(async (req, res) => {
       }
       try{return reply(res,200,await fileManager.operate(body));}
       catch(e){const s=[400,403,404,409,413,415,503,507].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"File operation failed":e.message});}
+    }
+    if (url.pathname === "/api/files/rename-plan") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      // 只规划、不落盘：规划器是纯函数，所以这个接口可以放心地在预览阶段反复调用。
+      const body = await jsonBody(req);
+      const plan = planBatchRename(body?.entries, body?.rule, { maxEntries: MAX_BATCH_RENAME_APPLY });
+      return reply(res, 200, plan);
+    }
+    if (url.pathname === "/api/files/rename-apply") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const body = await jsonBody(req);
+      // 批量改名会一次动很多文件，所以必须由前端显式带上 confirm；客户端的一个
+      // 布尔值不是授权决定，这里只是防止误触，真正的闸门仍是执行策略与逐条校验。
+      if (body?.confirm !== true) return reply(res, 400, { error: "Batch rename requires confirm: true" });
+      const decision = executionPolicy.evaluate({ risk: "write", approved: false });
+      if (!decision.allowed) return reply(res, decision.statusCode || 403, { error: policyMessage(decision) });
+      const plan = planBatchRename(body?.entries, body?.rule, { maxEntries: MAX_BATCH_RENAME_APPLY });
+      if (plan.ok !== true) return reply(res, 409, { error: "Plan has conflicts or errors; nothing was renamed", plan });
+      try {
+        const result = await applyBatchRenamePlan(plan, {
+          rename: async (from, to) => {
+            const target = to.split("/").pop() || "";
+            await fileManager.operate({ action: "rename", path: from, name: target });
+          }
+        });
+        return reply(res, result.failed ? 409 : 200, { ok: result.failed === null, plan: plan.summary, result });
+      } catch (error) {
+        const status = [400, 403, 404, 409, 413, 415, 503, 507].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 500 ? "Batch rename failed" : error.message });
+      }
     }
     if (url.pathname === "/api/files/operations/batch") {
       if (req.method !== "POST") return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"POST"});
@@ -1539,6 +1598,62 @@ const server = createServer(async (req, res) => {
         note: report.dimensions.some((item) => item.id === "storage_type" && item.passed === null)
           ? "系统盘类型无法从进程侧读取；可用 AGENT_STORAGE_TYPE=ssd|hdd 显式声明后再看结论。"
           : ""
+      });
+    }
+    if (url.pathname === "/api/system/services") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // 只读：固定 argv 的 `systemctl show`，unit 名单在服务端常量里，请求方
+      // 不能指定要查哪个 unit，否则这里就变成读任意系统对象的口子。
+      // 采集器起不来（无 systemctl / 无权限）时每条都是 unknown，不会被当成健康。
+      const report = await collectServiceStatus({ units: FNOS_SERVICE_UNITS, run: serviceStatusCollector });
+      return reply(res, 200, report);
+    }
+    if (url.pathname === "/api/system/capacity-forecast") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // 每次读取都顺带采样一次：采样是去重的（同小时只留一条），所以刷新页
+      // 不会把序列刷乱；没有磁盘数据可采时照样返回趋势，只是不新增采样点。
+      const parsedHorizon = Number.parseInt(url.searchParams.get("horizonDays") || "", 10);
+      const horizonDays = Number.isSafeInteger(parsedHorizon) ? Math.min(Math.max(parsedHorizon, 1), 365) : 30;
+      const snapshot = await buildSystemSnapshot({ collect: (sectionId) => systemCollector.collect(sectionId) });
+      const storage = snapshot.sections.find((section) => section.id === "storage");
+      const disks = [];
+      for (const disk of Array.isArray(storage?.values?.disks) ? storage.values.disks : []) {
+        const name = typeof disk?.name === "string" ? disk.name : "";
+        if (!name) continue;
+        const usedBytes = typeof disk.usedBytes === "number" ? disk.usedBytes : null;
+        const totalBytes = typeof disk.totalBytes === "number" ? disk.totalBytes : null;
+        if (usedBytes === null && totalBytes === null) continue;
+        disks.push({ name, usedBytes, totalBytes });
+      }
+      const at = new Date().toISOString();
+      const sampling = disks.length
+        ? capacityHistory.append({ at, disks: disks.map((disk) => ({ name: disk.name, totalBytes: disk.totalBytes, usedBytes: disk.usedBytes })) })
+        : { appended: false, reason: "no-disk-data", records: capacityHistory.read().records };
+      const records = Array.isArray(sampling.records) ? sampling.records : [];
+      const trends = disks.slice(0, MAX_TREND_DISKS).map((disk) => {
+        const series = [];
+        for (const record of records) {
+          const hit = record.disks.find((item) => item.name === disk.name);
+          if (!hit || hit.usedBytes === null) continue;
+          series.push({ at: record.at, diskUsedBytes: hit.usedBytes, diskTotalBytes: hit.totalBytes });
+        }
+        return { disk: disk.name, sampleCount: series.length, ...buildTrendVerdict(series, { horizonDays }) };
+      });
+      return reply(res, 200, {
+        generatedAt: at,
+        horizonDays,
+        storageStatus: typeof storage?.status === "string" ? storage.status : "unknown",
+        sampling: {
+          appended: sampling.appended === true,
+          reason: sampling.reason ?? null,
+          storedRecords: records.length
+        },
+        disks: trends,
+        note: trends.length
+          ? "趋势只来自本机历次采样的磁盘用量；样本不足时只报当前用量，不给预测。"
+          : "这次没有读到磁盘用量，趋势无法计算；系统快照的存储段可能是 unknown。"
       });
     }
     if (url.pathname === "/api/diagnostics/report") {

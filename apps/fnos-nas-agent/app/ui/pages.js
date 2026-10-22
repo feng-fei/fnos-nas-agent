@@ -1533,6 +1533,59 @@ document.querySelector("#insights-refresh").addEventListener("click",()=>{refres
 
 
 /* ------------------------------------------------------------------ *
+ * 概览页：服务状态与容量趋势（只读）。
+ * 服务状态来自固定 unit 名单的 systemctl show；容量趋势来自历次采样。
+ * 两个请求并行，任一失败只影响对应区块；渲染一律 textContent。
+ * ------------------------------------------------------------------ */
+const SERVICE_VERDICT_LABELS={running:"运行中",stopped:"已停止",failed:"失败",unknown:"未知"};
+async function refreshRuntime(){
+ const statusEl=document.querySelector("#runtime-status");
+ const serviceEl=document.querySelector("#runtime-services");
+ const capacityEl=document.querySelector("#runtime-capacity");
+ if(!serviceEl||!capacityEl)return;
+ if(statusEl)statusEl.textContent="正在读取服务状态与容量趋势…";
+ const results=await Promise.all([insightRead("/api/system/services"),insightRead("/api/system/capacity-forecast")]);
+ const services=results[0],capacity=results[1];
+ if(services&&services.error){serviceEl.textContent="读取失败："+services.error;}
+ else{
+  const items=services&&Array.isArray(services.items)?services.items:[];
+  const summary=(services&&services.summary)||{};
+  const lines=["结论："+(summary.verdict||"unknown")+" · 运行 "+(summary.running||0)+" · 停止 "+(summary.stopped||0)+" · 失败 "+(summary.failed||0)+" · 未知 "+(summary.unknown||0)];
+  for(const item of items){
+   const verdict=SERVICE_VERDICT_LABELS[item.verdict]||SERVICE_VERDICT_LABELS.unknown;
+   const note=item.note?("（"+item.note+(item.reason?" · "+item.reason:"")+"）"):"";
+   const memory=typeof item.memoryCurrentBytes==="number"?(" · 内存 "+formatBytes(item.memoryCurrentBytes)):"";
+   lines.push("- "+(item.unit||item.id)+"："+verdict+memory+note);
+  }
+  const notes=Array.isArray(summary.notes)?summary.notes:[];
+  if(notes.length)lines.push("备注："+notes.join("；"));
+  serviceEl.textContent=lines.join("\n");
+ }
+ if(capacity&&capacity.error){capacityEl.textContent="读取失败："+capacity.error;}
+ else{
+  const disks=capacity&&Array.isArray(capacity.disks)?capacity.disks:[];
+  const sampling=(capacity&&capacity.sampling)||{};
+  const lines=["预测区间："+(capacity&&capacity.horizonDays?capacity.horizonDays+" 天":"30 天")+" · 已存采样 "+(sampling.storedRecords||0)+" 条（本次"+(sampling.appended?"已新增一条":"未新增"+(sampling.reason?"："+sampling.reason:""))+"）"];
+  if(!disks.length)lines.push("- 这次没有读到磁盘用量，无法计算趋势。");
+  for(const disk of disks){
+   lines.push("- "+disk.disk+"："+(disk.headline||"-"));
+   if(typeof disk.currentUsedBytes==="number"||typeof disk.currentTotalBytes==="number")
+    lines.push("  当前 "+formatBytes(disk.currentUsedBytes)+" / "+formatBytes(disk.currentTotalBytes)+"（"+(typeof disk.usedPercent==="number"?disk.usedPercent.toFixed(1):"-")+"%）");
+   if(typeof disk.projectedUsedBytes==="number")
+    lines.push("  预测 "+formatBytes(disk.projectedUsedBytes)+" · 增长 "+(typeof disk.diskGrowthBytesPerDay==="number"?formatBytes(Math.round(disk.diskGrowthBytesPerDay)):"-")+"/天 · 置信度 "+(disk.confidence||"-"));
+   if(typeof disk.daysUntilFull==="number")lines.push("  预计 "+(disk.daysUntilFull<=730?disk.daysUntilFull+" 天后写满":"两年内不会写满"));
+   if(Array.isArray(disk.notes)&&disk.notes.length)lines.push("  备注："+disk.notes.join("；"));
+   if(Array.isArray(disk.assumptions)&&disk.assumptions.length)lines.push("  假设："+disk.assumptions.join("；"));
+  }
+  if(capacity&&capacity.note)lines.push("说明："+capacity.note);
+  capacityEl.textContent=lines.join("\n");
+ }
+ if(statusEl)statusEl.textContent="已更新于 "+formatDateTime(new Date().toISOString());
+}
+document.querySelector("#runtime-refresh").addEventListener("click",()=>{refreshRuntime();});
+
+
+/* ------------------------------------------------------------------ *
  * 概览页：工作流计划、运行手册与诊断证据（只读）。
  * 三个请求并行，任一失败只影响对应区块，不会让整页报错；
  * 渲染一律 textContent，不拼 HTML。
@@ -1741,6 +1794,118 @@ async function refreshOverviewStats(){
  * 数据只经 GET 接口读取；所有文本交给渲染函数用 textContent 写入，
  * 本文件不拼 HTML。任一接口失败只让本区块显示错误，不影响其它页面。
  * ------------------------------------------------------------------ */
+/* ---------- Phase 191：批量重命名（计划 → 执行） ---------- */
+(function(){
+  const modeEl=document.querySelector("#rename-mode");
+  const filterEl=document.querySelector("#rename-filter");
+  const findEl=document.querySelector("#rename-find");
+  const replaceEl=document.querySelector("#rename-replace");
+  const prefixEl=document.querySelector("#rename-prefix");
+  const suffixEl=document.querySelector("#rename-suffix");
+  const startEl=document.querySelector("#rename-start");
+  const stepEl=document.querySelector("#rename-step");
+  const previewButton=document.querySelector("#rename-preview");
+  const applyButton=document.querySelector("#rename-apply");
+  const statusEl=document.querySelector("#rename-status");
+  const resultEl=document.querySelector("#rename-result");
+  if(!modeEl||!previewButton||!applyButton||!resultEl)return;
+  let pendingPlan=null;
+  const setStatus=(text)=>{if(statusEl)statusEl.textContent=text;};
+  const readNumber=(el,fallback)=>{const value=Number.parseInt(String(el&&el.value||""),10);return Number.isInteger(value)&&value>0?value:fallback;};
+
+  /* 只支持 * 与 ? 的通配匹配：用户输入的是文件名模式，不是正则。 */
+  function globToRegExp(pattern){
+    const escaped=String(pattern||"").trim();
+    if(!escaped||escaped==="*")return null;
+    let source="^";
+    for(const char of escaped){
+      if(char==="*")source+=".*";
+      else if(char==="?")source+=".";
+      else source+=char.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+    }
+    return new RegExp(source+"$","i");
+  }
+  function buildRule(){
+    const mode=modeEl.value;
+    if(mode==="replace")return{mode,find:String(findEl&&findEl.value||""),replace:String(replaceEl&&replaceEl.value||"")};
+    if(mode==="prefix-suffix")return{mode,prefix:String(prefixEl&&prefixEl.value||""),suffix:String(suffixEl&&suffixEl.value||"")};
+    if(mode==="sequence")return{mode,start:readNumber(startEl,1),step:readNumber(stepEl,1),width:3,separator:"-",keepExtension:true};
+    return{mode:"normalize",lowercase:false,spacesTo:"-",trim:true};
+  }
+  async function collectEntries(){
+    const params=new URLSearchParams({limit:"200",type:"all"});
+    if(currentFilePath)params.set("path",currentFilePath);
+    const response=await api("/api/files?"+params.toString());
+    const data=await response.json();
+    if(!response.ok)throw Error(data.error||("目录读取失败（HTTP "+response.status+"）"));
+    const matcher=globToRegExp(filterEl&&filterEl.value);
+    const entries=[];
+    for(const item of data.entries||[]){
+      if(!item||typeof item.path!=="string"||typeof item.name!=="string")continue;
+      if(matcher&&!matcher.test(item.name))continue;
+      entries.push({path:item.path,name:item.name,kind:item.type==="directory"?"dir":"file"});
+    }
+    return entries;
+  }
+  function renderPlan(plan){
+    const lines=[];
+    const summary=plan&&plan.summary?plan.summary:{};
+    lines.push("计划："+(plan&&plan.ok?"可执行":"有冲突，不能执行")+" · 共 "+(summary.total||0)+" 项 · 计划改名 "+(summary.planned||0)+" · 跳过 "+(summary.skipped||0)+" · 冲突 "+(summary.conflicts||0));
+    for(const step of (plan&&plan.plan)||[])lines.push("  "+step.from+"  →  "+step.to);
+    for(const item of (plan&&plan.conflicts)||[])lines.push("  冲突："+item.path+"（"+item.kind+"）"+(item.detail?" · "+item.detail:""));
+    for(const item of (plan&&plan.skipped)||[])lines.push("  跳过："+item.path+"（"+item.reason+"）");
+    for(const item of (plan&&plan.errors)||[])lines.push("  错误："+(item.code||"error")+" · "+(item.message||""));
+    resultEl.textContent=lines.join("\n");
+  }
+
+  previewButton.addEventListener("click",async()=>{
+    previewButton.disabled=true;
+    applyButton.disabled=true;
+    pendingPlan=null;
+    resultEl.textContent="正在生成计划…";
+    setStatus("正在读取当前目录并生成计划…");
+    try{
+      const entries=await collectEntries();
+      if(!entries.length){resultEl.textContent="当前目录里没有匹配的文件。";setStatus("换个匹配模式，或先进入目标目录。");return;}
+      const response=await api("/api/files/rename-plan",{method:"POST",body:JSON.stringify({entries,rule:buildRule()})});
+      const plan=await response.json();
+      if(!response.ok)throw Error(plan.error||("生成计划失败（HTTP "+response.status+"）"));
+      pendingPlan=plan;
+      renderPlan(plan);
+      applyButton.disabled=plan.ok!==true;
+      setStatus(plan.ok?"核对无误后点「执行计划」。":"计划里有冲突，先调整参数或过滤条件；没有任何文件被改动。");
+    }catch(error){
+      setStatus((error&&error.message)?error.message:"生成计划失败");
+    }finally{
+      previewButton.disabled=false;
+    }
+  });
+
+  applyButton.addEventListener("click",async()=>{
+    if(!pendingPlan||pendingPlan.ok!==true)return;
+    applyButton.disabled=true;
+    previewButton.disabled=true;
+    setStatus("正在执行…失败会自动回滚已改的项。");
+    try{
+      const entries=await collectEntries();
+      const response=await api("/api/files/rename-apply",{method:"POST",body:JSON.stringify({entries,rule:buildRule(),confirm:true})});
+      const data=await response.json();
+      if(!response.ok&&!data.result)throw Error(data.error||("执行失败（HTTP "+response.status+"）"));
+      const result=data.result||{};
+      const lines=["已改名 "+(result.applied||0)+" 项"+(result.failed?"，在第 "+result.failed.from+" 处失败并回滚 "+(result.rolledBack||0)+" 项":""),"结束时间："+formatDateTime(new Date().toISOString())];
+      for(const item of result.rollbackFailures||[])lines.push("回滚失败："+item.from+"（"+item.message+"）");
+      resultEl.textContent=lines.join("\n");
+      setStatus(result.failed?"执行中途失败，已尽力回滚；请核对目录后再试。":"执行完成。");
+      pendingPlan=null;
+      if(typeof refreshFiles==="function")await refreshFiles(currentFilePath,currentFileOffset);
+    }catch(error){
+      setStatus((error&&error.message)?error.message:"执行失败");
+    }finally{
+      previewButton.disabled=false;
+    }
+  });
+})();
+
 const knowledgePageState={
  entries:[],
  view:null,
@@ -2063,3 +2228,5 @@ init();
     });
   }
 })();
+
+

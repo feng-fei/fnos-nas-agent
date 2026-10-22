@@ -1,11 +1,11 @@
-﻿# Documentation index
+# Documentation index
 
 Every design and delivery document in this repository. Phase numbers are
 historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 188 documents (173 phase documents and 14 non-phase documents, plus this file).
+This index lists 192 documents (177 phase documents and 14 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -689,6 +689,18 @@ This index lists 188 documents (173 phase documents and 14 non-phase documents, 
 
 ### Phase 187
 - [Phase 187 — Skill package review](phase-187-skill-package-review.md) — The Phase 144 package parser was never imported: an imported Skill was reviewed for risky source but never for its own structure. This phase makes the structure a stored, comparable verdict and shows it on the Skill card, while a hand-edited verdict can never claim the server reviewed it.
+
+### Phase 188
+- [Phase 188 — Capacity trend forecast](phase-188-capacity-forecast.md) — Disk usage had no history and therefore no trend. This phase adds a pure planner that cleans samples, derives a growth rate with an explicit confidence, and only predicts a fill date when the evidence supports one.
+
+### Phase 189
+- [Phase 189 — Batch rename planner](phase-189-batch-rename.md) — Renaming many files one dialog at a time is slow and error-prone. This phase plans a batch as a pure function (four modes, four conflict classes) and executes it through an injected rename with an ordered rollback, so a failure halfway never leaves a half-renamed directory.
+
+### Phase 190
+- [Phase 190 — Service status parsing](phase-190-service-status.md) — "Is the service running?" was answered by nothing. This phase validates unit names, parses `systemctl show` output, and maps it to running/stopped/failed/unknown without ever guessing a verdict; a missing collector reports unknown instead of healthy.
+
+### Phase 191
+- [Phase 191 — Runtime wiring](phase-191-runtime-wiring.md) — The Phase 188–190 layers had no outlet: no route, no collector, no button. This phase adds the fixed-argv systemctl collector, the hourly disk-usage history, three guarded routes, and two UI cards (services/trend, plan-then-apply batch rename).
 
 ## This index
 
