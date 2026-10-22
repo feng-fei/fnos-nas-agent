@@ -78,6 +78,10 @@ const definitions = [
     id: "files.inspect", title: "文件卫生巡检", description: "只读检查授权目录中的大文件、久未修改的大文件、临时/备份文件名及疑似敏感文件名；只读取文件系统元数据，不读取正文，不修改文件。", risk: "read-only",
     inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, days: { type: "integer", minimum: 1, maximum: 3650 }, minBytes: { type: "integer", minimum: 0, maximum: 1000000000 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, additionalProperties: false }
   },
+  {
+    id: "media.photos.search", title: "搜索本地照片图库", description: "在已授权存储卷中按文件名、相机信息、拍摄日期、图片类别及是否带 GPS 元数据搜索；仅读取有限图片头和 EXIF 元数据，不返回 GPS 坐标、不上传图片。", risk: "read-only",
+    inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, query: { type: "string", maxLength: 160 }, dateFrom: { type: "string", maxLength: 10 }, dateTo: { type: "string", maxLength: 10 }, category: { type: "string", enum: ["photo", "screenshot", "scan", "other"] }, hasGps: { type: "boolean" }, limit: { type: "integer", minimum: 1, maximum: 50 } }, additionalProperties: false }
+  },
   { id: "documents.index-status", title: "本地文档库状态", description: "读取存放于应用私有数据目录的本地文档索引统计，不返回文档正文。", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
   { id: "documents.search", title: "搜索本地文档库", description: "在本地索引中按关键词检索文档，返回文件路径与经过打码的短摘要，不进行网络请求。", risk: "read-only", inputSchema: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 160 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, required: ["query"], additionalProperties: false } },
   { id: "documents.index-refresh", title: "更新本地文档索引", description: "扫描授权存储卷中的受支持文本文件并更新应用私有文档索引；受条目、时间、单文件与总读取量限制。仅修改应用私有索引，不修改 NAS 原文件。", risk: "write", inputSchema: { type: "object", properties: { force: { type: "boolean" }, maxFiles: { type: "integer", minimum: 1, maximum: 500 } }, additionalProperties: false } },
@@ -178,6 +182,10 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     if (id === "files.inspect") {
       if (!fileBrowser || typeof fileBrowser.inspect !== "function") throw Object.assign(new Error("File inspection is unavailable"), { statusCode: 503 });
       return fileBrowser.inspect(args.path || "", args.days ?? 90, args.minBytes ?? 1024 * 1024, args.limit ?? 10);
+    }
+    if (id === "media.photos.search") {
+      if (!fileBrowser || typeof fileBrowser.searchPhotos !== "function") throw Object.assign(new Error("Local photo search is unavailable"), { statusCode: 503 });
+      return fileBrowser.searchPhotos(args);
     }
     if (id === "documents.index-status") {
       if (!documentIndex) throw Object.assign(new Error("Local document index requires a configured app data directory"), { statusCode: 503 });

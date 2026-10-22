@@ -1,6 +1,7 @@
 import { readdir, lstat, realpath, open, opendir } from "node:fs/promises";
 import { constants } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { classifyPhoto, parseImageMetadata } from "./photo-metadata.mjs";
 
 const MAX_ENTRIES = 200;
 const DEFAULT_LIMIT = 100;
@@ -21,6 +22,15 @@ const MAX_INSPECT_VISITS = 5000;
 const MAX_INSPECT_DEPTH = 8;
 const MAX_INSPECT_RESULTS = 20;
 const MAX_INSPECT_MS = 4000;
+const MAX_PHOTO_VISITS = 2500;
+const MAX_PHOTO_DEPTH = 8;
+const MAX_PHOTO_RESULTS = 50;
+const MAX_PHOTO_SEARCH_MS = 3000;
+const MAX_PHOTO_HEADER_BYTES = 128 * 1024;
+const MAX_PHOTO_TOTAL_BYTES = 4 * 1024 * 1024;
+const PHOTO_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".tif", ".tiff", ".heic"]);
+const PHOTO_SKIP_DIRS = new Set([".git", "node_modules", ".ssh", ".gnupg", "secrets", "secret", "credentials", "credential", "private", "keyring"]);
+const PHOTO_CATEGORY_LABELS = Object.freeze({ photo: "照片", screenshot: "截图", scan: "扫描件", other: "其他图片" });
 const TEMPORARY_EXTENSIONS = new Set([".tmp", ".temp", ".bak", ".old", ".swp", ".cache", ".part", ".partial", ".crdownload", ".download"]);
 const SENSITIVE_DIRECTORY_NAMES = new Set(["secrets", "secret", "credentials", "credential", "private", "keyring"]);
 const CONTENT_TEXT_EXTENSIONS = new Set([
@@ -56,6 +66,12 @@ function redactContentSnippet(value) {
     .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret(?:[_-]?key)?|aws_secret_access_key|password|passwd|authorization)\s*["']?\s*[:=]\s*["']?)[^"'\s,;}{]+/gi, "$1[已隐藏]")
     .replace(/\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35})\b/g, "[已隐藏令牌]")
     .slice(0, 240);
+}
+
+function isValidDateOnly(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(value + "T00:00:00.000Z");
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 function within(root, target) {
@@ -710,5 +726,220 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     };
   }
 
-  return Object.freeze({ list, search, searchContent, inspect });
+  async function readPhotoHeader(fdPath, name, expectedInfo) {
+    let handle = null;
+    let bytesRead = 0;
+    try {
+      handle = await fs.open(join(fdPath, name), constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+      const before = await handle.stat({ bigint: true });
+      if (!before.isFile() ||
+          before.dev !== BigInt(expectedInfo.dev) ||
+          before.ino !== BigInt(expectedInfo.ino)) return { buffer: null, bytesRead: 0 };
+      const targetBytes = Math.min(Number(before.size), MAX_PHOTO_HEADER_BYTES);
+      const chunks = [];
+      let position = 0;
+      while (position < targetBytes) {
+        const buffer = Buffer.alloc(Math.min(16 * 1024, targetBytes - position));
+        const result = await handle.read(buffer, 0, buffer.length, position);
+        if (!result.bytesRead) break;
+        chunks.push(buffer.subarray(0, result.bytesRead));
+        position += result.bytesRead;
+      }
+      bytesRead = position;
+      const after = await handle.stat({ bigint: true });
+      if (after.dev !== before.dev || after.ino !== before.ino ||
+          after.size !== before.size || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs)
+        return { buffer: null, bytesRead };
+      return { buffer: Buffer.concat(chunks, position), bytesRead };
+    } catch {
+      return { buffer: null, bytesRead };
+    } finally {
+      if (handle) await handle.close().catch(() => {});
+    }
+  }
+
+  async function searchPhotos({
+    path: pathValue = "",
+    query: queryValue = "",
+    dateFrom = "",
+    dateTo = "",
+    category = "",
+    hasGps = undefined,
+    limit: requestedLimit = 20
+  } = {}) {
+    if (typeof pathValue !== "string" || pathValue.length > 2048 ||
+        typeof queryValue !== "string" || queryValue.length > 160 ||
+        typeof dateFrom !== "string" || typeof dateTo !== "string" ||
+        (dateFrom && !isValidDateOnly(dateFrom)) ||
+        (dateTo && !isValidDateOnly(dateTo)) ||
+        (dateFrom && dateTo && dateFrom > dateTo) ||
+        (category && !Object.hasOwn(PHOTO_CATEGORY_LABELS, category)) ||
+        (hasGps !== undefined && typeof hasGps !== "boolean") ||
+        !Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > MAX_PHOTO_RESULTS) {
+      throw Object.assign(new Error("Invalid photo search options"), { statusCode: 400 });
+    }
+    const roots = await getRoots();
+    if (!roots.length) {
+      return { roots: [], path: null, query: queryValue.trim(), count: 0, photos: [], scannedEntries: 0, scannedImages: 0, bytesRead: 0, partial: false, limitHits: [] };
+    }
+    let startPaths;
+    if (pathValue.trim()) {
+      const requestedPath = resolve(pathValue);
+      let actual;
+      try { actual = await fs.realpath(requestedPath); }
+      catch { throw Object.assign(new Error("Photo search directory not found"), { statusCode: 404 }); }
+      const allowedRoot = roots.find(candidate => within(candidate, actual));
+      if (!allowedRoot) throw Object.assign(new Error("Path is outside configured storage roots"), { statusCode: 403 });
+      const stat = await fs.lstat(actual);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) throw Object.assign(new Error("Photo search path is not a directory"), { statusCode: 400 });
+      startPaths = [{ path: actual, depth: 0, root: allowedRoot }];
+    } else {
+      startPaths = roots.map(root => ({ path: root, depth: 0, root }));
+    }
+
+    const query = queryValue.trim().toLocaleLowerCase();
+    const deadline = Date.now() + MAX_PHOTO_SEARCH_MS;
+    const queue = [...startPaths];
+    const photos = [];
+    const limitHits = new Set();
+    let scannedEntries = 0;
+    let scannedImages = 0;
+    let bytesRead = 0;
+    let partial = false;
+    let stop = false;
+
+    while (queue.length && !stop) {
+      if (Date.now() >= deadline || scannedEntries >= MAX_PHOTO_VISITS || bytesRead >= MAX_PHOTO_TOTAL_BYTES) {
+        limitHits.add(Date.now() >= deadline ? "time" : bytesRead >= MAX_PHOTO_TOTAL_BYTES ? "bytes" : "entries");
+        partial = true;
+        break;
+      }
+      if (photos.length >= requestedLimit) {
+        partial = queue.length > 0;
+        break;
+      }
+      const current = queue.shift();
+      let currentPath;
+      try { currentPath = await fs.realpath(current.path); }
+      catch {
+        if (current.depth === 0) throw Object.assign(new Error("Directory changed while searching photos; retry the operation"), { statusCode: 409 });
+        continue;
+      }
+      if (currentPath !== current.path) {
+        if (current.depth === 0) throw Object.assign(new Error("Directory changed while searching photos; retry the operation"), { statusCode: 409 });
+        continue;
+      }
+      if (!within(current.root, currentPath)) continue;
+      let currentInfo;
+      try { currentInfo = await fs.lstat(currentPath); } catch { continue; }
+      if (!currentInfo.isDirectory() || currentInfo.isSymbolicLink()) continue;
+      let directoryHandle = null;
+      let directoryTruncated = false;
+      try {
+        directoryHandle = await openValidatedDirectory(currentPath, currentInfo);
+        const fdPath = descriptorPath(directoryHandle);
+        const remaining = Math.max(1, Math.min(MAX_SCAN_ENTRIES, MAX_PHOTO_VISITS - scannedEntries));
+        const scanned = await readDirectoryEntries(fdPath, remaining);
+        directoryTruncated = scanned.truncated;
+        for (const entry of scanned.entries) {
+          if (Date.now() >= deadline || scannedEntries >= MAX_PHOTO_VISITS || bytesRead >= MAX_PHOTO_TOTAL_BYTES) {
+            limitHits.add(Date.now() >= deadline ? "time" : bytesRead >= MAX_PHOTO_TOTAL_BYTES ? "bytes" : "entries");
+            partial = true;
+            stop = true;
+            break;
+          }
+          if (photos.length >= requestedLimit) {
+            partial = true;
+            stop = true;
+            break;
+          }
+          scannedEntries++;
+          const lowerName = entry.name.toLowerCase();
+          if (entry.isSymbolicLink() || PHOTO_SKIP_DIRS.has(lowerName) || isSensitiveContentName(lowerName)) continue;
+          const fullPath = resolve(currentPath, entry.name);
+          if (!within(current.root, fullPath)) continue;
+          let info;
+          try { info = await fs.lstat(join(fdPath, entry.name)); } catch { continue; }
+          if (info.isSymbolicLink()) continue;
+          if (info.isDirectory()) {
+            if (current.depth < MAX_PHOTO_DEPTH) queue.push({ path: fullPath, depth: current.depth + 1, root: current.root });
+            else if (current.depth >= MAX_PHOTO_DEPTH) {
+              limitHits.add("depth");
+              partial = true;
+            }
+            continue;
+          }
+          if (!info.isFile()) continue;
+          const extension = lowerName.includes(".") ? lowerName.slice(lowerName.lastIndexOf(".")) : "";
+          if (!PHOTO_EXTENSIONS.has(extension)) continue;
+          if (bytesRead + Math.min(Math.max(0, Number(info.size)), MAX_PHOTO_HEADER_BYTES) > MAX_PHOTO_TOTAL_BYTES) {
+            limitHits.add("bytes");
+            partial = true;
+            stop = true;
+            break;
+          }
+          const header = await readPhotoHeader(fdPath, entry.name, info);
+          bytesRead += header.bytesRead;
+          if (!header.buffer) continue;
+          scannedImages++;
+          const metadata = parseImageMetadata(header.buffer, entry.name);
+          const photoCategory = classifyPhoto(entry.name, fullPath, metadata);
+          const modifiedAt = info.mtime.toISOString();
+          const dateValue = metadata.dateTaken ? metadata.dateTaken.slice(0, 10) : modifiedAt.slice(0, 10);
+          if (dateFrom && dateValue < dateFrom) continue;
+          if (dateTo && dateValue > dateTo) continue;
+          if (category && photoCategory !== category) continue;
+          if (hasGps !== undefined && Boolean(metadata.hasGps) !== hasGps) continue;
+          if (query && ![
+            entry.name, fullPath, metadata.camera, metadata.dateTaken,
+            photoCategory, PHOTO_CATEGORY_LABELS[photoCategory]
+          ].some(value => String(value || "").toLocaleLowerCase().includes(query))) continue;
+          photos.push({
+            name: entry.name,
+            path: fullPath,
+            category: photoCategory,
+            categoryLabel: PHOTO_CATEGORY_LABELS[photoCategory],
+            sizeBytes: Number(info.size),
+            modifiedAt,
+            dateTaken: metadata.dateTaken || null,
+            dateSource: metadata.dateTaken ? "exif" : "modified",
+            camera: metadata.camera || null,
+            format: metadata.format || extension.slice(1),
+            width: Number.isInteger(metadata.width) ? metadata.width : null,
+            height: Number.isInteger(metadata.height) ? metadata.height : null,
+            hasGps: Boolean(metadata.hasGps),
+            metadataAvailable: Boolean(metadata.metadataAvailable)
+          });
+        }
+      } catch (error) {
+        if (error?.statusCode === 409 || error?.statusCode === 503) throw error;
+      } finally {
+        if (directoryHandle) await directoryHandle.close().catch(() => {});
+      }
+      if (directoryTruncated) {
+        limitHits.add("directory-entries");
+        partial = true;
+        stop = true;
+      }
+    }
+    if (queue.length && (stop || scannedEntries >= MAX_PHOTO_VISITS || Date.now() >= deadline || bytesRead >= MAX_PHOTO_TOTAL_BYTES)) partial = true;
+    photos.sort((a, b) => String(b.dateTaken || b.modifiedAt).localeCompare(String(a.dateTaken || a.modifiedAt)) || a.path.localeCompare(b.path));
+    return {
+      roots: roots.map(root => ({ name: basename(root), path: root })),
+      path: pathValue.trim() || null,
+      query: queryValue.trim(),
+      filters: { dateFrom: dateFrom || null, dateTo: dateTo || null, category: category || null, hasGps: hasGps === undefined ? null : hasGps },
+      count: photos.length,
+      photos,
+      scannedEntries,
+      scannedImages,
+      bytesRead,
+      partial,
+      limitHits: [...limitHits],
+      note: "本地图片元数据搜索；只读取图片头部和有限 EXIF 元数据，不解码图片、不返回 GPS 坐标、不上传图片；日期筛选在有 EXIF 拍摄日期时使用拍摄日期，否则使用文件修改日期。",
+      limits: { entries: MAX_PHOTO_VISITS, depth: MAX_PHOTO_DEPTH, durationMs: MAX_PHOTO_SEARCH_MS, headerBytesPerImage: MAX_PHOTO_HEADER_BYTES, totalBytes: MAX_PHOTO_TOTAL_BYTES, results: requestedLimit }
+    };
+  }
+
+  return Object.freeze({ list, search, searchContent, inspect, searchPhotos });
 }

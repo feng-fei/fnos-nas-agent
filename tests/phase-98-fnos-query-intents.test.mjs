@@ -9,6 +9,7 @@ const definitions = [
   { id: "fnos.monitor.beep-supported", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
   { id: "files.search-content", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, query: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["query"], additionalProperties: false } },
   { id: "files.inspect", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, days: { type: "integer", minimum: 1, maximum: 3650 }, minBytes: { type: "integer", minimum: 0, maximum: 1000000000 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, additionalProperties: false } },
+  { id: "media.photos.search", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, query: { type: "string", maxLength: 160 }, dateFrom: { type: "string", maxLength: 10 }, dateTo: { type: "string", maxLength: 10 }, category: { type: "string", enum: ["photo", "screenshot", "scan", "other"] }, hasGps: { type: "boolean" }, limit: { type: "integer", minimum: 1, maximum: 50 } }, additionalProperties: false } },
   { id: "documents.index-status", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
   { id: "documents.search", risk: "read-only", inputSchema: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 160 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, required: ["query"], additionalProperties: false } },
   { id: "documents.index-refresh", risk: "write", inputSchema: { type: "object", properties: { force: { type: "boolean" }, maxFiles: { type: "integer", minimum: 1, maximum: 500 } }, additionalProperties: false } },
@@ -105,4 +106,18 @@ test("natural language can create and list scheduled read-only health checks", a
   assert.deepEqual(f.calls[0].args, { name: "存储定时巡检", type: "storage", intervalMinutes: 30, enabled: true });
   assert.equal(listed.results[0].tool, "health-checks.list");
   assert.deepEqual(f.calls.map(item => item.id), ["health-checks.create", "health-checks.list"]);
+});
+
+
+test("natural language photo queries route to local image metadata search", async () => {
+  const f = fixture();
+  const year = await f.agent.run({ text: "查找拍摄于2024年照片" });
+  const screenshots = await f.agent.run({ text: "查找截图" });
+  const gps = await f.agent.run({ text: "查找带有GPS的照片" });
+  assert.equal(year.results[0].tool, "media.photos.search");
+  assert.deepEqual(f.calls[0].args, { dateFrom: "2024-01-01", dateTo: "2024-12-31", limit: 30 });
+  assert.equal(screenshots.results[0].tool, "media.photos.search");
+  assert.deepEqual(f.calls[1].args, { category: "screenshot", limit: 30 });
+  assert.equal(gps.results[0].tool, "media.photos.search");
+  assert.deepEqual(f.calls[2].args, { hasGps: true, limit: 30 });
 });
