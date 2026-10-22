@@ -90,7 +90,9 @@ test("PNG metadata parser reads dimensions from a bounded header", () => {
   assert.equal(metadata.metadataAvailable, true);
 });
 
-test("local photo search supports EXIF dates, camera names, categories and GPS-presence filters without leaving allowed roots", async () => {
+// searchPhotos 走 file-browser 的 Linux 描述符路径（O_NOFOLLOW 语义），
+// Windows 上没有等价物，和 phase-133 一样只在 Linux 上跑这条端到端用例。
+test("local photo search supports EXIF dates, camera names, categories and GPS-presence filters without leaving allowed roots", { skip: process.platform !== "linux" }, async () => {
   const temp = await mkdtemp(join(tmpdir(), "fnos-photo-gallery-"));
   try {
     const root = join(temp, "vol1");
@@ -99,13 +101,23 @@ test("local photo search supports EXIF dates, camera names, categories and GPS-p
     const scans = join(root, "Scans");
     const secrets = join(root, "secrets");
     const outside = join(temp, "outside");
+    // 先把 root 建好，再并行建子目录：否则 mkdir(screenshots) 会和
+    // mkdir(dcim, { recursive: true }) 抢跑，在 Linux 上报 ENOENT。
+    await mkdir(root, { recursive: true });
     await Promise.all([mkdir(dcim, { recursive: true }), mkdir(screenshots), mkdir(scans), mkdir(secrets), mkdir(outside)]);
     await writeFile(join(dcim, "holiday.jpg"), makeExifJpeg());
     await writeFile(join(screenshots, "Screenshot_2025.png"), makePng(800, 600));
     await writeFile(join(scans, "id-scan.jpg"), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
     await writeFile(join(secrets, "private.jpg"), makeExifJpeg());
     await writeFile(join(outside, "external.jpg"), makeExifJpeg());
-    await symlink(join(outside, "external.jpg"), join(dcim, "outside-link.jpg"));
+    // Windows 未开开发者模式时建不了符号链接；建不了就跳过「链接不跟随」断言，
+    // 其余断言照跑，不让环境能力把整条用例拖红。
+    let symlinked = true;
+    try {
+      await symlink(join(outside, "external.jpg"), join(dcim, "outside-link.jpg"));
+    } catch {
+      symlinked = false;
+    }
     const date = new Date("2025-03-12T12:00:00.000Z");
     await utimes(join(screenshots, "Screenshot_2025.png"), date, date);
 
@@ -135,8 +147,10 @@ test("local photo search supports EXIF dates, camera names, categories and GPS-p
     assert.deepEqual(gpsFound.photos.map(photo => photo.name), ["holiday.jpg"]);
 
     const serialized = JSON.stringify(camera);
-    assert.ok(!serialized.includes("outside-link.jpg"));
-    assert.ok(!serialized.includes("external.jpg"));
+    if (symlinked) {
+      assert.ok(!serialized.includes("outside-link.jpg"));
+      assert.ok(!serialized.includes("external.jpg"));
+    }
     assert.ok(!serialized.includes("private.jpg"));
     assert.ok(!serialized.includes("latitude"));
     assert.ok(!serialized.includes("longitude"));
