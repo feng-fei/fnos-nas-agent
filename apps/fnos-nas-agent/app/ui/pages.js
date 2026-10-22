@@ -1926,8 +1926,8 @@ function bindKnowledgeControls(){
   markAll.addEventListener("click",()=>{
    if(!window.Notifications)return;
    const ids=notificationPageState.items.map(item=>item.id);
-   const marked=window.Notifications.markNotificationsRead(notificationPageState.items,ids);
-   notificationPageState.items=Array.isArray(marked)?marked:notificationPageState.items;
+   const changedIds=window.Notifications.markNotificationsRead(notificationPageState.items,ids);
+   notificationPageState.items=Array.isArray(changedIds)?changedIds:notificationPageState.items;
    notificationPageState.summary=window.Notifications.summarizeNotifications(notificationPageState.items);
    const container=document.querySelector("#notification-center");
    if(container)window.Notifications.renderNotificationCenter(container,{
