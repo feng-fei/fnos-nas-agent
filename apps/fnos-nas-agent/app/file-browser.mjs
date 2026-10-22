@@ -17,6 +17,12 @@ const MAX_CONTENT_SEARCH_RESULTS = 50;
 const MAX_CONTENT_FILE_BYTES = 256 * 1024;
 const MAX_CONTENT_TOTAL_BYTES = 2 * 1024 * 1024;
 const MAX_CONTENT_SEARCH_MS = 3000;
+const MAX_INSPECT_VISITS = 5000;
+const MAX_INSPECT_DEPTH = 8;
+const MAX_INSPECT_RESULTS = 20;
+const MAX_INSPECT_MS = 4000;
+const TEMPORARY_EXTENSIONS = new Set([".tmp", ".temp", ".bak", ".old", ".swp", ".cache", ".part", ".partial", ".crdownload", ".download"]);
+const SENSITIVE_DIRECTORY_NAMES = new Set(["secrets", "secret", "credentials", "credential", "private", "keyring"]);
 const CONTENT_TEXT_EXTENSIONS = new Set([
   ".txt", ".md", ".markdown", ".log", ".csv", ".tsv", ".json", ".jsonl",
   ".yaml", ".yml", ".toml", ".ini", ".conf", ".cfg", ".xml", ".html", ".htm",
@@ -467,5 +473,242 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     };
   }
 
-  return Object.freeze({ list, search, searchContent });
+  async function inspect(pathValue = "", olderThanDays = 90, minBytes = 1024 * 1024, requestedLimit = 10) {
+    if (typeof pathValue !== "string" || pathValue.length > 2048 ||
+        !Number.isInteger(olderThanDays) || olderThanDays < 1 || olderThanDays > 3650 ||
+        !Number.isInteger(minBytes) || minBytes < 0 || minBytes > 1_000_000_000 ||
+        !Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > MAX_INSPECT_RESULTS) {
+      throw Object.assign(new Error("Invalid file inspection options"), { statusCode: 400 });
+    }
+    const roots = await getRoots();
+    if (!roots.length) {
+      return {
+        roots: [], path: null, inspectedAt: new Date().toISOString(), readOnly: true, changedFiles: false,
+        filesSeen: 0, directoriesSeen: 0, entriesVisited: 0, observedFileBytes: 0,
+        symlinkCount: 0, skippedDirectoryCount: 0, errorCount: 0, partial: false,
+        limitHits: [], largestFiles: [], largestDirectories: [], oldLargeCount: 0,
+        oldLargeFiles: [], temporaryCandidateCount: 0, temporaryCandidates: [],
+        sensitiveNameCount: 0, sensitiveNameCandidates: [],
+        note: "没有发现可巡检的存储卷；未读取或修改任何文件。",
+        limits: { entries: MAX_INSPECT_VISITS, depth: MAX_INSPECT_DEPTH, durationMs: MAX_INSPECT_MS, results: requestedLimit }
+      };
+    }
+    const requestedPath = pathValue.trim() ? resolve(pathValue) : roots[0];
+    let start;
+    try { start = await fs.realpath(requestedPath); }
+    catch { throw Object.assign(new Error("Inspection directory not found"), { statusCode: 404 }); }
+    const root = roots.find(candidate => within(candidate, start));
+    if (!root) throw Object.assign(new Error("Path is outside configured storage roots"), { statusCode: 403 });
+    const startInfo = await fs.lstat(start);
+    if (!startInfo.isDirectory() || startInfo.isSymbolicLink())
+      throw Object.assign(new Error("Inspection path is not a directory"), { statusCode: 400 });
+
+    const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+    const deadline = Date.now() + MAX_INSPECT_MS;
+    const queue = [{ path: start, depth: 0 }];
+    const directoryBytes = new Map([[start, 0]]);
+    const largestFiles = [];
+    const largestDirectories = [];
+    const oldLargeFiles = [];
+    const temporaryCandidates = [];
+    const sensitiveNameCandidates = [];
+    const limitHits = new Set();
+    let entriesVisited = 0;
+    let filesSeen = 0;
+    let directoriesSeen = 0;
+    let observedFileBytes = 0;
+    let symlinkCount = 0;
+    let skippedDirectoryCount = 0;
+    let errorCount = 0;
+    let oldLargeCount = 0;
+    let temporaryCandidateCount = 0;
+    let sensitiveNameCount = 0;
+    let partial = false;
+    let stop = false;
+
+    function keepLargest(list, item) {
+      list.push(item);
+      list.sort((a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0) || a.path.localeCompare(b.path));
+      if (list.length > requestedLimit) list.pop();
+    }
+    function keepSensitive(item) {
+      sensitiveNameCount++;
+      if (sensitiveNameCandidates.length < requestedLimit) sensitiveNameCandidates.push(item);
+    }
+
+    while (queue.length && !stop) {
+      if (Date.now() >= deadline) {
+        limitHits.add("time");
+        partial = true;
+        break;
+      }
+      if (entriesVisited >= MAX_INSPECT_VISITS) {
+        limitHits.add("entries");
+        partial = true;
+        break;
+      }
+      const current = queue.shift();
+      let currentPath;
+      try { currentPath = await fs.realpath(current.path); }
+      catch {
+        if (current.depth === 0) throw Object.assign(new Error("Directory changed while inspecting; retry the operation"), { statusCode: 409 });
+        errorCount++;
+        continue;
+      }
+      if (currentPath !== current.path) {
+        if (current.depth === 0) throw Object.assign(new Error("Directory changed while inspecting; retry the operation"), { statusCode: 409 });
+        errorCount++;
+        continue;
+      }
+      const currentRoot = roots.find(candidate => within(candidate, currentPath));
+      if (!currentRoot) {
+        if (current.depth === 0) throw Object.assign(new Error("Directory changed while inspecting; retry the operation"), { statusCode: 409 });
+        errorCount++;
+        continue;
+      }
+      let currentInfo;
+      try { currentInfo = await fs.lstat(currentPath); }
+      catch { errorCount++; continue; }
+      if (!currentInfo.isDirectory() || currentInfo.isSymbolicLink()) continue;
+
+      let handle = null;
+      let directoryTruncated = false;
+      try {
+        handle = await openValidatedDirectory(currentPath, currentInfo);
+        const fdPath = descriptorPath(handle);
+        const remaining = Math.max(1, Math.min(MAX_SCAN_ENTRIES, MAX_INSPECT_VISITS - entriesVisited));
+        const scanned = await readDirectoryEntries(fdPath, remaining);
+        directoryTruncated = scanned.truncated;
+        for (const entry of scanned.entries) {
+          if (Date.now() >= deadline || entriesVisited >= MAX_INSPECT_VISITS) {
+            limitHits.add(Date.now() >= deadline ? "time" : "entries");
+            partial = true;
+            stop = true;
+            break;
+          }
+          entriesVisited++;
+          const fullPath = resolve(currentPath, entry.name);
+          if (!within(currentRoot, fullPath)) continue;
+          if (entry.isSymbolicLink()) {
+            symlinkCount++;
+            continue;
+          }
+          let info;
+          try { info = await fs.lstat(join(fdPath, entry.name)); }
+          catch { errorCount++; continue; }
+          if (info.isSymbolicLink()) {
+            symlinkCount++;
+            continue;
+          }
+          if (info.isDirectory()) {
+            directoriesSeen++;
+            directoryBytes.set(fullPath, 0);
+            const lower = entry.name.toLowerCase();
+            if (CONTENT_SKIP_DIRS.has(lower)) {
+              skippedDirectoryCount++;
+              continue;
+            }
+            if (SENSITIVE_DIRECTORY_NAMES.has(lower) || isSensitiveContentName(entry.name)) {
+              keepSensitive({ name: entry.name, path: fullPath, type: "directory", reason: "目录名称可能包含敏感信息；未进入该目录" });
+              skippedDirectoryCount++;
+              continue;
+            }
+            if (current.depth >= MAX_INSPECT_DEPTH) {
+              limitHits.add("depth");
+              partial = true;
+              continue;
+            }
+            queue.push({ path: fullPath, depth: current.depth + 1 });
+            continue;
+          }
+          if (!info.isFile()) continue;
+
+          filesSeen++;
+          const sizeBytes = Number(info.size);
+          observedFileBytes += sizeBytes;
+          const record = {
+            name: entry.name,
+            path: fullPath,
+            sizeBytes,
+            modifiedAt: info.mtime.toISOString()
+          };
+          keepLargest(largestFiles, record);
+
+          for (let cursor = currentPath; within(start, cursor); cursor = dirname(cursor)) {
+            directoryBytes.set(cursor, (directoryBytes.get(cursor) || 0) + sizeBytes);
+            if (cursor === start) break;
+            const parentPath = dirname(cursor);
+            if (parentPath === cursor) break;
+          }
+
+          if (sizeBytes >= minBytes && info.mtimeMs <= cutoff) {
+            oldLargeCount++;
+            keepLargest(oldLargeFiles, record);
+          }
+          const extension = entry.name.includes(".") ? entry.name.slice(entry.name.lastIndexOf(".")).toLowerCase() : "";
+          if (TEMPORARY_EXTENSIONS.has(extension) || entry.name.endsWith("~")) {
+            temporaryCandidateCount++;
+            if (temporaryCandidates.length < requestedLimit) temporaryCandidates.push({
+              ...record,
+              reason: "临时文件或备份文件命名特征；请先确认用途，不会自动删除"
+            });
+          }
+          if (isSensitiveContentName(entry.name)) {
+            keepSensitive({ ...record, type: "file", reason: "文件名称可能代表凭据、密钥或敏感配置；未读取内容" });
+          }
+        }
+      } catch (error) {
+        if (error?.statusCode === 409 || error?.statusCode === 503) throw error;
+        errorCount++;
+      } finally {
+        if (handle) await handle.close().catch(() => {});
+      }
+      if (directoryTruncated) {
+        limitHits.add("directory-entries");
+        partial = true;
+        stop = true;
+      }
+    }
+
+    if (queue.length && (stop || entriesVisited >= MAX_INSPECT_VISITS || Date.now() >= deadline)) partial = true;
+    for (const [directoryPath, sizeBytes] of directoryBytes.entries()) {
+      if (directoryPath === start || sizeBytes <= 0) continue;
+      largestDirectories.push({ name: basename(directoryPath), path: directoryPath, sizeBytes });
+    }
+    largestDirectories.sort((a, b) => b.sizeBytes - a.sizeBytes || a.path.localeCompare(b.path));
+    largestDirectories.splice(requestedLimit);
+
+    return {
+      roots: roots.map(path => ({ name: basename(path), path })),
+      path: start,
+      inspectedAt: new Date().toISOString(),
+      readOnly: true,
+      changedFiles: false,
+      filesSeen,
+      directoriesSeen,
+      entriesVisited,
+      observedFileBytes,
+      symlinkCount,
+      skippedDirectoryCount,
+      errorCount,
+      partial,
+      limitHits: [...limitHits],
+      olderThanDays,
+      minBytes,
+      largestFiles,
+      largestDirectories,
+      oldLargeCount,
+      oldLargeFiles,
+      temporaryCandidateCount,
+      temporaryCandidates,
+      sensitiveNameCount,
+      sensitiveNameCandidates,
+      note: partial
+        ? "这是部分巡检结果；目录规模、时间或条目上限可能导致遗漏。没有读取文件正文，也没有修改、移动或删除文件。"
+        : "巡检已完成。只读取文件系统元数据，没有读取文件正文，也没有修改、移动或删除文件。",
+      limits: { entries: MAX_INSPECT_VISITS, depth: MAX_INSPECT_DEPTH, durationMs: MAX_INSPECT_MS, results: requestedLimit }
+    };
+  }
+
+  return Object.freeze({ list, search, searchContent, inspect });
 }

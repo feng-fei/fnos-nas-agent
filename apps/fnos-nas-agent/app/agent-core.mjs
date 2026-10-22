@@ -31,6 +31,8 @@ const DIRECT_INTENTS = [
   { pattern: /^(?:查看|查询|显示|列出)?\s*(?:存储池|存储池列表)\s*[。！!？?]?$/i, tool: "fnos.storage.pools", message: "正在读取存储池列表，不会修改存储配置。" },
   { pattern: /^(?:查看|查询|显示)?\s*(?:当前用户|NAS用户信息|用户信息)\s*[。！!？?]?$/i, tool: "fnos.user.info", message: "正在读取当前用户信息。" },
   { pattern: /^(?:查看|查询|显示|检查|看看|列出|浏览)?\s*(?:文件|文件夹|目录)(?:列表)?(?:\s+(.{1,2048}))?\s*[。！!？?]?$/i, tool: "files.list", args: match => match[1] ? ({ path: match[1].trim() }) : ({}), message: "正在读取允许存储卷中的文件目录。" },
+  { pattern: /^(?:巡检|检查)(?:一下)?(?:文件卫生|文件|目录|大文件|临时文件)(?:情况|问题|分布|清理建议)?(?:\s+(.{1,2048}))?\s*[。！!？?]?$/i, tool: "files.inspect", args: match => ({ ...(match[1] ? { path: match[1].trim() } : {}), days: 90, minBytes: 1048576, limit: 10 }), message: "正在只读巡检授权目录，列出大文件、久未修改文件、临时文件及敏感文件名候选；不会自动删除或移动。" },
+  { pattern: /^(?:查找|找出|列出)(?:一下)?(?:大文件|临时文件|久未修改的大文件)(?:\s+于\s+(.{1,2048}))?$/i, tool: "files.inspect", args: match => ({ ...(match[1] ? { path: match[1].trim() } : {}), days: 90, minBytes: 1048576, limit: 10 }), message: "正在只读巡检授权目录，扫描结果有数量和时间上限，不会自动删除或移动。" },
   { pattern: /^(?:搜索|查找|检索)(?:一下)?(?:文件|文档)?(?:中的|里的)?内容[：:\s]+(.{1,200}?)(?:\s+于\s+(.{1,2048}))?$/i, tool: "files.search-content", args: match => ({ query: match[1].trim(), ...(match[2] ? { path: match[2].trim() } : {}), limit: 30 }), message: "正在在授权目录内搜索文本内容；扫描范围、读取量与结果数量均有限制。" },
   { pattern: /^搜索文件\s+(.{1,200}?)(?:\s+于\s+(.{1,2048}))?$/i, tool: "files.search", args: match => ({ query: match[1].trim(), ...(match[2] ? { path: match[2].trim() } : {}), limit: 50 }), message: "正在按文件名搜索允许存储卷；搜索范围和结果数量有上限。" },
   { pattern: /^(?:预览|读取|查看)文本文件\s+(.{1,2048})$/i, tool: "files.preview", args: match => ({ path: match[1].trim() }), message: "正在预览 UTF-8 文本文件。" },

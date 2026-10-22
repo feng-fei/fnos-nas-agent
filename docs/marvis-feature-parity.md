@@ -11,7 +11,7 @@ Build a persistent, mobile-friendly NAS AI operator that understands storage, fi
 | Marvis product capability | fnOS equivalent | Current state | Next implementation |
 | --- | --- | --- | --- |
 | Natural-language computer/system management | Read-only fnOS system, storage, network and Docker tools | Foundation exists | Add diagnostic summaries and safe remediation plans; mutations stay approval-gated |
-| File assistant: find, inspect and manage files | Scoped volume browsing, preview, write/move/rename/delete with policy controls | Foundation exists | Content search begins in this milestone; harden coverage with tests |
+| File assistant: find, inspect and manage files | Scoped volume browsing, preview, content search, read-only hygiene inspection, and guarded write operations | Foundation exists; content search has landed and hygiene inspection is in progress | Add a local document index and more report-based file organization suggestions; no automatic deletion |
 | Local knowledge base | Bounded document index and retrieval within configured volumes | Not complete | Add incremental metadata/content index, freshness tracking, explicit rebuild/delete controls |
 | Image understanding and gallery | fnOS photo-folder/search adapter | Basic provider tools exist | Verify the official query semantics; add metadata/EXIF/OCR only where a supported API or safe local parser exists |
 | Document understanding | Bounded extraction of text from supported formats | Plain-text preview exists | Add UTF-8/Markdown/CSV first; later add optional PDF/DOCX/XLSX extraction with size/page limits |
@@ -34,13 +34,24 @@ The files.search-content tool adds a first content-based file retrieval primitiv
 
 This is lexical content search, not semantic/vector search, full PDF/OCR parsing, or a persistent knowledge base. Those are later milestones and need their own privacy and resource controls.
 
+## Milestones delivered
+
+### Bounded text-content search
+
+The `files.search-content` tool searches common UTF-8 text/code formats under configured roots. It skips symlinks, common sensitive filenames, binary/oversized files, caps reads and traversal, and redacts common credential/token patterns from returned snippets. This is lexical search only, not semantic/vector search, full PDF/OCR extraction, or a persistent knowledge base.
+
+### Read-only file hygiene inspection (current milestone)
+
+The `files.inspect` tool reports largest files/directories, old large files, temporary/backup file candidates and suspicious sensitive filenames. It reads filesystem metadata only; it does not inspect file contents or mutate the NAS. Traversal depth, number of entries, duration, and report sizes are bounded. Sensitive-name directories are listed as candidates but are not descended into. Partial results are explicitly marked when a limit is hit.
+
 ## Recommended delivery order
 
-1. Complete security regression work and validate the branch against CI.
-2. Finish user-facing output and task progress/approval UX.
-3. Add incremental local document indexing with bounded extraction and a reindex/status API.
-4. Add storage and file hygiene reports (large files, stale files, sensitive-file names) as read-only tools.
-5. Add scheduled health checks and notifications with retention and pause/disable controls.
-6. Add specialist task routes (storage, file/document, Docker, network/system) over existing registered tools.
+1. Validate and merge bounded file hygiene inspection after CI passes.
+2. Finish user-facing output, task progress and approval UX.
+3. Add a local document index with bounded extraction, incremental refresh and an explicit reindex/status API.
+4. Add structured storage diagnostics, safe remediation plans and read-only NAS health reports.
+5. Add scheduled health checks and notifications with retention, pause/disable controls and explicit delivery targets.
+6. Add specialist task routes for storage, files/documents, Docker and network/system over registered tools.
 7. Expand into optional OCR and photo metadata search after resource measurement on supported fnOS hardware.
-8. Validate FPK install, upgrade, rollback and uninstall on a real disposable fnOS device before declaring a release ready.
+8. Add constrained web-information tools only after explicit network policy and SSRF protections are validated.
+9. Validate FPK install, upgrade, rollback and uninstall on a real disposable fnOS device before declaring a release ready.

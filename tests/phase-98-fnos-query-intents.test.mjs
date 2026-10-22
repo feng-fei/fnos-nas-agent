@@ -7,7 +7,8 @@ const definitions = [
   { id: "fnos.file.usage", risk: "read-only", inputSchema: { type: "object", properties: { volumeId: { type: "integer", minimum: 1, maximum: 10000 } }, required: ["volumeId"], additionalProperties: false } },
   { id: "fnos.file.ls-dir", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path"], additionalProperties: false } },
   { id: "fnos.monitor.beep-supported", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
-  { id: "files.search-content", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, query: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["query"], additionalProperties: false } }
+  { id: "files.search-content", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, query: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["query"], additionalProperties: false } },
+  { id: "files.inspect", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, days: { type: "integer", minimum: 1, maximum: 3650 }, minBytes: { type: "integer", minimum: 0, maximum: 1000000000 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, additionalProperties: false } }
 ];
 
 function fixture() {
@@ -59,4 +60,16 @@ test("natural-language document content search routes to bounded read-only conte
   assert.equal(result.mode, "rules");
   assert.equal(result.results[0].tool, "files.search-content");
   assert.deepEqual(f.calls, [{ id: "files.search-content", args: { query: "报价", limit: 30 } }]);
+});
+
+
+test("natural language file hygiene requests route to a bounded read-only inspection", async () => {
+  const f = fixture();
+  const result = await f.agent.run({ text: "巡检文件 /vol1/share" });
+  assert.equal(result.mode, "rules");
+  assert.equal(result.results[0].tool, "files.inspect");
+  assert.deepEqual(f.calls, [{
+    id: "files.inspect",
+    args: { path: "/vol1/share", days: 90, minBytes: 1048576, limit: 10 }
+  }]);
 });

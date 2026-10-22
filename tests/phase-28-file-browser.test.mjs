@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, symlink, rm, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFileBrowser } from "../apps/fnos-nas-agent/app/file-browser.mjs";
@@ -178,4 +178,52 @@ test("content search skips oversized files and reports traversal limits", async 
     assert.equal(result.skippedLargeFiles, 1);
     assert.equal(result.truncated, false);
   } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+
+test("file hygiene inspection reports large, stale, temporary and sensitive-name candidates without reading content", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "fnos-inspection-"));
+  try {
+    const root = join(temp, "vol1");
+    const docs = join(root, "docs");
+    const outside = join(temp, "outside");
+    await mkdir(docs, { recursive: true });
+    await mkdir(outside);
+    await writeFile(join(root, "large-video.mp4"), Buffer.alloc(4096, 7));
+    await writeFile(join(docs, "old-export.csv"), "x".repeat(2048));
+    await writeFile(join(docs, "cache.tmp"), "temporary cache");
+    await writeFile(join(docs, ".env"), "THIS CONTENT MUST NEVER BE READ");
+    await mkdir(join(docs, "secrets"));
+    await writeFile(join(docs, "secrets", "private.txt"), "not inspected");
+    await writeFile(join(outside, "external.txt"), "outside");
+    await symlink(join(outside, "external.txt"), join(docs, "outside-link.txt"));
+    const oldStamp = Date.now() / 1000 - 120 * 24 * 60 * 60;
+    await utimes(join(docs, "old-export.csv"), oldStamp, oldStamp);
+    const browser = createFileBrowser({ roots: [root] });
+    const result = await browser.inspect(root, 90, 1024, 10);
+    assert.equal(result.readOnly, true);
+    assert.equal(result.changedFiles, false);
+    assert.equal(result.partial, false);
+    assert.ok(result.filesSeen >= 4);
+    assert.ok(result.symlinkCount >= 1);
+    assert.equal(result.largestFiles[0].name, "large-video.mp4");
+    assert.ok(result.oldLargeFiles.some(item => item.name === "old-export.csv"));
+    assert.ok(result.temporaryCandidates.some(item => item.name === "cache.tmp"));
+    assert.ok(result.sensitiveNameCandidates.some(item => item.name === ".env"));
+    assert.ok(result.sensitiveNameCandidates.some(item => item.name === "secrets"));
+    assert.ok(!JSON.stringify(result).includes("THIS CONTENT MUST NEVER BE READ"));
+    assert.ok(!JSON.stringify(result).includes("not inspected"));
+    assert.ok(!JSON.stringify(result).includes("outside"));
+    await assert.rejects(browser.inspect(outside), error => error.statusCode === 403 || error.statusCode === 404);
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+test("file hygiene inspection validates inputs and reports no-root state", async () => {
+  const browser = createFileBrowser({ roots: [] });
+  const empty = await browser.inspect();
+  assert.equal(empty.readOnly, true);
+  assert.equal(empty.filesSeen, 0);
+  await assert.rejects(browser.inspect("", 0), { statusCode: 400 });
+  await assert.rejects(browser.inspect("", 90, -1), { statusCode: 400 });
+  await assert.rejects(browser.inspect("", 90, 1024, 21), { statusCode: 400 });
 });
