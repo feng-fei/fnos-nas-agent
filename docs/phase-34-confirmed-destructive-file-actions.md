@@ -18,4 +18,4 @@ Mixed Agent plans that combine destructive actions with other tool calls are rej
 
 ## Validation
 
-Tests cover request-without-execution, exact-target confirmation, one-time consumption, denial, expiry, unregistered tools, invalid arguments, Agent routing, authentication, and the prohibition on direct destructive tool invocation. CI must pass on Node.js 26 and Node.js 24. Real fnOS acceptance is still required before treating the FPK as device-verified.
+Tests cover request-without-execution, exact-target confirmation, one-time consumption, denial, expiry, unregistered tools, invalid arguments, Agent routing, authentication, and the prohibition on direct destructive tool invocation. CI must pass on Node.js 26.x. Real fnOS acceptance is still required before treating the FPK as device-verified.

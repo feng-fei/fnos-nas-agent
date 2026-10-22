@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Create a deterministic pre-release gate that can run on Node.js 24 and 26 without third-party dependencies. It verifies that the release workflow still tests both runtime lines and inspects the Node.js 26 FPK artifact, and checks key safety boundaries across the server, Skill archive pipeline, manifest review, mobile UI, and permission policy.
+Create a deterministic pre-release gate that can run on Node.js 26.x without third-party dependencies. It verifies that the release workflow still tests the supported runtime line and inspects the Node.js 26 FPK artifact, and checks key safety boundaries across the server, Skill archive pipeline, manifest review, mobile UI, and permission policy.
 
 ## Release checklist
 

@@ -1,3 +1,5 @@
+import { DELETE_CAPABILITY, hasDeleteCapability } from "./execution-capability.mjs";
+
 const TRIM_CLI_TOOLS = [
   ["fnos.system.info", "system.info", "读取 fnOS 系统信息。", {}],
   ["fnos.system.trim-version", "system.trim-version", "读取 fnOS 系统版本。", {}],
@@ -107,7 +109,7 @@ function validArgs(args, schema) {
   return true;
 }
 
-export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null, fileManager = null, trimCli = null }) {
+export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null, fileManager = null, trimCli = null, executionPolicy = null }) {
   if (typeof getDiagnostics !== "function") throw new TypeError("getDiagnostics must be a function");
 
   function list() {
@@ -117,10 +119,24 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     }));
   }
 
-  async function invoke(id, args = {}) {
+  async function invoke(id, args = {}, options = {}) {
     const tool = definitions.find(item => item.id === id);
     if (!tool) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
     if (!validArgs(args, tool.inputSchema || { type: "object", properties: {}, additionalProperties: false })) throw Object.assign(new Error("Invalid tool arguments"), { statusCode: 400 });
+    const capability = options && typeof options === "object" ? options.capability : undefined;
+    const approved = hasDeleteCapability(capability);
+    // Global execution policy (read-only mode / kill switch). Every mutating tool
+    // passes through here, no matter which entry point called invoke().
+    if (executionPolicy && typeof executionPolicy.evaluate === "function") {
+      const verdict = executionPolicy.evaluate({ risk: tool.risk, approved });
+      if (verdict && !verdict.allowed) {
+        if (verdict.reason === "approval-required")
+          throw Object.assign(new Error("破坏性工具调用缺少服务端授权凭据（delete-capability），已拒绝执行。"), { statusCode: 403, reason: verdict.reason });
+        throw Object.assign(new Error(`工具调用被执行策略拒绝（${verdict.reason}），已拒绝执行。`), { statusCode: verdict.statusCode || 403, reason: verdict.reason });
+      }
+    }
+    if (tool.risk === "destructive" && !approved)
+      throw Object.assign(new Error("破坏性工具调用缺少服务端授权凭据（delete-capability），已拒绝执行。"), { statusCode: 403, reason: "missing-capability" });
     if (tool.trimCliCommand) {
       if (!trimCli) throw Object.assign(new Error("Official fnOS CLI is unavailable"), { statusCode: 503 });
       return trimCli.runReadOnly(tool.trimCliCommand, args);
@@ -163,7 +179,7 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     }
     if (id === "files.delete") {
       if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
-      return fileManager.operate({ action: "delete", path: args.path, confirm: true });
+      return fileManager.operate({ action: "delete", path: args.path, capability: DELETE_CAPABILITY });
     }
     const snapshot = await getDiagnostics();
     switch (id) {

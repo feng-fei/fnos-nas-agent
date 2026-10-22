@@ -13,4 +13,4 @@ Cancellation never kills an in-flight operating-system operation and does not gr
 
 ## Validation
 
-Adds unit coverage for queued cancellation, non-cancellable running tasks, and unknown IDs. CI also syntax-checks the embedded mobile UI JavaScript, Node.js server and task manager; Node 24/26 test jobs and Node 26 FPK packaging remain required.
+Adds unit coverage for queued cancellation, non-cancellable running tasks, and unknown IDs. CI also syntax-checks the embedded mobile UI JavaScript, Node.js server and task manager; The Node 26.x test job and Node 26 FPK packaging remain required.

@@ -22,4 +22,4 @@ The manifest intentionally excludes runner paths, environment variables, secrets
 
 ## Trust boundary
 
-This phase provides traceability and integrity metadata, not a signed attestation, reproducible-build guarantee, or proof that a package is safe. Signature/attestation support can be added later with a defined trust root and permissions model. Node.js 26 remains the packaging runtime; Node.js 24 remains a test-only regression line. Real fnOS installation, upgrade, rollback, and uninstall tests remain manual staging tasks.
+This phase provides traceability and integrity metadata, not a signed attestation, reproducible-build guarantee, or proof that a package is safe. Signature/attestation support can be added later with a defined trust root and permissions model. Node.js 26.x is the only supported development, test, and packaging runtime. Real fnOS installation, upgrade, rollback, and uninstall tests remain manual staging tasks.

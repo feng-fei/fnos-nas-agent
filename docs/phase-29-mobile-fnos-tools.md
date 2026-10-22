@@ -17,7 +17,7 @@
 
 ## Acceptance
 
-- Node.js 24 and 26 test suites pass.
+- The Node.js 26.x test suite passes.
 - Release gates and FPK packaging pass.
 - Schema-backed `path` and `volumeId` inputs can be submitted with correct types.
 - No-argument tools remain one-tap.

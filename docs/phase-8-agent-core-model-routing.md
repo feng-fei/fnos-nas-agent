@@ -36,4 +36,4 @@ The model can return only a bounded JSON plan. The server accepts at most three 
 
 ## Validation
 
-Run `npm test` on Node.js 24 and 26 and build/inspect the FPK using Node.js 26. Tests cover direct routing, unconfigured behavior, model plan validation, invalid tools/arguments, and configuration safety.
+Run `npm test` on Node.js 26.x and build/inspect the FPK using Node.js 26. Tests cover direct routing, unconfigured behavior, model plan validation, invalid tools/arguments, and configuration safety.

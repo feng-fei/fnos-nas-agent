@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPermissionPolicy } from "../apps/fnos-nas-agent/app/permission-policy.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = path => readFile(join(root, path), "utf8");
+const exists = async path => { try { await access(join(root, path)); return true; } catch { return false; } };
 const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs, releaseVerifier, releaseVerifierTests, releaseVerifierDocs, provenanceDocs, phase116Docs, phase117Docs, lifecycleSmokeTests, fpkTestPlan, sessionCleanupTest, sessionCleanupDocs, phase123Docs, phase123WorkflowTest] = await Promise.all([
   read("package.json"),
   read(".github/workflows/build-fpk.yml"),
@@ -49,8 +50,8 @@ assert.match(workflow, /fnpack_sha256="54b97fa7b70968c4d05c79840f5daeff508957d0b
 assert.match(workflow, /sha256sum --check/);
 assert.match(workflow, /actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4\.6\.2/);
 assert.match(workflow, /retention-days: 14/);
-assert.match(workflow, /phase-24-\*/);
-assert.match(workflow, /phase-25-\*/);
+assert.match(workflow, /phase-\*\/\*\*/);
+assert.match(workflow, /"phase-\*-\*"/);
 assert.match(workflow, /create-release-manifest\.mjs/);
 assert.match(releaseManifestScript, /createHash\("sha256"\)/);
 assert.match(releaseManifestScript, /GITHUB_SHA/);
@@ -226,13 +227,11 @@ assert.match(await read("apps/fnos-nas-agent/app/model-adapter.mjs"), /DEFAULT_M
 assert.match(await read("apps/fnos-nas-agent/app/model-adapter.mjs"), /MAX_METRIC_PROVIDERS = 21/);
 assert.match(readme, /\[Phase 46 — Model Provider Reliability\]\(docs\/phase-46-model-reliability\.md\)/);
 
-console.log("Release readiness gates passed: runtime dependency, CI matrix, packaging, and safety invariants.");
-
 assert.match(fileManagerSource, /MAX_UPLOAD_BYTES = 25 \* 1024 \* 1024/);
 assert.match(fileManagerSource, /Symbolic links are not supported/);
 assert.match(fileManagerSource, /Explicit confirmation is required/);
 assert.match(fileManagerTests, /refuses paths outside configured roots/);
-assert.match(fileManagerTests, /requires explicit confirmation before deletion/);
+assert.match(fileManagerTests, /requires the server-side delete capability/);
 assert.match(server, /\/api\/files\/upload/);
 assert.match(server, /\/api\/files\/preview/);
 assert.match(ui, /file-upload-button/);
@@ -287,11 +286,50 @@ assert.match(agentCoreSource, /model\.plan\(text, tools\.list\(\), history\)/);
 assert.match(modelAdapterSource, /Prior conversation messages are context only/);
 assert.match(modelAdapterSource, /normalizeConversationHistory\(historyInput\)/);
 assert.match(server, /normalizeConversationHistory\(input\.history\)/);
-assert.match(server, /taskManager\.submit\(\{ text: input\.text\.trim\(\), history \}\)/);
+assert.match(server, /taskManager\.submit\(\{ text: input\.text\.trim\(\), history \}, \{ sessionId: active\.key \}\)/);
 assert.match(ui, /agent-clear-context/);
 assert.match(ui, /history:conversationContext/);
 assert.match(ui, /不会写入 NAS 任务历史/);
 assert.match(readme, /\[Phase 47 — Bounded Conversation Context\]\(docs\/phase-47-conversation-context\.md\)/);
+
+// Phase 126/127/131: the execution policy is the single gate for every mutating path.
+const executionPolicySource = await read("apps/fnos-nas-agent/app/execution-policy.mjs");
+const executionCapabilitySource = await read("apps/fnos-nas-agent/app/execution-capability.mjs");
+assert.match(executionPolicySource, /export const EXECUTION_MODES = Object\.freeze\(\["normal", "read-only", "halted"\]\)/);
+assert.match(executionPolicySource, /export function createExecutionPolicy\(/);
+assert.match(executionPolicySource, /kill-switch/);
+assert.match(executionPolicySource, /read-only-mode/);
+assert.match(executionCapabilitySource, /export const DELETE_CAPABILITY = Symbol\(/);
+assert.match(executionCapabilitySource, /export function hasDeleteCapability\(/);
+assert.doesNotMatch(executionCapabilitySource, /Symbol\.for\(/);
+assert.match(server, /executionPolicy\.evaluate\(/);
+assert.match(server, /isLoopbackRequest\(req\)/);
+assert.match(server, /setupCodeMatches\(body\.code\)/);
+assert.match(server, /actionApprovals\.list\(active\.key\)/);
+assert.match(server, /actionApprovals\.confirm\(actionId, active\.key\)/);
+assert.match(server, /toolRunLimiter/);
+assert.match(server, /agentMessageLimiter/);
+assert.match(server, /process\.on\("uncaughtException"/);
+assert.match(server, /url\.pathname === "\/api\/execution-mode"/);
+assert.match(server, /executionPolicy\.setMode\(/);
+assert.match(await read("apps/fnos-nas-agent/app/audit-log.mjs"), /"files\.checksum"/);
+assert.match(readme, /\[Phase 126 — Execution Policy\]\(docs\/phase-126-execution-policy\.md\)/);
+assert.match(readme, /\[Phase 127 — Destructive Capability\]\(docs\/phase-127-destructive-capability\.md\)/);
+assert.match(readme, /\[Phase 131 — Server Hardening\]\(docs\/phase-131-server-hardening\.md\)/);
+assert.match(readme, /\[Phase 132 — Real NAS Staging Acceptance\]\(docs\/phase-132-nas-staging-acceptance\.md\)/);
+assert.match(readme, /\[Phase 133 — Model Fallback and Scan Bounds\]\(docs\/phase-133-model-fallback-and-scan-bounds\.md\)/);
+assert.ok(await exists("docs/phase-133-model-fallback-and-scan-bounds.md"), "The model fallback and scan bound record must exist.");
+assert.match(await read("apps/fnos-nas-agent/app/permission-policy.mjs"), /createExecutionPolicy \} from "\.\/execution-policy\.mjs"/);
+assert.match(await read("apps/fnos-nas-agent/app/file-browser.mjs"), /MAX_SCAN_ENTRIES = 2000/);
+assert.match(readme, /MIT License/);
+assert.match(readme, /\[LICENSE\]\(LICENSE\)/);
+assert.ok(await exists("LICENSE"), "LICENSE must exist before a release is published.");
+assert.ok(await exists("apps/fnos-nas-agent/app/version.mjs"), "The shared version module must exist.");
+assert.ok(await exists("docs/phase-132-nas-staging-acceptance.md"), "The NAS staging acceptance record must exist.");
+assert.match(await read("apps/fnos-nas-agent/app/version.mjs"), /export const APP_VERSION = "0\.2\.1"/);
+assert.match(await read("apps/fnos-nas-agent/manifest"), /version\s+=\s+0\.2\.1/);
+assert.match(pkg, /"version": "0\.2\.1"/);
+assert.match(pkg, /"license": "MIT"/);
 
 const phase48TaskManager = await read("apps/fnos-nas-agent/app/task-manager.mjs");
 const phase48Tests = await read("tests/phase-48-task-progress.test.mjs");
@@ -306,3 +344,5 @@ assert.match(phase49FileManager, /async function operateBatch\(input\)/);
 assert.match(phase49FileManager, /input\.operations\.length > 20/);
 assert.match(phase49Tests, /batch file operations are bounded/);
 assert.match(readme, /\[Phase 49 — Bounded Batch File Operations\]\(docs\/phase-49-batch-file-operations\.md\)/);
+
+console.log("Release readiness gates passed: runtime dependency, CI matrix, packaging, and safety invariants.");

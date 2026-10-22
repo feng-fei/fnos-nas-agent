@@ -31,4 +31,4 @@ This is a personal fnOS NAS assistant, not a corporate permission workflow. The 
 
 ## Validation
 
-Require Node.js 24 and 26 test suites plus Node.js 26 FPK build. CI is not real-device fnOS validation.
+Require the Node.js 26.x test suite plus Node.js 26 FPK build. CI is not real-device fnOS validation.

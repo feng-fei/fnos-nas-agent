@@ -33,4 +33,4 @@ If inventory persistence fails after the archive is stored, an unreferenced quar
 
 ## Release gate
 
-During active development, run the Node.js 26 core suite and syntax checks. Node.js 24 CI and FPK packaging are temporarily paused; restore release checks before producing a release. The ZIP validator is deliberately conservative; unsupported archive formats should fail closed rather than be accepted permissively.
+During active development, run the Node.js 26.x core suite and syntax checks. CI now runs the full release gate, FPK packaging and artifact verification included, on every supported branch (see docs/phase-112 and docs/phase-123). The ZIP validator is deliberately conservative; unsupported archive formats should fail closed rather than be accepted permissively.

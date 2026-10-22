@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createApprovalLedger } from "./approval-ledger.mjs";
+import { DELETE_CAPABILITY } from "./execution-capability.mjs";
 
 function validateArgs(args, schema = {}) {
   if (!args || typeof args !== "object" || Array.isArray(args)) return false;
@@ -41,7 +42,7 @@ export function createActionApprovalService({ tools, ledger = createApprovalLedg
     for (const taskId of expiredTasks) revokeTaskPending(taskId);
   }
 
-  function request({ toolId, args = {}, taskId = id() } = {}) {
+  function request({ toolId, args = {}, taskId = id(), sessionId = "" } = {}) {
     prune();
     const tool = tools.list().find(item => item.id === toolId);
     if (!tool) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
@@ -50,7 +51,8 @@ export function createActionApprovalService({ tools, ledger = createApprovalLedg
     if (pending.size >= 50) throw Object.assign(new Error("Pending action limit reached"), { statusCode: 429 });
     const grant = ledger.issue({ taskId, toolId, args, risk: tool.risk });
     const item = {
-      id: id(), taskId, toolId, title: tool.title, description: tool.description,
+      id: id(), taskId, sessionId: typeof sessionId === "string" ? sessionId : "", toolId,
+      title: tool.title, description: tool.description,
       risk: tool.risk, args: structuredClone(args), target: typeof args.path === "string" ? args.path : null,
       createdAt: grant.issuedAt, expiresAt: grant.expiresAt, token: grant.token
     };
@@ -60,32 +62,43 @@ export function createActionApprovalService({ tools, ledger = createApprovalLedg
 
   function publicItem(item) {
     return Object.freeze({
-      id: item.id, taskId: item.taskId, toolId: item.toolId, title: item.title,
+      id: item.id, taskId: item.taskId, sessionId: item.sessionId || "", toolId: item.toolId, title: item.title,
       description: item.description, risk: item.risk, args: structuredClone(item.args),
       target: item.target, createdAt: item.createdAt, expiresAt: item.expiresAt
     });
   }
 
-  function list() {
+  function list(sessionId = "") {
     prune();
-    return [...pending.values()].sort((a, b) => a.createdAt - b.createdAt).map(publicItem);
+    const scope = typeof sessionId === "string" ? sessionId : "";
+    return [...pending.values()]
+      .filter(item => !scope || item.sessionId === scope)
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map(publicItem);
   }
 
-  async function confirm(idValue) {
+  async function confirm(idValue, sessionId = "") {
     prune();
     const item = pending.get(idValue);
     if (!item) throw Object.assign(new Error("Pending action not found, expired, or already handled"), { statusCode: 404 });
+    const scope = typeof sessionId === "string" ? sessionId : "";
+    // Ownership check happens before the grant is consumed, so a foreign session can
+    // neither execute nor burn the approval token.
+    if (item.sessionId && item.sessionId !== scope)
+      throw Object.assign(new Error("The pending action belongs to another session"), { statusCode: 403 });
     const consumed = ledger.consume({ token: item.token, taskId: item.taskId, toolId: item.toolId, args: item.args, risk: item.risk });
     pending.delete(idValue);
     if (!consumed.approved) throw Object.assign(new Error("Confirmation is invalid or expired"), { statusCode: 409 });
-    const result = await tools.invoke(item.toolId, item.args);
+    const result = await tools.invoke(item.toolId, item.args, { capability: DELETE_CAPABILITY });
     return { action: publicItem(item), result };
   }
 
-  function deny(idValue) {
+  function deny(idValue, sessionId = "") {
     prune();
     const item = pending.get(idValue);
     if (!item) return false;
+    const scope = typeof sessionId === "string" ? sessionId : "";
+    if (item.sessionId && scope && item.sessionId !== scope) return false;
     revokeTaskPending(item.taskId);
     return true;
   }

@@ -29,4 +29,4 @@ The response keeps `executionEnabled: false` to make clear that arbitrary comman
 
 ## Validation
 
-CI must pass Node.js 24.x and 26.x test matrices and the Node 26 FPK package inspection. Tests cover catalogue allowlisting, scoped results, invalid arguments, unknown IDs, unauthenticated access, and cross-origin rejection.
+CI must pass the Node.js 26.x test suite and the Node 26 FPK package inspection. Tests cover catalogue allowlisting, scoped results, invalid arguments, unknown IDs, unauthenticated access, and cross-origin rejection.

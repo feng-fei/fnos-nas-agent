@@ -21,4 +21,4 @@ The web UI displays a compact diagnostic summary after login. The endpoint requi
 
 ## Validation
 
-The Node built-in test suite checks that diagnostics are denied without a session and returns expected field types after login. The normal Node 24/26 CI matrix and FPK packaging workflow remain the release gate. No production NAS was changed by this PR.
+The Node built-in test suite checks that diagnostics are denied without a session and returns expected field types after login. The normal Node 26.x CI job and FPK packaging workflow remain the release gate. No production NAS was changed by this PR.

@@ -13,4 +13,4 @@ Run the actual HTTP server as a child process against a temporary data directory
 
 ## Acceptance
 
-The test must pass under Node.js 24 and 26. A separate fnOS staging device is still needed for platform-specific FPK lifecycle checks.
+The test must pass under Node.js 26.x. A separate fnOS staging device is still needed for platform-specific FPK lifecycle checks.

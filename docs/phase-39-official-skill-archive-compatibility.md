@@ -20,4 +20,4 @@ The archive remains in private quarantine. Import does not extract files, instal
 
 - The official package can pass bounded archive inspection and static manifest review.
 - ZIP path/type/structure validation and SHA-256 verification remain enabled.
-- Node.js 26 core tests pass; packaging checks are restored before release.
+- Node.js 26.x core tests pass; packaging checks are restored and run in CI (see docs/phase-112 and docs/phase-123).

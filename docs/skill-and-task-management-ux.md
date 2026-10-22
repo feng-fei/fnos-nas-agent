@@ -7,4 +7,4 @@ This change completes two practical UI gaps:
 
 Skill archives remain quarantined. This lifecycle management does not execute imported Skill code or claim that an archive is safe merely because it has been approved.
 
-Validation: Node.js 24/26 tests, release gates, and Node.js 26 FPK packaging. Real fnOS validation remains separate.
+Validation: Node.js 26.x tests, release gates, and Node.js 26 FPK packaging. Real fnOS validation remains separate.

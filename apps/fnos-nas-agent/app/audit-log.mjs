@@ -3,26 +3,50 @@ import { join } from "node:path";
 
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const ROUTES = new Set([
-  "setup", "login", "logout", "diagnostics", "audit.list", "files.list", "files.manage", "skills.list", "skills.register",
+  "setup", "login", "logout", "diagnostics", "audit.list", "files.list", "files.manage", "files.checksum", "skills.list", "skills.register",
   "skills.import", "skills.transition", "skills.remove", "skills.install-cli", "agent.status", "agent.trim-cli-test", "agent.trim-cli-login-command", "agent.message",
   "tasks.status", "tasks.list", "tasks.cancel", "tasks.clear", "tasks.get", "actions.pending", "actions.confirm", "tools.list",
-  "tools.run", "models.presets", "models.list", "models.add", "models.update", "models.remove", "models.default", "models.test", "other_api"
+  "tools.run", "models.presets", "models.list", "models.add", "models.update", "models.remove", "models.default", "models.test", "execution.mode", "other_api"
 ]);
+
+// Audit events are written from a response "finish" listener that runs outside the
+// request try/catch, so record() must never throw: an unknown route, an unsupported
+// method or a malformed status code is normalized instead of crashing the process.
+const FALLBACK_ROUTE = "other_api";
+const FALLBACK_METHOD = "UNKNOWN";
+const FALLBACK_STATUS_CODE = 500;
+const OPTIONAL_FIELDS = Object.freeze(["sessionId", "toolId", "target", "risk", "requestId"]);
+const MAX_OPTIONAL_LENGTH = 256;
+
+function optionalText(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > MAX_OPTIONAL_LENGTH) return null;
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) return null;
+  return trimmed;
+}
 
 function normalizeEvent(event, now) {
   const method = typeof event?.method === "string" ? event.method.toUpperCase() : "";
   const route = typeof event?.route === "string" ? event.route : "";
   const statusCode = event?.statusCode;
-  if (!METHODS.has(method)) throw new TypeError("Invalid audit method");
-  if (!ROUTES.has(route)) throw new TypeError("Invalid audit route");
-  if (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599) throw new TypeError("Invalid audit status");
-  return {
+  const safeMethod = METHODS.has(method) ? method : FALLBACK_METHOD;
+  const safeRoute = ROUTES.has(route) ? route : FALLBACK_ROUTE;
+  const safeStatusCode = Number.isInteger(statusCode) && statusCode >= 100 && statusCode <= 599
+    ? statusCode
+    : FALLBACK_STATUS_CODE;
+  const normalized = {
     at: now(),
-    method,
-    route,
-    statusCode,
-    outcome: statusCode < 400 ? "success" : statusCode < 500 ? "rejected" : "error"
+    method: safeMethod,
+    route: safeRoute,
+    statusCode: safeStatusCode,
+    outcome: safeStatusCode < 400 ? "success" : safeStatusCode < 500 ? "rejected" : "error"
   };
+  for (const field of OPTIONAL_FIELDS) {
+    const value = optionalText(event?.[field]);
+    if (value !== null) normalized[field] = value;
+  }
+  return normalized;
 }
 
 export function createAuditLogger({ dataDir, filename = "audit.jsonl", maxBytes = 1_048_576, now = () => new Date().toISOString() } = {}) {
@@ -54,8 +78,18 @@ export function createAuditLogger({ dataDir, filename = "audit.jsonl", maxBytes 
 
   return Object.freeze({
     record(event) {
-      const line = JSON.stringify(normalizeEvent(event, now)) + "\n";
-      queue = queue.then(() => writeEvent(line)).catch(() => {});
+      let line;
+      try {
+        line = JSON.stringify(normalizeEvent(event, now)) + "\n";
+      } catch (error) {
+        console.error(`[audit] Could not serialize audit event: ${error?.message || "unknown error"}`);
+        return Promise.resolve();
+      }
+      // A failing audit write must be visible in the service log, but it must never
+      // reject the caller or break the audit chain for later events.
+      queue = queue.then(() => writeEvent(line)).catch(error => {
+        console.error(`[audit] Could not append audit event to ${file}: ${error?.message || "unknown error"}`);
+      });
       return queue;
     },
     flush() { return queue; },

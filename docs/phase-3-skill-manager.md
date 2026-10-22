@@ -2,7 +2,7 @@
 
 ## Scope
 
-This phase adds a reviewable Skill inventory and lifecycle. It does not execute imported Skill code, install dependencies, invoke shell scripts, or grant NAS privileges. Node.js 26.x is the packaged runtime; use the latest available patch in the 26.x line. Node.js 24.x remains a CI regression line only.
+This phase adds a reviewable Skill inventory and lifecycle. It does not execute imported Skill code, install dependencies, invoke shell scripts, or grant NAS privileges. Node.js 26.x is the packaged runtime; use the latest available patch in the 26.x line. Node.js 26.x is also the only supported CI runtime line.
 
 ## Security prerequisite
 
@@ -80,4 +80,4 @@ Required automated tests:
 - malformed requests and unknown Skill IDs fail closed;
 - API output excludes absolute paths, payload contents, and secret-like values.
 
-The phase is complete only when all tests pass on Node.js 26.x, the Node.js 24.x regression tests remain green where supported, and a test FPK passes lifecycle validation on a non-production fnOS test system. Do not install or modify the user's production NAS as part of CI.
+The phase is complete only when all tests pass on Node.js 26.x and a test FPK passes lifecycle validation on a non-production fnOS test system. Do not install or modify the user's production NAS as part of CI.

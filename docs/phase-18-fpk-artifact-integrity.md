@@ -13,4 +13,4 @@ The verifier only lists archive metadata; it does not extract or execute the pac
 
 ## Acceptance
 
-Run it in the Node.js 26 packaging job before checksum generation and artifact upload. Real fnOS install/upgrade validation remains a separate staging requirement. Real fnOS install/upgrade validation remains a separate staging requirement.
+Run it in the Node.js 26 packaging job before checksum generation and artifact upload. Real fnOS install/upgrade validation remains a separate staging requirement.

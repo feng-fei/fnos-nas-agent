@@ -11,4 +11,4 @@
 The tool is a normal `write` operation and does not require repeated confirmation. Its risk comes from the server-side registry, not the model. Deletion remains destructive and uses the separate one-time confirmation flow. Arbitrary shell and imported Skill execution remain disabled.
 
 ## Validation
-Tests cover UTF-8 content, byte size, no-overwrite behavior, unsafe paths, oversized content, and temporary-file cleanup. Require the full Node.js 24/26 test matrix and Node.js 26 FPK packaging before merge. CI does not replace real fnOS device acceptance.
+Tests cover UTF-8 content, byte size, no-overwrite behavior, unsafe paths, oversized content, and temporary-file cleanup. Require the full Node.js 26.x test suite and Node.js 26 FPK packaging before merge. CI does not replace real fnOS device acceptance.

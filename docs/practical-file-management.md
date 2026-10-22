@@ -11,4 +11,4 @@ Extends the authenticated mobile file browser with bounded UTF-8 text preview, s
 - Delete requires explicit confirmation in the authenticated same-origin API; the mobile UI also asks for confirmation.
 - Intended for a trusted LAN. CI does not validate permissions or storage layout on a real fnOS device.
 
-Validation: Node.js 24/26 tests, release gates, syntax checks, and Node.js 26 FPK packaging.
+Validation: Node.js 26.x tests, release gates, syntax checks, and Node.js 26 FPK packaging.

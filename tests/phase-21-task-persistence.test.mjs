@@ -60,11 +60,20 @@ test("queued and running tasks are marked interrupted on recovery and never auto
   await manager.flush();
 });
 
-test("task persistence rejects corrupt state rather than silently discarding history", async () => {
+test("task persistence rejects corrupt state by quarantining it instead of blocking startup", async () => {
   const dir = await mkdtemp(join(tmpdir(), "fnos-task-corrupt-"));
   const storageFile = join(dir, "tasks.json");
-  const { writeFile } = await import("node:fs/promises");
+  const { writeFile, readdir } = await import("node:fs/promises");
   await writeFile(storageFile, "{invalid");
   const manager = createTaskManager({ storageFile, execute: async () => ({}) });
-  await assert.rejects(manager.ready);
+  // A corrupt snapshot must not stop the appliance from starting: the broken file is
+  // quarantined next to the original and the service continues with an empty history.
+  await manager.ready;
+  const files = await readdir(dir);
+  assert.ok(
+    files.some(name => name.startsWith("tasks.json.corrupt-")),
+    `the corrupt state file must be quarantined, found: ${files.join(", ")}`
+  );
+  assert.equal(manager.list().length, 0);
+  assert.equal(manager.stats().retained, 0);
 });

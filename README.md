@@ -9,9 +9,9 @@ Core development is active. The repository currently includes:
 - Password-based setup/login, sessions, read-only diagnostics, and metadata-only audit history.
 - Mobile file browsing, bounded text preview, upload, folder creation, rename/move, batch operations, and confirmation-protected deletion.
 - The mobile file browser can calculate SHA-256 for files up to 256 MiB with streaming reads, root confinement, and a per-session request limit.
-- Rules-first Agent routing, allowlisted tool plans, bounded asynchronous tasks, progress reporting, task filtering/pagination, and queued-task cancellation.
+- Rules-first Agent routing, allowlisted tool plans, bounded asynchronous tasks, progress reporting, task filtering/pagination, queued-task cancellation, and cooperative cancellation of running tasks (HTTP 202).
 - Encrypted multi-provider model configuration, catalog discovery, connection tests, fallback routing, bounded retries, and in-memory metrics.
-- Provider presets for OpenAI, DeepSeek, SiliconFlow, Alibaba DashScope, Moonshot, Zhipu, OpenRouter, Google Gemini, Groq, and local Ollama.
+- Provider presets for OpenAI, DeepSeek, SiliconFlow, Alibaba DashScope, Moonshot, Zhipu, OpenRouter, Google Gemini, Groq, local Ollama, and a custom OpenAI-compatible endpoint.
 - Quarantined ZIP Skill import, bounded static manifest review, lifecycle transitions, bulk review, and reviewed installation of the official fnOS CLI.
 - GitHub branch/tag ZIP imports are validated, bounded, and stored in quarantine before static review.
 - Batch-import up to five GitHub Skills sequentially with immutable commit pinning and a shared 25 MiB download budget; each item remains in quarantine for review.
@@ -27,7 +27,9 @@ Core development is active. The repository currently includes:
 
 - Arbitrary shell execution remains disabled.
 - Imported Skill code is never executed as part of ZIP import or static review.
-- Risky file actions require a target-bound, one-time confirmation.
+- Risky file actions require a target-bound, one-time confirmation. The confirmation is held by the server, bound to the session that asked for it, and cannot be minted by the client.
+- A global read-only mode and a kill switch block every mutating tool call. An operator can flip them from the console or through `GET`/`POST /api/execution-mode`.
+- The first-run setup needs an installation code when the request does not come from the appliance itself, so an unconfigured instance cannot be claimed from the LAN.
 - Model output can only request registered tools; the Agent validates tool IDs and arguments before invocation.
 - API keys are encrypted at rest by the model-provider store and are not returned to the UI.
 - Task inputs, prompts, result payloads, and raw exceptions are not persisted to task history.
@@ -125,6 +127,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 103 — Bounded Skill Source Static Review](docs/phase-103-skill-source-static-review.md)
 - [Phase 104 — Batch GitHub Skill Import](docs/phase-104-batch-github-skill-import.md)
 - [Phase 105 — Skill Embedded Credential Scanning](docs/phase-105-skill-secret-scanning.md)
+- [Phase 106 — Running Task Cancellation API](docs/phase-106-running-task-cancel-api.md)
 - [Phase 107 — Quarantined Skill Source Preview](docs/phase-107-skill-quarantine-source-preview.md)
 - [Phase 108 — File SHA-256 Checksum](docs/phase-108-file-sha256-checksum.md)
 - [Phase 118 — File Read Descriptor Confinement](docs/phase-118-file-read-descriptor-confinement.md)
@@ -153,6 +156,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 114 — FPK Build Provenance Attestation](docs/phase-114-build-provenance-attestation.md)
 - [Phase 121 — Recoverable Session Persistence](docs/phase-121-session-persistence-retry.md)
 - [Phase 122 — File Mutation Directory Descriptor Confinement](docs/phase-122-file-write-directory-descriptor-confinement.md)
+- [Phase 125 — Skill Quarantine Directory Descriptor Confinement](docs/phase-125-skill-quarantine-directory-descriptor-confinement.md)
 - [Phase 123 — Bundled Runtime FPK Lifecycle Smoke](docs/phase-123-fpk-bundled-runtime-smoke.md)
 - [Phase 124 — Recoverable Skill Inventory Persistence](docs/phase-124-skill-store-persistence-retry.md)
 - [Phase 115 — Immutable GitHub Actions References](docs/phase-115-github-actions-pinning.md)
@@ -165,7 +169,18 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 39 — Official Skill archive compatibility](docs/phase-39-official-skill-archive-compatibility.md)
 - [FPK CI build and test artifact](docs/fpk-ci-build.md)
 - [FPK test plan](docs/fpk-test-plan.md)
+- [Phase 126 — Execution Policy](docs/phase-126-execution-policy.md)
+- [Phase 127 — Destructive Capability](docs/phase-127-destructive-capability.md)
+- [Phase 128 — Audit Log Hardening](docs/phase-128-audit-log-hardening.md)
+- [Phase 129 — State File Recovery](docs/phase-129-state-file-recovery.md)
+- [Phase 130 — Release Consistency](docs/phase-130-release-consistency.md)
+- [Phase 131 — Server Hardening](docs/phase-131-server-hardening.md)
+- [Phase 132 — Real NAS Staging Acceptance](docs/phase-132-nas-staging-acceptance.md)
+- [Phase 133 — Model Fallback and Scan Bounds](docs/phase-133-model-fallback-and-scan-bounds.md)
+- [Documentation index](docs/README.md)
 
 ## License
 
-No license has been selected yet. Until one is added, do not assume this repository grants permission to redistribute or reuse its code.
+This project is released under the MIT License. The full terms are in [LICENSE](LICENSE).
+
+Unless a file states otherwise, you may use, copy, modify, merge, publish, distribute, sublicense, and sell copies of this project and its documentation, provided the copyright notice and the permission notice are retained. The software is provided "as is", without warranty of any kind.

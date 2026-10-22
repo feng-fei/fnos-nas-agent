@@ -10,7 +10,7 @@
 
 ## Acceptance
 
-- Node.js 24 and 26 unit tests pass.
+- Node.js 26.x unit tests pass.
 - Release readiness checks pass.
 - The Node.js 26 job builds and inspects an FPK artifact and publishes its checksum.
 - A separate disposable fnOS test instance is still required for real install/start/stop/upgrade/uninstall validation.

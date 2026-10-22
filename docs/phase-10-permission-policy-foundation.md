@@ -19,4 +19,4 @@ The official fnOS Skill / CLI remains the source of truth for supported operatio
 
 ## Validation
 
-Unit tests cover default read/write behavior, destructive confirmation, opt-out overrides, unknown risk rejection, invalid configuration, and the execution-disabled invariant. CI should run Node.js 24/26 test suites and Node.js 26 FPK package inspection. CI is not real-device fnOS validation.
+Unit tests cover default read/write behavior, destructive confirmation, opt-out overrides, unknown risk rejection, invalid configuration, and the execution-disabled invariant. CI should run the Node.js 26.x test suite and Node.js 26 FPK package inspection. CI is not real-device fnOS validation.
