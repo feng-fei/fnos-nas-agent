@@ -48,6 +48,10 @@ Core development is active. The repository currently includes:
 - Disk capacity trends: samples are de-duplicated per hour, capped and stored atomically, and a fill date is only predicted when the growth rate and the sample count support it (Phase 188/191).
 - A batch rename that plans first: four modes, four conflict classes checked before anything moves, and an ordered rollback if a step fails halfway (Phase 189/191).
 - Service state read through one fixed command shape: a server-side unit whitelist, `systemctl show` with fixed argv and no shell, and `unknown` whenever the collector cannot measure — never a guessed `running` (Phase 190/191).
+- Device temperature from `/sys/class/thermal`: strict milli-Celsius parsing, per-sensor de-duplication, and `unknown` instead of `0 °C` when nothing credible was measured (Phase 193/196/197).
+- System events from the log tail: kmsg, journalctl-short and `LEVEL:` lines are normalised, repeats are grouped, and the log is graded ok/warning/critical — with dropped lines accounted for exactly (Phase 194/196/197).
+- SMART health that never guesses: the ATA attribute table is parsed for reallocated/pending/offline sectors, CRC errors and temperature; a disc that cannot be read is `unknown`, and `smartctl` stays off unless `FNOS_AGENT_SMART_COLLECTOR=on` (Phase 192/197).
+- An upgrade check that does not phone home: strict SemVer comparison against a version the caller supplies, `unknown` when either side cannot be parsed, and downgrades are never offered (Phase 195/197).
 
 **Runtime and validation:** Node.js 26.x is the supported development and CI runtime. GitHub Actions builds an unsigned x86 CI test FPK, inspects the archive, verifies SHA-256 and release-manifest consistency, and uploads the artifact for 14 days. A separate job creates GitHub build-provenance attestation only for verified `main` builds; pull requests do not receive OIDC/attestation permissions. CI success does not mean the package has been installed or validated on a real fnOS NAS; lifecycle acceptance remains a separate manual staging gate.
 
@@ -183,6 +187,12 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 189 — Batch Rename Planner](docs/phase-189-batch-rename.md)
 - [Phase 190 — Service Status Parsing](docs/phase-190-service-status.md)
 - [Phase 191 — Runtime Wiring](docs/phase-191-runtime-wiring.md)
+- [Phase 192 — SMART Health](docs/phase-192-smart-health.md)
+- [Phase 193 — Thermal Status](docs/phase-193-thermal-status.md)
+- [Phase 194 — System Events](docs/phase-194-system-events.md)
+- [Phase 195 — Update Check](docs/phase-195-update-check.md)
+- [Phase 196 — Collectors](docs/phase-196-collectors.md)
+- [Phase 197 — Device Diagnosis](docs/phase-197-device-diagnosis.md)
 
 - [Phase 94 — Model Catalog HTTP Integration](docs/phase-94-model-catalog-http.md)
 - [Phase 95 — Searchable Model Catalog Picker](docs/phase-95-model-catalog-search.md)

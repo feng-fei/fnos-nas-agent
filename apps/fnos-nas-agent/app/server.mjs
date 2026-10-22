@@ -61,6 +61,13 @@ import { createSystemctlCollector, FNOS_SERVICE_UNITS } from "./service-status-c
 import { buildTrendVerdict } from "./capacity-forecast.mjs";
 import { createCapacityHistory } from "./capacity-history.mjs";
 import { planBatchRename, applyBatchRenamePlan } from "./batch-rename.mjs";
+import { normalizeThermalReadings, summarizeThermals } from "./thermal-status.mjs";
+import { createThermalCollector } from "./thermal-collector.mjs";
+import { parseLogLines, summarizeEvents } from "./system-events.mjs";
+import { createLogTailCollector } from "./log-tail-collector.mjs";
+import { buildUpdateVerdict } from "./update-check.mjs";
+import { parseSmartInfo, parseSmartAttributes, summarizeSmartHealth } from "./smart-health.mjs";
+import { createSmartctlCollector } from "./smart-collector.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -554,6 +561,15 @@ const capacityHistory = createCapacityHistory({ dataDir });
 const MAX_TREND_DISKS = 4;
 const MAX_BATCH_RENAME_APPLY = 50;
 
+// 温度与日志都是只读采样：读不到时接口如实报 unknown，绝不会被当成健康。
+// 需要排查环境问题时可以用 FNOS_AGENT_THERMAL_COLLECTOR=off / FNOS_AGENT_LOG_COLLECTOR=off 关掉。
+const thermalCollector = process.env.FNOS_AGENT_THERMAL_COLLECTOR === "off" ? null : createThermalCollector({});
+const logTailCollector = process.env.FNOS_AGENT_LOG_COLLECTOR === "off" ? null : createLogTailCollector({});
+
+// smartctl 需要读裸设备，商店版应用通常没有这个权限，所以默认关闭、只在显式开启时
+// 尝试；采不到就报 unknown，不会让页面显示成「磁盘健康」。
+const smartCollector = process.env.FNOS_AGENT_SMART_COLLECTOR === "on" ? createSmartctlCollector({}) : null;
+
 // Reads the docker inventory the advisor analyses. A read that fails leaves the
 // section empty and the report says the section is unknown: a missing answer is
 // never turned into a healthy one. The collector only reads, it never changes a
@@ -725,6 +741,10 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/system/capabilities") return "system.capabilities";
   if (pathname === "/api/system/services") return "system.services";
   if (pathname === "/api/system/capacity-forecast") return "system.capacity-forecast";
+  if (pathname === "/api/system/thermal") return "system.thermal";
+  if (pathname === "/api/system/events") return "system.events";
+  if (pathname === "/api/system/smart") return "system.smart";
+  if (pathname === "/api/system/update-check") return "system.update-check";
   if (pathname === "/api/diagnostics/report") return "diagnostics.report";
   if (pathname === "/api/diagnostics/evidence") return "diagnostics.evidence";
   if (pathname === "/api/security/inspection") return "security.inspection";
@@ -1654,6 +1674,139 @@ const server = createServer(async (req, res) => {
         note: trends.length
           ? "趋势只来自本机历次采样的磁盘用量；样本不足时只报当前用量，不给预测。"
           : "这次没有读到磁盘用量，趋势无法计算；系统快照的存储段可能是 unknown。"
+      });
+    }
+    if (url.pathname === "/api/system/thermal") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // 只读：/sys/class/thermal 下的固定 zone，请求方不能指定读哪个文件。
+      // 读不到就是 unknown——「没测到」不等于「温度正常」。
+      let collected = null;
+      let collectorNote = "";
+      if (!thermalCollector) {
+        collectorNote = "collector-disabled";
+      } else {
+        try {
+          collected = thermalCollector();
+        } catch {
+          collectorNote = "collector-failed";
+        }
+      }
+      const normalized = collected
+        ? normalizeThermalReadings(collected.readings)
+        : { readings: [], dropped: [], notes: [] };
+      const summary = summarizeThermals(normalized.readings);
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        verdict: summary.verdict,
+        counts: summary.counts,
+        hottest: summary.hottest,
+        readings: normalized.readings,
+        dropped: normalized.dropped,
+        notes: [
+          ...(collected?.notes ?? []),
+          ...normalized.notes,
+          ...summary.notes,
+          ...(collectorNote ? [collectorNote] : [])
+        ],
+        note: summary.verdict === "unknown"
+          ? "没有读到可信温度；这不代表设备温度正常，只代表这次没测到。"
+          : "温度来自 /sys/class/thermal 的只读读数；65℃ 预警、80℃ 危险，阈值未按机型标定。"
+      });
+    }
+    if (url.pathname === "/api/system/events") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const parsedLimit = Number.parseInt(url.searchParams.get("limit") || "", 10);
+      const limit = Number.isSafeInteger(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 20;
+      let collected = null;
+      let collectorNote = "";
+      if (!logTailCollector) {
+        collectorNote = "collector-disabled";
+      } else {
+        try {
+          collected = logTailCollector();
+        } catch {
+          collectorNote = "collector-failed";
+        }
+      }
+      const parsed = parseLogLines(collected?.text ?? "");
+      const summary = summarizeEvents(parsed.events, { limit });
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        verdict: summary.verdict,
+        counts: summary.counts,
+        repeated: summary.repeated,
+        dropped: parsed.dropped,
+        sources: collected?.sources ?? [],
+        notes: [
+          ...(collected?.notes ?? []),
+          ...parsed.notes,
+          ...summary.notes,
+          ...(collectorNote ? [collectorNote] : [])
+        ],
+        note: summary.verdict === "unknown"
+          ? "没有读到系统日志；这不代表没有错误事件，只代表这次没取到日志。"
+          : "只解析日志尾部最近 64 KiB；日志按时间顺序，repeated 是归一化后的重复计数。"
+      });
+    }
+    if (url.pathname === "/api/system/smart") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      let collected = null;
+      let collectorNote = "";
+      if (!smartCollector) {
+        collectorNote = "collector-disabled";
+      } else {
+        try {
+          collected = await smartCollector();
+        } catch {
+          collectorNote = "collector-failed";
+        }
+      }
+      const devices = (Array.isArray(collected?.devices) ? collected.devices : []).map((entry) => {
+        const health = summarizeSmartHealth({
+          info: parseSmartInfo(entry.text),
+          attributes: parseSmartAttributes(entry.text)
+        });
+        return { device: entry.device, verdict: health.verdict, findings: health.findings, notes: health.notes };
+      });
+      // 汇总只按最坏结论走：任何一块盘 failed 就是 failed；全部 ok 才敢说 ok。
+      const verdict = devices.some((item) => item.verdict === "failed")
+        ? "failed"
+        : devices.some((item) => item.verdict === "warning")
+          ? "warning"
+          : devices.length > 0 && devices.every((item) => item.verdict === "ok")
+            ? "ok"
+            : "unknown";
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        verdict,
+        devices,
+        notes: [...(collected?.notes ?? []), ...(collectorNote ? [collectorNote] : [])],
+        note: smartCollector
+          ? "SMART 只读采集（smartctl -H -A）；未识别或不支持的盘按 unknown 处理。"
+          : "SMART 采集默认关闭：它需要 smartctl 与裸设备读权限。需要时用 FNOS_AGENT_SMART_COLLECTOR=on 打开。"
+      });
+    }
+    if (url.pathname === "/api/system/update-check") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // 纯比较：不联网、不下载、不读远端。latest 由调用方给出（例如自己查到的
+      // 发布版本），缺省就报 unknown——绝不把「没查」当成「已是最新」。
+      const latest = (url.searchParams.get("latest") || "").slice(0, 64);
+      const channel = url.searchParams.get("channel") || undefined;
+      let verdict;
+      try {
+        verdict = buildUpdateVerdict({ current: APP_VERSION, latest, channel });
+      } catch (error) {
+        return reply(res, 400, { error: String(error?.message || "invalid version query").slice(0, 200) });
+      }
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        installedVersion: APP_VERSION,
+        ...verdict,
+        note: "本接口只做版本比较，不联网、不下载；latest 缺省时结论是 unknown，不是 up-to-date。"
       });
     }
     if (url.pathname === "/api/diagnostics/report") {

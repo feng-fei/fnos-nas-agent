@@ -47,14 +47,14 @@ State values:
 | S03 CPU monitoring | Partly | trim-cli `monitor.cpu` | No history series |
 | S04 Memory monitoring | Partly | trim-cli `monitor.memory` | Swap and pressure detail is not parsed |
 | S05 Disk capacity | Partly | trim-cli `monitor.disk`, `file.usage` | — |
-| S06 Disk health (SMART) | Open | — | The collector exposes no SMART source yet |
+| S06 Disk health (SMART) | Partial | Phase 192 parse/judgement, Phase 197 default-off `smartctl` collector + `GET /api/system/smart` | Needs `smartctl` and raw-device access; NVMe logs are not parsed yet |
 | S07 Storage pool monitoring | Partly | trim-cli `storage.pools` | Degradation interpretation is missing |
 | S08 Filesystem monitoring | Partly | Phase 161 snapshot | Read-only mount detection is missing |
 | S09 Network status | Partly | trim-cli `monitor.net` | Throughput and packet loss are not parsed |
 | S10 Service status | Implemented | Phase 190 parse layer, Phase 191 `GET /api/system/services` | Units come from a fixed server-side whitelist; no restart action by design |
 | S11 Docker status | Partly | trim-cli `docker.stats`, `docker.container.ls` | — |
-| S12 Temperature monitoring | Open | — | — |
-| S13 System events | Open | — | — |
+| S12 Temperature monitoring | Partial | Phase 193 judgement, Phase 196 `/sys/class/thermal` collector, Phase 197 `GET /api/system/thermal` | Thresholds are not per-model; no history |
+| S13 System events | Partial | Phase 194 parser, Phase 196 log tail, Phase 197 `GET /api/system/events` | Only three log formats; multi-line stack traces are dropped after the first line |
 | S14 Historical trends | Implemented | Phase 188 `summarizeTrend`, Phase 191 hourly history | Sampling follows page views, not a timer |
 | S15 Health score | Implemented | Phase 161 `scoreHealth` | Unknown data lowers the confidence of the score |
 | S16 Natural-language query | Partly | Phase 150 direct chat over registered tools | — |
@@ -364,7 +364,7 @@ risk of the action it performs and goes through the same execution policy.
 | O07 Debug mode | Partly | Diagnostic bundles in the trace | No separate switch |
 | O08 Configuration validation | Implemented | Release gates and startup checks | — |
 | O09 Version information | Partly | MCP server info | No single build banner |
-| O10 Upgrade check | Open | — | — |
+| O10 Upgrade check | Partial | Phase 195 SemVer comparison, Phase 197 `GET /api/system/update-check` | No fetching layer: the caller supplies `latest`; no network access by design |
 | O11 Regression tests | Implemented | `tests/` suite and phase test files | — |
 | O12 Deployment verification | Implemented | FPK CI build job | — |
 | O13 Failure recovery test | Partly | Task cancel and timeout tests | No crash-restart test |

@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 192 documents (177 phase documents and 14 non-phase documents, plus this file).
+This index lists 198 documents (183 phase documents and 14 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -701,6 +701,24 @@ This index lists 192 documents (177 phase documents and 14 non-phase documents, 
 
 ### Phase 191
 - [Phase 191 — Runtime wiring](phase-191-runtime-wiring.md) — The Phase 188–190 layers had no outlet: no route, no collector, no button. This phase adds the fixed-argv systemctl collector, the hourly disk-usage history, three guarded routes, and two UI cards (services/trend, plan-then-apply batch rename).
+
+### Phase 192
+- [Phase 192 — SMART health](phase-192-smart-health.md) — Pure parsing and judgement for `smartctl -H -A`: identify support state, read the ATA attribute table, and turn reallocated/pending/offline sectors, CRC errors and temperature into ok/warning/failed/unknown without ever inventing a healthy verdict.
+
+### Phase 193
+- [Phase 193 — Thermal status](phase-193-thermal-status.md) — Turns raw thermal-zone readings into a bounded classification: strict milli-Celsius parsing, per-source de-duplication, and a summariser that reports unknown (never 0 °C) when nothing credible was measured.
+
+### Phase 194
+- [Phase 194 — System events](phase-194-system-events.md) — Parses kmsg, journalctl short and `LEVEL:` lines into normalised events, groups repeats by a value-normalised message, and grades the log as ok/warning/critical/unknown while keeping dropped-line accounting exact.
+
+### Phase 195
+- [Phase 195 — Update check](phase-195-update-check.md) — Strict SemVer parsing and comparison with no network access: an unparsable side yields unknown rather than "up to date", downgrades are never offered, and the caller supplies the version to compare against.
+
+### Phase 196
+- [Phase 196 — Collectors](phase-196-collectors.md) — The read-only side of temperature and log events: fixed `/sys/class/thermal` zones and a 64 KiB tail of three whitelisted log files, both injectable for tests, both reporting what they could not read.
+
+### Phase 197
+- [Phase 197 — Device diagnosis](phase-197-device-diagnosis.md) — Wires the four pure layers to HTTP and the UI: four guarded GET routes plus a default-off smartctl collector, with every unmeasurable case reported as unknown instead of healthy.
 
 ## This index
 

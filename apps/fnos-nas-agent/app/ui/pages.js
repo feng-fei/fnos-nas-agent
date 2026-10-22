@@ -1538,14 +1538,52 @@ document.querySelector("#insights-refresh").addEventListener("click",()=>{refres
  * 两个请求并行，任一失败只影响对应区块；渲染一律 textContent。
  * ------------------------------------------------------------------ */
 const SERVICE_VERDICT_LABELS={running:"运行中",stopped:"已停止",failed:"失败",unknown:"未知"};
+const DEVICE_VERDICT_LABELS={ok:"正常",cool:"偏冷",normal:"正常",warm:"偏热",hot:"过热",warning:"需注意",critical:"严重","up-to-date":"已最新","update-available":"有新版本",unknown:"未知"};
+function renderDeviceDiagnosis(thermal,events,smart,update){
+ const lines=[];
+ const label=(verdict)=>DEVICE_VERDICT_LABELS[verdict]||DEVICE_VERDICT_LABELS.unknown;
+ lines.push("结论：温度 "+label(thermal&&thermal.verdict)+" · 事件 "+label(events&&events.verdict)+" · 磁盘 "+label(smart&&smart.verdict)+" · 升级 "+label(update&&update.status));
+ if(thermal&&!thermal.error){
+  const hot=thermal.hottest;
+  const counts=(thermal&&thermal.counts)||{};
+  const head=hot?("最热 "+(typeof hot.celsius==="number"?hot.celsius.toFixed(1):"-")+"℃（"+(hot.label||hot.source||"未知传感器")+"）"):"没有读到可信温度";
+  lines.push("- 温度："+head+" · 读数 "+(counts.total||0)+" 个（正常 "+(counts.normal||0)+" · 偏热 "+(counts.warm||0)+" · 过热 "+(counts.hot||0)+"）");
+  if(Array.isArray(thermal.notes)&&thermal.notes.length)lines.push("  备注："+thermal.notes.slice(0,6).join("；"));
+ }else if(thermal&&thermal.error)lines.push("- 温度：读取失败（"+thermal.error+"）");
+ if(events&&!events.error){
+  const counts=(events&&events.counts)||{};
+  const repeated=Array.isArray(events.repeated)?events.repeated:[];
+  lines.push("- 事件："+(counts.err||0)+" 条 err · "+(counts.warning||0)+" 条 warning · "+(counts.crit||0)+" 条 crit · 重复 "+(repeated.length?repeated.length+" 组（首条 "+String(repeated[0].count||0)+" 次）":"无")+(Array.isArray(events.sources)&&events.sources.length?(" · 来源 "+events.sources.join("、")):""));
+  if(Array.isArray(events.notes)&&events.notes.length)lines.push("  备注："+events.notes.slice(0,6).join("；"));
+ }else if(events&&events.error)lines.push("- 事件：读取失败（"+events.error+"）");
+ if(smart&&!smart.error){
+  const devices=Array.isArray(smart.devices)?smart.devices:[];
+  lines.push("- 磁盘 SMART："+(devices.length?devices.map((item)=>(item.device||"?")+" "+label(item.verdict)).join(" · "):"未采集"));
+  if(Array.isArray(smart.notes)&&smart.notes.length)lines.push("  备注："+smart.notes.slice(0,6).join("；"));
+  if(smart.note)lines.push("  说明："+smart.note);
+ }else if(smart&&smart.error)lines.push("- 磁盘 SMART：读取失败（"+smart.error+"）");
+ if(update&&!update.error){
+  lines.push("- 升级：当前 "+(update.installedVersion||update.current||"?")+" · "+label(update.status)+(Array.isArray(update.notes)&&update.notes.length?"（"+update.notes.join("；")+"）":""));
+  if(update.note)lines.push("  说明："+update.note);
+ }else if(update&&update.error)lines.push("- 升级：读取失败（"+update.error+"）");
+ return lines.join("\n");
+}
 async function refreshRuntime(){
  const statusEl=document.querySelector("#runtime-status");
  const serviceEl=document.querySelector("#runtime-services");
  const capacityEl=document.querySelector("#runtime-capacity");
+ const deviceEl=document.querySelector("#runtime-devices");
  if(!serviceEl||!capacityEl)return;
- if(statusEl)statusEl.textContent="正在读取服务状态与容量趋势…";
- const results=await Promise.all([insightRead("/api/system/services"),insightRead("/api/system/capacity-forecast")]);
- const services=results[0],capacity=results[1];
+ if(statusEl)statusEl.textContent="正在读取服务状态、容量趋势与设备诊断…";
+ const results=await Promise.all([
+  insightRead("/api/system/services"),
+  insightRead("/api/system/capacity-forecast"),
+  insightRead("/api/system/thermal"),
+  insightRead("/api/system/events?limit=5"),
+  insightRead("/api/system/smart"),
+  insightRead("/api/system/update-check")
+ ]);
+ const services=results[0],capacity=results[1],thermal=results[2],events=results[3],smart=results[4],update=results[5];
  if(services&&services.error){serviceEl.textContent="读取失败："+services.error;}
  else{
   const items=services&&Array.isArray(services.items)?services.items:[];
@@ -1580,6 +1618,7 @@ async function refreshRuntime(){
   if(capacity&&capacity.note)lines.push("说明："+capacity.note);
   capacityEl.textContent=lines.join("\n");
  }
+ if(deviceEl)deviceEl.textContent=renderDeviceDiagnosis(thermal,events,smart,update);
  if(statusEl)statusEl.textContent="已更新于 "+formatDateTime(new Date().toISOString());
 }
 document.querySelector("#runtime-refresh").addEventListener("click",()=>{refreshRuntime();});
