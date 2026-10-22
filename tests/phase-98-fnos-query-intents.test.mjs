@@ -87,6 +87,6 @@ test("natural-language local knowledge base requests route to index status, refr
   assert.equal(refresh.results[0].tool, "documents.index-refresh");
   assert.deepEqual(f.calls[1].args, { force: true, maxFiles: 500 });
   assert.equal(search.results[0].tool, "documents.search");
-  assert.deepEqual(search.results[0].args, { query: "家庭预算", limit: 10 });
+  assert.deepEqual(f.calls[2].args, { query: "家庭预算", limit: 10 });
   assert.deepEqual(f.calls.map(item => item.id), ["documents.index-status","documents.index-refresh","documents.search"]);
 });
