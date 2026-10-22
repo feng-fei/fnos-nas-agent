@@ -1,4 +1,4 @@
-# Marvis capability matrix
+﻿# Marvis capability matrix
 
 Every numbered item of the product checklist in
 [marvis-feature-checklist.md](marvis-feature-checklist.md) with its state in
@@ -148,19 +148,19 @@ per-intent command string builder in the chat path.
 | Item | State | Where | Gap |
 | --- | --- | --- | --- |
 | APP01 Container inventory | Partly | trim-cli `docker.container.ls` | — |
-| APP02 Resource analysis | Partly | trim-cli `docker.stats` | — |
-| APP03 Log analysis | Open | — | — |
-| APP04 Dependency analysis | Open | — | — |
+| APP02 Resource analysis | Partly | `app/docker-advisor.mjs` `rankContainerResources` | Ranked from a sample; a missing sample stays unknown |
+| APP03 Log analysis | Partly | `app/docker-advisor.mjs` `classifyContainerLogs` | Coarse error/warning split; no root-cause claim |
+| APP04 Dependency analysis | Partly | `app/docker-advisor.mjs` `describeComposeDependencies` | Declared configuration only; no image resolution |
 | APP05 Compose analysis | Partly | trim-cli `docker.compose.ls` | — |
 | APP06 Deployment plan | Open | — | — |
 | APP07 Pre-deployment validation | Open | — | — |
-| APP08 Configuration diff | Open | — | — |
+| APP08 Configuration diff | Partly | `app/docker-advisor.mjs` `diffComposeConfiguration` | Diff is computed; applying it stays manual |
 | APP09 Deploy or update | Open | — | — |
 | APP10 Health check | Partly | `health-checks.*` Docker plan | — |
 | APP11 Fault recovery | Open | — | — |
 | APP12 Image management | Partly | trim-cli `docker.image.ls` | No update status |
-| APP13 Orphan resource check | Open | — | — |
-| APP14 Port conflict diagnosis | Open | — | — |
+| APP13 Orphan resource check | Partly | `app/docker-advisor.mjs` `findUnusedResources` | Reports only; never removes |
+| APP14 Port conflict diagnosis | Partly | `app/docker-advisor.mjs` `findPortConflicts` | Based on declared and observed bindings |
 | APP15 Application migration | Open | — | — |
 | APP16 Deployment rollback | Open | — | — |
 | APP17 Application backup | Open | — | — |
@@ -171,17 +171,17 @@ per-intent command string builder in the chat path.
 | Item | State | Where | Gap |
 | --- | --- | --- | --- |
 | N01 Interface detection | Partly | trim-cli `monitor.net` | — |
-| N02 DNS diagnosis | Open | — | — |
+| N02 DNS diagnosis | Partly | `app/network-diagnostics.mjs` `diagnoseDns` | Runs on collected resolver output; no live query |
 | N03 Gateway detection | Open | — | — |
 | N04 Port detection | Partly | Server port state only | No host-wide port inventory |
-| N05 Service connectivity | Open | — | — |
+| N05 Service connectivity | Partly | `app/network-diagnostics.mjs` `checkServiceConnectivity` | Uses recorded probes; the Agent does not open a socket |
 | N06 Throughput analysis | Open | — | — |
-| N07 Connection failure location | Open | — | — |
+| N07 Connection failure location | Partly | `app/network-diagnostics.mjs` `locateConnectionFailure` | Limited to the evidence that was collected |
 | N08 Certificate check | Open | — | — |
 | N09 Reverse proxy check | Open | — | — |
 | N10 Repair advice | Partly | Phase 162 read-only checks | — |
 | N11 Network configuration change | Open | — | No remote-access-safe change path exists |
-| N12 Connectivity inspection | Open | — | — |
+| N12 Connectivity inspection | Partly | `app/network-diagnostics.mjs` `runConnectivityPatrol` | Manual run only; no scheduled patrol |
 
 ## Module 08 — Security audit and permission control
 
@@ -282,13 +282,13 @@ Missing capabilities are reported as unknown, never as a working feature.
 | K01 Operations knowledge base | Partly | Documents under `docs/`, document index, `app/runbook-store.mjs` | No runbook authoring in the UI yet |
 | K02 Historical fault library | Partly | `app/runbook-store.mjs` search | Fault records are still written by hand |
 | K03 Device profile | Open | — | — |
-| K04 Application profile | Open | — | — |
+| K04 Application profile | Partly | `app/ui/knowledge-panel.js` app inventory over the system snapshot | Profiles come from a fresh collection, not from a per-device record |
 | K05 User preferences | Open | — | — |
 | K06 Semantic retrieval | Partly | Term and bigram ranking | No embeddings |
 | K07 Source citation | Partly | Index results carry their file | — |
-| K08 Stale information management | Open | — | — |
-| K09 Memory correction | Open | — | — |
-| K10 Knowledge update prompt | Open | — | — |
+| K08 Stale information management | Partly | `app/knowledge-base.mjs` `evaluateKnowledgeExpiry` | Expiry is evaluated on read; nothing re-collects a stale entry |
+| K09 Memory correction | Partly | `app/knowledge-base.mjs` `compareKnowledgeFacts`, `detectKnowledgeConflicts` | A conflict is shown, not adjudicated; there is no merge flow |
+| K10 Knowledge update prompt | Partly | `app/knowledge-base.mjs` `reviewKnowledgeUpdates` | The prompt is rendered in the panel only; no push reminder |
 
 The index holds a snapshot. The live state always comes from a fresh
 collection, never from the index.
@@ -337,12 +337,12 @@ risk of the action it performs and goes through the same execution policy.
 | UI03 Task detail page | Partly | Task history | No per-step timing |
 | UI04 System monitoring page | Partly | Monitoring widgets | Phase 161 snapshot is not rendered yet |
 | UI05 Storage page | Partly | Storage widgets | — |
-| UI06 Application page | Open | — | — |
+| UI06 Application page | Implemented | `#knowledge-card` app inventory (`app/ui/knowledge-panel.js`) | Read-only by design |
 | UI07 File and knowledge page | Partly | Document index page | — |
 | UI08 Workflow page | Partly | Health-check plan page | — |
 | UI09 Security audit page | Partly | Phase 160 inspection | Rendered as a section, not a page |
 | UI10 Settings page | Partly | Settings and Phase 154 model settings | — |
-| UI11 Notification centre | Open | — | — |
+| UI11 Notification centre | Partly | `app/ui/notifications.js` merging exceptions, approvals and tasks | Read state is session-only; no push |
 | UI12 Live progress | Implemented | Phase 146 server-sent events | — |
 | UI13 Result formatting | Partly | Unit formatting in widgets | Not unified across pages |
 | UI14 Empty and error states | Partly | Error and empty states exist per widget | Not unified |
@@ -388,12 +388,22 @@ operating loop:
    (Phase 168), and the plans are reachable over HTTP (Phase 170). What is
    missing is the authoring surface, the calendar rules and a real
    notification target.
-4. **Knowledge and history (K01–K10, D13, D14).** The runbook store now holds
-   reusable procedures with a redacted write path (Phase 169), and the
-   diagnosis engine can cite them (Phase 170). History capture, staleness
-   rules and correction prompts are still missing.
-5. **Web information (B01–B10).** Blocked on an explicit network policy and
-   SSRF protection, and on B10 being re-verified when the first web tool
-   lands.
-6. **Multi-device and remote (R01–R10).** Out of scope for a single-device
+4. **Knowledge and history (K01–K10, D13, D14).** The runbook store holds
+   reusable procedures with a redacted write path (Phase 169); the knowledge
+   base (Phase 177) keeps source, collection time, freshness and open
+   conflicts per entry, and the panel cites the entry it shows while marking
+   a stored fact as history rather than live state (Phase 179). Still missing:
+   a per-device profile record (K03, K05), a scheduled re-collection of an
+   ageing entry, and a merge flow for a conflict a human has resolved.
+5. **Web information (B01–B10).** The closed-by-default network policy and the
+   controlled fetch now exist (Phase 172, Phase 175), so the original block is
+   gone; what remains is a per-site allowlist an operator maintains and a
+   fetch tool the model can reach through the same policy.
+6. **Docker and network advice (APP02–APP14, N02–N12).** The Docker advisor
+   (Phase 180) and the network diagnostics (Phase 178) turn collected data
+   into ranked findings, connectivity verdicts and a next step, and every
+   missing measurement stays `unknown`. What is still missing is a collection
+   step that gathers the samples automatically, so both modules answer from
+   whatever the operator or the snapshot already collected.
+7. **Multi-device and remote (R01–R10).** Out of scope for a single-device
    console; the access guidance already prefers a private overlay.

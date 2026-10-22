@@ -51,6 +51,9 @@ import { createDiagnosisHistory } from "./diagnosis-history.mjs";
 import { createVerifiedWritePipeline } from "./verified-write.mjs";
 import { createNetworkPolicy } from "./network-policy.mjs";
 import { createWebFetcher } from "./web-fetch.mjs";
+import { createKnowledgeBase } from "./knowledge-base.mjs";
+import { buildDockerReport } from "./docker-advisor.mjs";
+import { runConnectivityPatrol } from "./network-diagnostics.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -391,6 +394,11 @@ const networkPolicy = createNetworkPolicy({
 // The fetcher asks the policy before every request and before every redirect
 // hop. With a closed policy it never opens a connection.
 const webFetcher = createWebFetcher({ policy: networkPolicy });
+// The knowledge base keeps what was verified once. Every fact it stores carries
+// the time it was collected: a stored value is never reported as the current
+// state, the live read always wins. It lives in memory like the diagnosis
+// history, it never acts on the machine.
+const knowledgeBase = createKnowledgeBase({});
 // Privacy mode is a read-only report flag: it says how many cloud calls the
 // meter saw. It is not a gate, the gate would have to live in the adapter.
 const privacyModeEnabled = /^(1|true|on|yes)$/i.test(String(process.env.AGENT_PRIVACY_MODE || ""));
@@ -519,6 +527,47 @@ function registerBuiltInWorkflows(engine) {
 // process. The collector never decides what is healthy, it only reports what
 // it could measure.
 const systemCollector = createSystemCollector({ trimCli, fileManager });
+
+// Reads the docker inventory the advisor analyses. A read that fails leaves the
+// section empty and the report says the section is unknown: a missing answer is
+// never turned into a healthy one. The collector only reads, it never changes a
+// container.
+async function readDockerInventory() {
+  if (!trimCli || typeof trimCli.runReadOnly !== "function") return {};
+  const read = async id => {
+    try {
+      const result = await trimCli.runReadOnly(id);
+      return result?.data ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const pickList = (data, keys) => {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    for (const key of keys) {
+      if (Array.isArray(data[key])) return data[key];
+    }
+    return [];
+  };
+  const [containers, images] = await Promise.all([
+    read("docker.container.ls-all"),
+    read("docker.image.ls")
+  ]);
+  return {
+    containers: pickList(containers, ["containers", "items"]),
+    images: pickList(images, ["images", "items"]),
+    // The allowlist has no volume or network listing, so those sections stay
+    // empty and the advisor reports them as unknown instead of guessing.
+    volumes: [],
+    networks: [],
+    // Resource samples and log lines are not collected by the read-only
+    // inventory: the advisor reports those sections as unknown instead of
+    // inventing a number.
+    memoryLimitMb: null
+  };
+}
+
 const agentCore = createAgentCore({ tools: toolRegistry, model: modelAdapter, requestApproval: action => actionApprovals.request(action) });const taskManager = createTaskManager({ execute: (input, context) => agentCore.run(input, context), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "", taskTimeoutMs: taskTimeoutMsFromEnv() });
 
 // A state file that could not be restored leaves the service running in a degraded
@@ -659,7 +708,15 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/write-actions") return "write.actions.list";
   if (pathname === "/api/network/policy") return "network.policy";
   if (pathname === "/api/network/check") return "network.check";
+  if (pathname === "/api/network/diagnostics") return "network.diagnostics";
   if (pathname === "/api/web/fetch") return "web.fetch";
+  if (pathname === "/api/knowledge") return "knowledge.list";
+  if (pathname === "/api/knowledge/stats") return "knowledge.stats";
+  if (pathname === "/api/knowledge/conflicts") return "knowledge.conflicts";
+  if (pathname === "/api/knowledge/preview") return "knowledge.preview";
+  if (pathname === "/api/knowledge/commit") return "knowledge.commit";
+  if (pathname.startsWith("/api/knowledge/")) return pathname.endsWith("/reference") ? "knowledge.reference" : "knowledge.read";
+  if (pathname === "/api/docker/advice") return "docker.advice";
   if (pathname === "/api/tasks/clear-history") return "tasks.clear";
   if (pathname === "/api/health-checks") return method === "GET" ? "health-checks.list" : method === "POST" ? "health-checks.create" : "other_api";
   if (/^\/api\/health-checks\/[a-f0-9-]{36}\/run$/i.test(pathname)) return "health-checks.run";
@@ -1561,6 +1618,22 @@ const server = createServer(async (req, res) => {
         open: Array.isArray(settings.allowList) && settings.allowList.length > 0
       });
     }
+    if (url.pathname === "/api/network/diagnostics") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      // The server performs no network I/O itself. A GET returns a patrol in
+      // which every check is unknown, a POST analyses the probes that were
+      // measured elsewhere (by a read-only command the operator ran). Neither
+      // form turns a missing measurement into a healthy one.
+      if (req.method === "GET") return reply(res, 200, runConnectivityPatrol({}));
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      if (!input || typeof input !== "object" || Array.isArray(input)) return reply(res, 400, { error: "An object of probe data is required" });
+      return reply(res, 200, runConnectivityPatrol(input));
+    }
     if (url.pathname === "/api/network/check") {
       const active = sessionFor(req);
       if (!active) return reply(res, 401, { error: "Unauthorized" });
@@ -1711,6 +1784,93 @@ const server = createServer(async (req, res) => {
         return reply(res, missing ? 404 : 400, { error: result.reason || "Rejected", code: result.code || "rejected" });
       }
       return reply(res, 200, { removed: true, id: result.id });
+    }
+    if (url.pathname === "/api/knowledge/stats") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, knowledgeBase.stats());
+    }
+    if (url.pathname === "/api/knowledge/conflicts") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, knowledgeBase.conflicts());
+    }
+    // A write is always two steps: the preview shows what would be stored and
+    // which fields were redacted, the commit stores exactly that preview. A
+    // single call can never write.
+    if (url.pathname === "/api/knowledge/preview") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const operation = typeof input?.operation === "string" ? input.operation : "write";
+      const result = knowledgeBase.preview(operation, input?.input ?? input ?? {});
+      if (!result.ok) return reply(res, 400, { error: result.message || "Rejected", code: result.code || "rejected", reasons: result.reasons || [] });
+      return reply(res, 200, result);
+    }
+    if (url.pathname === "/api/knowledge/commit") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const previewId = typeof input?.previewId === "string" ? input.previewId : "";
+      if (!previewId) return reply(res, 400, { error: "A previewId is required" });
+      const result = knowledgeBase.commit(previewId);
+      if (result.ok === false) return reply(res, 400, { error: result.message || "Rejected", code: result.code || "rejected" });
+      return reply(res, 201, result);
+    }
+    if (url.pathname === "/api/knowledge") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const query = {
+        keyword: url.searchParams.get("q") || "",
+        tag: url.searchParams.get("tag") || "",
+        category: url.searchParams.get("category") || "",
+        source: url.searchParams.get("source") || ""
+      };
+      const anyQuery = Object.values(query).some(Boolean);
+      if (anyQuery) {
+        return reply(res, 200, knowledgeBase.search(query, { limit: numberParam(url.searchParams.get("limit"), 20, 50) }));
+      }
+      return reply(res, 200, knowledgeBase.list({
+        limit: numberParam(url.searchParams.get("limit"), 20, 50),
+        offset: numberParam(url.searchParams.get("offset"), 0, 100000),
+        includeArchived: url.searchParams.get("archived") === "1"
+      }));
+    }
+    if (url.pathname.startsWith("/api/knowledge/")) {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const rest = decodeURIComponent(url.pathname.slice("/api/knowledge/".length));
+      if (rest.endsWith("/reference")) {
+        const entryId = rest.slice(0, -"/reference".length);
+        // A reference never reports a stored value as the current state: it
+        // carries the collection time next to every fact.
+        const result = knowledgeBase.reference(entryId);
+        if (result.ok === false) return reply(res, 404, { error: result.message || "Not found", code: result.code || "not-found" });
+        return reply(res, 200, result);
+      }
+      const entry = knowledgeBase.get(rest);
+      if (!entry) return reply(res, 404, { error: "Not found" });
+      return reply(res, 200, entry);
+    }
+    if (url.pathname === "/api/docker/advice") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // Every section is read-only and every unmeasured section stays unknown.
+      const inventory = await readDockerInventory();
+      return reply(res, 200, buildDockerReport(inventory));
     }
     if (url.pathname === "/api/health-checks") {
       const active = sessionFor(req);

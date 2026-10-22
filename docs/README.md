@@ -1,11 +1,11 @@
-# Documentation index
+﻿# Documentation index
 
 Every design and delivery document in this repository. Phase numbers are
 historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 180 documents (165 phase documents and 14 non-phase documents, plus this file).
+This index lists 184 documents (169 phase documents and 14 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -667,6 +667,17 @@ This index lists 180 documents (165 phase documents and 14 non-phase documents, 
 ### Phase 176
 - [Phase 176 — Diagnosis and policy routes](phase-176-diagnosis-and-policy-routes.md) — The modules of Phase 171–175 had no exit. This phase exposes the diagnosis history, the write action registry, the network policy and the controlled fetch over authenticated routes and proves the chain with a real HTTP test.
 
+### Phase 177
+- [Phase 177 — Knowledge base](phase-177-knowledge-base.md) — Facts learned from the NAS were stored but never ranked, dated or cited. This phase adds a source-aware knowledge base whose entries carry provenance, freshness and open conflicts instead of a single "known fact".
+
+### Phase 178
+- [Phase 178 — Network diagnostics](phase-178-network-diagnostics.md) — "The network is slow" was not answerable. This phase turns link state, latency samples and DNS results into a structured verdict with explicit gaps instead of a guess.
+
+### Phase 179
+- [Phase 179 — Knowledge panel and notifications](phase-179-knowledge-and-notifications.md) — The knowledge base and the event streams had no screen. This phase renders cited knowledge, the read-only application inventory and a notification centre, and hides credentials before display.
+
+### Phase 180
+- [Phase 180 — Docker advisor](phase-180-docker-advisor.md) — Container advice was generic. This phase reads the collected container data and produces per-container findings with a reason, a severity and a next step, without touching Docker.
 ## This index
 
 - [Documentation index](README.md) — Complete list of documents in this directory, with a one-line summary for each.

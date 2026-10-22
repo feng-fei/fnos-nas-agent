@@ -1731,6 +1731,245 @@ async function refreshOverviewStats(){
 
 
 /* ------------------------------------------------------------------ *
+ * 知识库与通知中心（Phase 179 的页面层接线）
+ *
+ * 两个 ES module（/ui/knowledge-panel.js、/ui/notifications.js）把纯函数与
+ * 渲染函数挂到 window.KnowledgePanel / window.Notifications；它们在
+ * DOMContentLoaded 之后才可能有 window 对象，因此这里不假设已就绪，
+ * 由 knowledge-panel-ready / notifications-ready 事件触发首次渲染。
+ *
+ * 数据只经 GET 接口读取；所有文本交给渲染函数用 textContent 写入，
+ * 本文件不拼 HTML。任一接口失败只让本区块显示错误，不影响其它页面。
+ * ------------------------------------------------------------------ */
+const knowledgePageState={
+ entries:[],
+ view:null,
+ query:"",
+ source:"",
+ loaded:false
+};
+const notificationPageState={
+ items:[],
+ summary:null,
+ filter:{},
+ readIds:[],
+ loaded:false
+};
+
+function setKnowledgeStatus(text){
+ const node=document.querySelector("#knowledge-status");
+ if(node)node.textContent=text;
+}
+function setNotifyStatus(text){
+ const node=document.querySelector("#notify-status");
+ if(node)node.textContent=text;
+}
+
+async function refreshKnowledgePanel(){
+ const lib=window.KnowledgePanel,container=document.querySelector("#knowledge-panel");
+ if(!lib||!container){setKnowledgeStatus("知识库面板尚未就绪。");return;}
+ setKnowledgeStatus("正在读取知识库…");
+ try{
+  const params=new URLSearchParams();
+  const keyword=knowledgePageState.query.trim();
+  if(keyword)params.set("q",keyword);
+  if(knowledgePageState.source)params.set("source",knowledgePageState.source);
+  const suffix=params.toString();
+  const response=await api("/api/knowledge"+(suffix?"?"+suffix:""));
+  const payload=await response.json();
+  if(!response.ok)throw Error(payload.error||"知识库读取失败");
+  const entries=Array.isArray(payload.entries)?payload.entries:[];
+  knowledgePageState.entries=entries;
+  knowledgePageState.view=lib.buildKnowledgeView(entries);
+  lib.renderKnowledgePanel(container,knowledgePageState.view);
+  const total=Number.isFinite(payload.total)?payload.total:entries.length;
+  setKnowledgeStatus(entries.length?"已加载 "+entries.length+" 条，共 "+total+" 条。":"没有匹配的知识条目。");
+  knowledgePageState.loaded=true;
+ }catch(error){
+  knowledgePageState.view=null;
+  lib.renderKnowledgePanel(container,null);
+  setKnowledgeStatus(error&&error.message?error.message:"知识库读取失败");
+ }
+}
+
+async function refreshAppInventory(){
+ const lib=window.KnowledgePanel,container=document.querySelector("#app-inventory");
+ if(!lib||!container)return;
+ try{
+  const response=await api("/api/system/snapshot");
+  const snapshot=await response.json();
+  if(!response.ok)throw Error(snapshot.error||"系统快照读取失败");
+  lib.renderAppInventory(container,lib.buildAppInventoryView(snapshot));
+ }catch(error){
+  lib.renderAppInventory(container,null);
+ }
+}
+
+async function refreshNotifications(){
+ const lib=window.Notifications,container=document.querySelector("#notification-center");
+ if(!lib||!container){setNotifyStatus("通知中心尚未就绪。");return;}
+ setNotifyStatus("正在汇总通知…");
+ // 三路事件各自失败都不该让通知中心整体空白，因此用 allSettled。
+ const [exceptions,approvals,tasks]=await Promise.allSettled([
+  api("/api/audit?outcome=error&limit=20").then(r=>r.json()),
+  api("/api/actions/pending").then(r=>r.json()),
+  api("/api/tasks?limit=20").then(r=>r.json())
+ ]);
+ const sources={
+  exceptions:exceptions.status==="fulfilled"&&Array.isArray(exceptions.value.entries)
+   ?exceptions.value.entries.map(entry=>({
+    id:"audit:"+(entry.at||"")+":"+(entry.route||""),
+    type:"exception",
+    title:(entry.route||"接口")+" 返回 HTTP "+(entry.statusCode||"?"),
+    detail:entry.method||"",
+    at:entry.at||"",
+    source:"audit"
+   }))
+   :[],
+  approvals:approvals.status==="fulfilled"&&Array.isArray(approvals.value.actions)
+   ?approvals.value.actions.map(action=>({
+    id:"approval:"+String(action.id||""),
+    kind:"approval",
+    title:action.title||action.toolId||"待确认操作",
+    detail:action.description||"",
+    at:action.createdAt||"",
+    source:"actions"
+   }))
+   :[],
+  tasks:tasks.status==="fulfilled"&&Array.isArray(tasks.value.tasks)
+   ?tasks.value.tasks.map(task=>({
+    id:"task:"+String(task.taskId||""),
+    kind:"task",
+    title:(task.prompt||task.taskId||"任务")+" · "+(task.status||""),
+    detail:task.error||"",
+    at:task.completedAt||task.createdAt||"",
+    source:"tasks"
+   }))
+   :[]
+ };
+ try{
+  const {items}=lib.collectNotifications(sources);
+  notificationPageState.items=items;
+  notificationPageState.summary=lib.summarizeNotifications(items);
+  lib.renderNotificationCenter(container,{
+   items:notificationPageState.items,
+   summary:notificationPageState.summary,
+   filter:notificationPageState.filter
+  });
+  const failed=[exceptions,approvals,tasks].filter(r=>r.status!=="fulfilled").length;
+  setNotifyStatus(items.length
+   ?"共 "+items.length+" 条通知，未读 "+(notificationPageState.summary.unread||0)+" 条"+(failed?"（"+failed+" 个来源读取失败）":"")+"。"
+   :"暂无通知。");
+  notificationPageState.loaded=true;
+ }catch(error){
+  lib.renderNotificationCenter(container,null);
+  setNotifyStatus(error&&error.message?error.message:"通知汇总失败");
+ }
+}
+
+function bindKnowledgeControls(){
+ const search=document.querySelector("#knowledge-search");
+ const refreshButton=document.querySelector("#knowledge-refresh");
+ const query=document.querySelector("#knowledge-query");
+ const source=document.querySelector("#knowledge-source");
+ if(search&&!search.dataset.bound){
+  search.dataset.bound="1";
+  search.addEventListener("click",()=>{
+   knowledgePageState.query=query?query.value:"";
+   knowledgePageState.source=source?source.value:"";
+   refreshKnowledgePanel();
+  });
+ }
+ if(refreshButton&&!refreshButton.dataset.bound){
+  refreshButton.dataset.bound="1";
+  refreshButton.addEventListener("click",()=>{refreshKnowledgePanel();refreshAppInventory();refreshNotifications();});
+ }
+ if(query&&!query.dataset.bound){
+  query.dataset.bound="1";
+  query.addEventListener("keydown",event=>{
+   if(event.key!=="Enter")return;
+   event.preventDefault();
+   knowledgePageState.query=query.value;
+   knowledgePageState.source=source?source.value:"";
+   refreshKnowledgePanel();
+  });
+ }
+ const filters=[
+  ["#notify-filter-all",{}],
+  ["#notify-filter-exception",{type:"exception"}],
+  ["#notify-filter-approval",{type:"approval"}],
+  ["#notify-filter-task",{type:"task"}]
+ ];
+ for(const [selector,filter] of filters){
+  const button=document.querySelector(selector);
+  if(!button||button.dataset.bound)continue;
+  button.dataset.bound="1";
+  button.addEventListener("click",()=>{
+   notificationPageState.filter=filter;
+   for(const [other] of filters){
+    const node=document.querySelector(other);
+    if(node)node.setAttribute("aria-pressed",other===selector?"true":"false");
+   }
+   const container=document.querySelector("#notification-center");
+   if(container&&window.Notifications){
+    window.Notifications.renderNotificationCenter(container,{
+     items:notificationPageState.items,
+     summary:notificationPageState.summary,
+     filter:notificationPageState.filter
+    });
+   }
+  });
+ }
+ const markAll=document.querySelector("#notify-mark-all");
+ if(markAll&&!markAll.dataset.bound){
+  markAll.dataset.bound="1";
+  markAll.addEventListener("click",()=>{
+   if(!window.Notifications)return;
+   const ids=notificationPageState.items.map(item=>item.id);
+   const marked=window.Notifications.markNotificationsRead(notificationPageState.items,ids);
+   notificationPageState.items=Array.isArray(marked)?marked:notificationPageState.items;
+   notificationPageState.summary=window.Notifications.summarizeNotifications(notificationPageState.items);
+   const container=document.querySelector("#notification-center");
+   if(container)window.Notifications.renderNotificationCenter(container,{
+    items:notificationPageState.items,
+    summary:notificationPageState.summary,
+    filter:notificationPageState.filter
+   });
+   setNotifyStatus("已把 "+ids.length+" 条通知标为已读（仅本次会话内有效）。");
+  });
+ }
+ const clearRead=document.querySelector("#notify-clear-read");
+ if(clearRead&&!clearRead.dataset.bound){
+  clearRead.dataset.bound="1";
+  clearRead.addEventListener("click",()=>{
+   if(!window.Notifications)return;
+   const before=notificationPageState.items.length;
+   const kept=window.Notifications.clearReadNotifications(notificationPageState.items);
+   notificationPageState.items=Array.isArray(kept)?kept:[];
+   notificationPageState.summary=window.Notifications.summarizeNotifications(notificationPageState.items);
+   const container=document.querySelector("#notification-center");
+   if(container)window.Notifications.renderNotificationCenter(container,{
+    items:notificationPageState.items,
+    summary:notificationPageState.summary,
+    filter:notificationPageState.filter
+   });
+   setNotifyStatus("已移除 "+(before-notificationPageState.items.length)+" 条已读通知（仅本次会话内有效）。");
+  });
+ }
+}
+async function refreshKnowledgePage(){
+ bindKnowledgeControls();
+ await Promise.all([refreshKnowledgePanel(),refreshAppInventory(),refreshNotifications()]);
+}
+
+window.addEventListener("knowledge-panel-ready",()=>{
+ if(currentRouteId()==="knowledge-card")refreshKnowledgePage();
+});
+window.addEventListener("notifications-ready",()=>{
+ if(currentRouteId()==="knowledge-card")refreshNotifications();
+});
+
+/* ------------------------------------------------------------------ *
  * 当前页刷新：顶栏 #refresh、页面内 [data-action="refresh"] 与路由切换共用。
  * ------------------------------------------------------------------ */
 async function refreshCurrentPage(){
@@ -1743,6 +1982,7 @@ async function refreshCurrentPage(){
     else if(id==="models-card"){await refreshModelPresets();await refreshModels();}
     else if(id==="skills-card")await refreshSkills();
     else if(id==="audit-card")await refreshAudit();
+    else if(id==="knowledge-card")await refreshKnowledgePage();
   }catch(e){
     // 单页刷新失败不阻塞其它页面。
   }

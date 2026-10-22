@@ -9,6 +9,7 @@
 <title>fnOS NAS Agent</title>
 <link rel="stylesheet" href="/ui/styles.css">
 <link rel="stylesheet" href="/ui/model-settings.css">
+<link rel="stylesheet" href="/ui/knowledge-panel.css">
 <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
 </head>
 <body class="app">
@@ -52,6 +53,7 @@
     <a class="nav-rail__link" href="#models-card" data-page="models-card"><span class="nav-rail__icon" aria-hidden="true">◇</span><span>模型服务</span></a>
     <a class="nav-rail__link" href="#skills-card" data-page="skills-card"><span class="nav-rail__icon" aria-hidden="true">❖</span><span>Skill 管理</span></a>
     <a class="nav-rail__link" href="#audit-card" data-page="audit-card"><span class="nav-rail__icon" aria-hidden="true">◷</span><span>操作审计</span></a>
+    <a class="nav-rail__link" href="#knowledge-card" data-page="knowledge-card"><span class="nav-rail__icon" aria-hidden="true">◆</span><span>知识库</span></a>
     <a class="nav-rail__link" href="#security-note" data-page="security-note"><span class="nav-rail__icon" aria-hidden="true">⛨</span><span>安全说明</span></a>
     <div class="nav-rail__foot">
       <p class="muted">任意系统命令执行关闭；导入的 Skill 只隔离不执行。</p>
@@ -754,6 +756,72 @@
       </div>
     </section>
 
+    <!-- ============================ 知识库 ============================ -->
+    <section class="page hidden" id="knowledge-card" data-title="知识库" data-sub="来源、时效、冲突与通知中心">
+      <div class="page__head">
+        <h2 class="page__title">知识库</h2>
+        <p class="page__sub">每条记录都带来源与采集时间；没采集到的字段显示「未采集」，长期记忆不代表当前实时状态。</p>
+      </div>
+      <div class="page__body">
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">知识库检索</h3>
+            <p class="card__sub">按关键词、标签与来源过滤；官方来源排在前面，冲突并列展示不做自动裁决。</p>
+          </div>
+          <div class="toolbar">
+            <label class="field field--inline">
+              <span class="field__label">关键词</span>
+              <input id="knowledge-query" type="search" placeholder="镜像、磁盘、证书…" autocomplete="off">
+            </label>
+            <label class="field field--inline">
+              <span class="field__label">来源</span>
+              <select id="knowledge-source">
+                <option value="">全部来源</option>
+                <option value="official">官方文档</option>
+                <option value="vendor">厂商</option>
+                <option value="operations">运维记录</option>
+                <option value="community">社区</option>
+                <option value="memory">长期记忆</option>
+              </select>
+            </label>
+            <button class="btn btn--ghost btn--sm" id="knowledge-search" type="button">检索</button>
+            <button class="btn btn--ghost btn--sm" id="knowledge-refresh" type="button">刷新</button>
+          </div>
+          <p class="muted" id="knowledge-status">尚未加载知识库。</p>
+          <div id="knowledge-panel"></div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">应用与容器（只读）</h3>
+            <p class="card__sub">来自系统快照；未采集的分区标注为未知，不显示为正常。</p>
+          </div>
+          <div id="app-inventory"></div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">通知中心</h3>
+            <p class="card__sub">异常、待审批与任务完成三路事件；正文中的凭据在展示前已被隐藏。</p>
+          </div>
+          <div class="toolbar">
+            <div class="segmented" role="group" aria-label="按类型筛选">
+              <button class="btn btn--ghost btn--sm" id="notify-filter-all" type="button" aria-pressed="true">全部</button>
+              <button class="btn btn--ghost btn--sm" id="notify-filter-exception" type="button" aria-pressed="false">异常</button>
+              <button class="btn btn--ghost btn--sm" id="notify-filter-approval" type="button" aria-pressed="false">待审批</button>
+              <button class="btn btn--ghost btn--sm" id="notify-filter-task" type="button" aria-pressed="false">任务</button>
+            </div>
+            <button class="btn btn--ghost btn--sm" id="notify-mark-all" type="button">全部标为已读</button>
+            <button class="btn btn--ghost btn--sm" id="notify-clear-read" type="button">清除已读</button>
+          </div>
+          <p class="muted" id="notify-status">尚未加载通知。</p>
+          <div id="notification-center"></div>
+        </div>
+
+      </div>
+    </section>
+
     <!-- ============================ 安全说明 ============================ -->
     <section class="page hidden" id="security-note" data-title="安全说明" data-sub="这个 Agent 能做什么、不能做什么">
       <div class="page__head">
@@ -795,6 +863,7 @@
       <a class="menu__item" href="#models-card" data-page="models-card"><span class="nav-rail__icon" aria-hidden="true">◇</span><span>模型服务</span></a>
       <a class="menu__item" href="#skills-card" data-page="skills-card"><span class="nav-rail__icon" aria-hidden="true">❖</span><span>Skill 管理</span></a>
       <a class="menu__item" href="#audit-card" data-page="audit-card"><span class="nav-rail__icon" aria-hidden="true">◷</span><span>操作审计</span></a>
+      <a class="menu__item" href="#knowledge-card" data-page="knowledge-card"><span class="nav-rail__icon" aria-hidden="true">◆</span><span>知识库</span></a>
       <a class="menu__item" href="#security-note" data-page="security-note"><span class="nav-rail__icon" aria-hidden="true">⛨</span><span>安全说明</span></a>
     </div>
   </div>
@@ -853,5 +922,11 @@
 <!-- Phase 154: the model settings helpers are an ES module. They publish
      themselves on the window object for the classic script above. -->
 <script type="module" src="/ui/model-settings.js"></script>
+<!-- Phase 179: the knowledge panel and the notification centre are ES modules
+     too. They publish `window.KnowledgePanel` / `window.Notifications` and
+     dispatch `knowledge-panel-ready` / `notifications-ready` so the classic
+     script above can pick them up without an import. -->
+<script type="module" src="/ui/knowledge-panel.js"></script>
+<script type="module" src="/ui/notifications.js"></script>
 </body>
 </html>

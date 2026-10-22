@@ -1,4 +1,4 @@
-# fnos-nas-agent
+﻿# fnos-nas-agent
 
 A lightweight, self-hosted Agent for Feiniu OS (fnOS) NAS. The project prioritizes a mobile-friendly control panel, practical file operations, model-provider management, and a reviewable Skill lifecycle.
 
@@ -40,6 +40,10 @@ Core development is active. The repository currently includes:
 - An observation panel on the overview page: the workflow plans, the runbooks and the last diagnostic evidence are shown side by side, read-only (Phase 174).
 - A controlled web fetch: only the allowed content types are read, the body is capped, the raw page is never returned and the credentials in a URL are removed from the error (Phase 175).
 - Read-only exits for the diagnosis history, the write action registry, the network policy and the controlled fetch, all behind the same session and origin rules (Phase 176).
+- A source-aware knowledge base: every entry keeps its source, its collection time and its open conflicts, and the panel cites the entry it shows instead of presenting a stored fact as the live state (Phase 177).
+- Structured network diagnostics: link state, latency samples and DNS answers become a verdict with explicit gaps, so "the network is slow" is answerable without guesswork (Phase 178).
+- A knowledge panel with a read-only application inventory and a notification centre that merges exceptions, approvals and finished tasks, hiding credentials before display (Phase 179).
+- Per-container Docker advice with a reason, a severity and a next step, produced from collected data without touching Docker (Phase 180).
 
 **Runtime and validation:** Node.js 26.x is the supported development and CI runtime. GitHub Actions builds an unsigned x86 CI test FPK, inspects the archive, verifies SHA-256 and release-manifest consistency, and uploads the artifact for 14 days. A separate job creates GitHub build-provenance attestation only for verified `main` builds; pull requests do not receive OIDC/attestation permissions. CI success does not mean the package has been installed or validated on a real fnOS NAS; lifecycle acceptance remains a separate manual staging gate.
 
@@ -160,7 +164,16 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 167 — Diagnostic Evidence](docs/phase-167-diagnostic-evidence.md)
 - [Phase 168 — Workflow Engine](docs/phase-168-workflow-engine.md)
 - [Phase 169 — Runbook Store](docs/phase-169-runbook-store.md)
-- [Phase 170 — Observation Routes](docs/phase-170-observation-routes.md)
+- [Phase 170 — Observation Routes](docs/phase-170-observation-routes.md)- [Phase 171 — Verified Write Pipeline](docs/phase-171-verified-write.md)
+- [Phase 172 — Network Egress Policy](docs/phase-172-network-policy.md)
+- [Phase 173 — Diagnosis History](docs/phase-173-diagnosis-history.md)
+- [Phase 174 — Observation Panel](docs/phase-174-observation-panel.md)
+- [Phase 175 — Controlled Web Fetch](docs/phase-175-web-fetch.md)
+- [Phase 176 — Diagnosis and Policy Routes](docs/phase-176-diagnosis-and-policy-routes.md)
+- [Phase 177 — Knowledge Base](docs/phase-177-knowledge-base.md)
+- [Phase 178 — Network Diagnostics](docs/phase-178-network-diagnostics.md)
+- [Phase 179 — Knowledge Panel and Notifications](docs/phase-179-knowledge-and-notifications.md)
+- [Phase 180 — Docker Advisor](docs/phase-180-docker-advisor.md)
 
 - [Phase 94 — Model Catalog HTTP Integration](docs/phase-94-model-catalog-http.md)
 - [Phase 95 — Searchable Model Catalog Picker](docs/phase-95-model-catalog-search.md)
