@@ -78,6 +78,9 @@ const definitions = [
     id: "files.inspect", title: "文件卫生巡检", description: "只读检查授权目录中的大文件、久未修改的大文件、临时/备份文件名及疑似敏感文件名；只读取文件系统元数据，不读取正文，不修改文件。", risk: "read-only",
     inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, days: { type: "integer", minimum: 1, maximum: 3650 }, minBytes: { type: "integer", minimum: 0, maximum: 1000000000 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, additionalProperties: false }
   },
+  { id: "documents.index-status", title: "本地文档库状态", description: "读取存放于应用私有数据目录的本地文档索引统计，不返回文档正文。", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { id: "documents.search", title: "搜索本地文档库", description: "在本地索引中按关键词检索文档，返回文件路径与经过打码的短摘要，不进行网络请求。", risk: "read-only", inputSchema: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 160 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, required: ["query"], additionalProperties: false } },
+  { id: "documents.index-refresh", title: "更新本地文档索引", description: "扫描授权存储卷中的受支持文本文件并更新应用私有文档索引；受条目、时间、单文件与总读取量限制。仅修改应用私有索引，不修改 NAS 原文件。", risk: "write", inputSchema: { type: "object", properties: { force: { type: "boolean" }, maxFiles: { type: "integer", minimum: 1, maximum: 500 } }, additionalProperties: false } },
   {
     id: "files.create-folder", title: "创建文件夹", description: "在允许的存储卷内创建一个新文件夹；不覆盖已有内容。", risk: "write",
     inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, name: { type: "string", minLength: 1, maxLength: 255 } }, required: ["path", "name"], additionalProperties: false }
@@ -113,11 +116,12 @@ function validArgs(args, schema) {
     const rule = properties[key]; if (!rule) return false;
     if (rule.type === "string" && (typeof value !== "string" || (rule.minLength && value.length < rule.minLength) || (rule.maxLength && value.length > rule.maxLength))) return false;
     if (rule.type === "integer" && (!Number.isInteger(value) || (rule.minimum !== undefined && value < rule.minimum) || (rule.maximum !== undefined && value > rule.maximum))) return false;
+    if (rule.type === "boolean" && typeof value !== "boolean") return false;
   }
   return true;
 }
 
-export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null, fileManager = null, trimCli = null, executionPolicy = null }) {
+export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null, fileManager = null, documentIndex = null, trimCli = null, executionPolicy = null }) {
   if (typeof getDiagnostics !== "function") throw new TypeError("getDiagnostics must be a function");
 
   function list() {
@@ -168,6 +172,18 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     if (id === "files.inspect") {
       if (!fileBrowser || typeof fileBrowser.inspect !== "function") throw Object.assign(new Error("File inspection is unavailable"), { statusCode: 503 });
       return fileBrowser.inspect(args.path || "", args.days ?? 90, args.minBytes ?? 1024 * 1024, args.limit ?? 10);
+    }
+    if (id === "documents.index-status") {
+      if (!documentIndex) throw Object.assign(new Error("Local document index requires a configured app data directory"), { statusCode: 503 });
+      return documentIndex.status();
+    }
+    if (id === "documents.search") {
+      if (!documentIndex) throw Object.assign(new Error("Local document index requires a configured app data directory"), { statusCode: 503 });
+      return documentIndex.search(args.query, args.limit ?? 10);
+    }
+    if (id === "documents.index-refresh") {
+      if (!documentIndex) throw Object.assign(new Error("Local document index requires a configured app data directory"), { statusCode: 503 });
+      return documentIndex.refresh({ force: args.force ?? false, maxFiles: args.maxFiles ?? 500 });
     }
     if (id === "files.create-folder") {
       if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
