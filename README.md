@@ -44,6 +44,7 @@ Core development is active. The repository currently includes:
 - Structured network diagnostics: link state, latency samples and DNS answers become a verdict with explicit gaps, so "the network is slow" is answerable without guesswork (Phase 178).
 - A knowledge panel with a read-only application inventory and a notification centre that merges exceptions, approvals and finished tasks, hiding credentials before display (Phase 179).
 - Per-container Docker advice with a reason, a severity and a next step, produced from collected data without touching Docker (Phase 180).
+- A Skill archive structure verdict stored next to the source review: references, scripts and tests are counted, an incomplete package is never recorded as complete, and a hand-edited verdict can never claim the server reviewed it (Phase 187).
 
 **Runtime and validation:** Node.js 26.x is the supported development and CI runtime. GitHub Actions builds an unsigned x86 CI test FPK, inspects the archive, verifies SHA-256 and release-manifest consistency, and uploads the artifact for 14 days. A separate job creates GitHub build-provenance attestation only for verified `main` builds; pull requests do not receive OIDC/attestation permissions. CI success does not mean the package has been installed or validated on a real fnOS NAS; lifecycle acceptance remains a separate manual staging gate.
 
@@ -174,6 +175,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 178 — Network Diagnostics](docs/phase-178-network-diagnostics.md)
 - [Phase 179 — Knowledge Panel and Notifications](docs/phase-179-knowledge-and-notifications.md)
 - [Phase 180 — Docker Advisor](docs/phase-180-docker-advisor.md)
+- [Phase 187 — Skill Package Review](docs/phase-187-skill-package-review.md)
 
 - [Phase 94 — Model Catalog HTTP Integration](docs/phase-94-model-catalog-http.md)
 - [Phase 95 — Searchable Model Catalog Picker](docs/phase-95-model-catalog-search.md)

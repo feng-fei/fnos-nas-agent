@@ -312,7 +312,7 @@ collection, never from the index.
 
 | Item | State | Where | Gap |
 | --- | --- | --- | --- |
-| SK01 Skill registration | Implemented | Phase 144 package parser, Phase 147 registry | — |
+| SK01 Skill registration | Implemented | Phase 144 package parser, Phase 147 registry, Phase 187 import-time structure review | — |
 | SK02 Skill inventory | Implemented | Skill list API | — |
 | SK03 Skill discovery | Partly | Name and description matching | — |
 | SK04 Skill composition | Open | — | — |

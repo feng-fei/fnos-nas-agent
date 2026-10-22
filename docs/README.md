@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 187 documents (172 phase documents and 14 non-phase documents, plus this file).
+This index lists 188 documents (173 phase documents and 14 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -686,6 +686,9 @@ This index lists 187 documents (172 phase documents and 14 non-phase documents, 
 
 ### Phase 186
 - [Phase 186 — Device capability check](phase-186-device-capability.md) — "Can this box run it?" was unanswerable. This phase judges five dimensions one by one, keeps unknown as unknown instead of guessing, and ships both the API and the two-button UI entry.
+
+### Phase 187
+- [Phase 187 — Skill package review](phase-187-skill-package-review.md) — The Phase 144 package parser was never imported: an imported Skill was reviewed for risky source but never for its own structure. This phase makes the structure a stored, comparable verdict and shows it on the Skill card, while a hand-edited verdict can never claim the server reviewed it.
 
 ## This index
 

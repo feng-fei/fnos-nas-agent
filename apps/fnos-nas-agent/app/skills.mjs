@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { extractZipEntry, inspectZipArchive, MAX_ARCHIVE_BYTES, saveQuarantinedArchive } from "./skill-archives.mjs";
 import { isPreviewableSkillTextPath, MAX_SKILL_SOURCE_PREVIEW_BYTES } from "./skill-source-review.mjs";
 import { inspectSkillManifest } from "./skill-manifest.mjs";
+import { parseSkillPackage } from "./skill-package.mjs";
 import { mkdir, open, readFile, writeFile, rename, chmod, unlink, lstat } from "node:fs/promises";
 import { createSerialWriteQueue } from "./serial-write-queue.mjs";
 import { resolve, sep } from "node:path";
@@ -39,6 +40,46 @@ function normalizeManifestReview(value) {
     reviewedBy: value.reviewedBy === "server" ? "server" : null,
     archiveSha256: typeof value.archiveSha256 === "string" && /^[a-f0-9]{64}$/.test(value.archiveSha256) ? value.archiveSha256 : null
   };
+}
+
+/**
+ * Phase 187: the archive structure is reviewed with the same discipline as the
+ * manifest. The value stored here is a bounded summary of a server-side parse;
+ * a parse that could not be computed is stored as null and never as a pass.
+ */
+function normalizePackageReview(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const statuses = new Set(["ok", "incomplete", "invalid"]);
+  const findings = Array.isArray(value.findings)
+    ? value.findings.filter(item => item && typeof item.rule === "string")
+        .slice(0, 8).map(item => ({ rule: item.rule.slice(0, 60), severity: item.severity === "error" ? "error" : "warning" }))
+    : [];
+  const count = (key) => Number.isSafeInteger(value[key]) && value[key] >= 0 ? value[key] : 0;
+  return {
+    status: statuses.has(value.status) ? value.status : "invalid",
+    references: count("references"),
+    scripts: count("scripts"),
+    tests: count("tests"),
+    findings,
+    reviewedBy: value.reviewedBy === "server" ? "server" : null
+  };
+}
+
+/** Parses the quarantined bytes; a parser failure yields no verdict at all. */
+export function reviewSkillPackageBuffer(buffer) {
+  try {
+    const report = parseSkillPackage(buffer);
+    return normalizePackageReview({
+      status: report.status,
+      references: Array.isArray(report.references) ? report.references.length : 0,
+      scripts: Array.isArray(report.scripts) ? report.scripts.length : 0,
+      tests: Array.isArray(report.tests) ? report.tests.length : 0,
+      findings: Array.isArray(report.findings) ? report.findings : [],
+      reviewedBy: "server"
+    });
+  } catch {
+    return null;
+  }
 }
 
 export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, writeFile, rename, chmod, unlink, open } } = {}) {
@@ -145,6 +186,7 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
       declaredUncompressedBytes: Number.isSafeInteger(item.declaredUncompressedBytes) ? item.declaredUncompressedBytes : null,
       declaredCapabilities: Array.isArray(item.declaredCapabilities) ? item.declaredCapabilities.slice(0, 20) : [],
       manifestReview: normalizeManifestReview(item.manifestReview),
+      packageReview: normalizePackageReview(item.packageReview),
       reviewNote: typeof item.reviewNote === "string" ? item.reviewNote.slice(0, MAX_NOTE) : "",
       reviewedAt: item.reviewedAt || null
     }));
@@ -178,6 +220,7 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
           reviewedBy: "server",
           archiveSha256: record.archiveSha256
         });
+        record.packageReview = reviewSkillPackageBuffer(quarantined.buffer);
         record.reviewedAt = new Date().toISOString();
         reviewed++;
       } catch {
@@ -241,6 +284,7 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
         manifestReview = null;
       }
     }
+    const packageReview = quarantined ? reviewSkillPackageBuffer(quarantined.buffer) : null;
     const input = {
       name,
       version: request.version,
@@ -251,7 +295,8 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
       archiveEntryCount: quarantined ? quarantined.archive.entryCount : null,
       declaredUncompressedBytes: quarantined ? quarantined.archive.declaredUncompressedBytes : null,
       declaredCapabilities: request.declaredCapabilities,
-      manifestReview
+      manifestReview,
+      packageReview
     };
     const caps = Array.isArray(input.declaredCapabilities)
       ? input.declaredCapabilities.filter(x => typeof x === "string").slice(0, 20).map(x => x.slice(0, 80))
@@ -270,6 +315,7 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
       state: "pending_review",
       declaredCapabilities: caps,
       manifestReview: normalizeManifestReview(input.manifestReview),
+      packageReview: normalizePackageReview(input.packageReview),
       reviewNote: "",
       reviewedAt: null
     };
