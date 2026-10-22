@@ -54,7 +54,19 @@ async function startServer() {
   const login = await request("/api/session", { method: "POST", body: { password: "correct-horse-battery" } });
   assert.equal(login.status, 200, "login");
   const cookie = (login.headers.get("set-cookie") || "").split(";")[0];
-  return { origin, cookie, dataDir, request, stop: async () => { child.kill(); await rm(dataDir, { recursive: true, force: true }); } };
+  return {
+    origin,
+    cookie,
+    dataDir,
+    request,
+    stop: async () => {
+      // 先等子进程真的退出，再删数据目录：Linux 上进程还在写时会 ENOTEMPTY。
+      const exited = new Promise((resolve) => child.once("exit", resolve));
+      child.kill();
+      await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 5000))]);
+      await rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  };
 }
 
 test("phase-210: 203–209 的新模块都通过 HTTP 暴露，且测不到时如实说 unknown", async (t) => {
@@ -82,12 +94,19 @@ test("phase-210: 203–209 的新模块都通过 HTTP 暴露，且测不到时�
   assert.equal(statsBody.notes.includes("collector-disabled"), true);
   assert.equal(statsBody.summary !== undefined, true);
 
-  // Phase 205：Windows 上没有 /proc/net/dev，必须回 unknown 而不是 0 吞吐。
+  // Phase 205：没有 /proc/net/dev 的平台回 unknown，有的平台给出接口列表；
+  // 两边都不许把「没测到」伪装成 0 吞吐。
   const interfaces = await request("/api/network/interfaces", { cookie });
   assert.equal(interfaces.status, 200);
   const ifaceBody = await interfaces.json();
-  assert.equal(ifaceBody.verdict, "unknown");
-  assert.deepEqual(ifaceBody.interfaces, []);
+  assert.equal(typeof ifaceBody.verdict, "string");
+  assert.equal(Array.isArray(ifaceBody.interfaces), true);
+  if (ifaceBody.verdict === "unknown") {
+    assert.deepEqual(ifaceBody.interfaces, []);
+  } else {
+    assert.ok(ifaceBody.interfaces.length >= 1, "a measured platform lists at least one interface");
+    assert.equal(ifaceBody.interfaces.every((entry) => entry.rxBytesPerSecond === null || Number.isFinite(entry.rxBytesPerSecond)), true);
+  }
 
   // Phase 207：日志证据路由存在并回结构化结果；读不到日志时说明「没有读到」而不是报健康。
   const logEvidence = await request("/api/diagnostics/log-evidence", { cookie });
