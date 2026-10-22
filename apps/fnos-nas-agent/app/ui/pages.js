@@ -1533,6 +1533,63 @@ document.querySelector("#insights-refresh").addEventListener("click",()=>{refres
 
 
 /* ------------------------------------------------------------------ *
+ * 概览页：工作流计划、运行手册与诊断证据（只读）。
+ * 三个请求并行，任一失败只影响对应区块，不会让整页报错；
+ * 渲染一律 textContent，不拼 HTML。
+ * ------------------------------------------------------------------ */
+async function refreshPlaybooks(){
+ const statusEl=document.querySelector("#playbooks-status");
+ const workflowEl=document.querySelector("#playbooks-workflows");
+ const runbookEl=document.querySelector("#playbooks-runbooks");
+ const evidenceEl=document.querySelector("#playbooks-evidence");
+ if(!workflowEl||!runbookEl||!evidenceEl)return;
+ if(statusEl)statusEl.textContent="正在读取工作流、运行手册与诊断证据…";
+ const results=await Promise.all([
+  insightRead("/api/workflows"),
+  insightRead("/api/runbooks?limit=20"),
+  insightRead("/api/diagnostics/evidence")
+ ]);
+ const workflows=results[0],runbooks=results[1],evidence=results[2];
+ if(workflows&&workflows.error){workflowEl.textContent="读取失败："+workflows.error;}
+ else{
+  const list=workflows&&Array.isArray(workflows.workflows)?workflows.workflows:[];
+  const lines=["工作流 "+list.length+" 个"];
+  for(const item of list.slice(0,10))lines.push("- "+item.name+"（"+item.id+"）："+item.stepCount+" 步");
+  if(!list.length)lines.push("尚未注册工作流计划。");
+  workflowEl.textContent=lines.join("\n");
+ }
+ if(runbooks&&runbooks.error){runbookEl.textContent="读取失败："+runbooks.error;}
+ else{
+  const entries=runbooks&&Array.isArray(runbooks.entries)?runbooks.entries:[];
+  const total=runbooks&&typeof runbooks.total==="number"?runbooks.total:entries.length;
+  const lines=["运行手册 "+total+" 条"];
+  for(const entry of entries.slice(0,10)){
+   const tags=Array.isArray(entry.tags)&&entry.tags.length?" ["+entry.tags.join("、")+"]":"";
+   lines.push("- "+entry.title+tags);
+  }
+  if(!total)lines.push("还没有写入运行手册。");
+  runbookEl.textContent=lines.join("\n");
+ }
+ if(evidence&&evidence.error){evidenceEl.textContent="读取失败："+evidence.error;}
+ else{
+  const items=evidence&&Array.isArray(evidence.evidence)?evidence.evidence:[];
+  const count=evidence&&typeof evidence.count==="number"?evidence.count:items.length;
+  const bySource={};
+  for(const item of items)bySource[item.source]=(bySource[item.source]||0)+1;
+  const lines=["证据 "+count+" 条"];
+  const sources=Object.entries(bySource).map(pair=>pair[0]+" "+pair[1]+" 条");
+  if(sources.length)lines.push("来源："+sources.join(" · "));
+  for(const item of items.slice(0,8))lines.push("- ["+item.source+"] "+item.detail);
+  if(!count)lines.push("当前没有可用证据。");
+  evidenceEl.textContent=lines.join("\n");
+ }
+ if(statusEl)statusEl.textContent="已更新于 "+formatDateTime(new Date().toISOString());
+}
+const playbooksRefreshBtn=document.querySelector("#playbooks-refresh");
+if(playbooksRefreshBtn)playbooksRefreshBtn.addEventListener("click",()=>{refreshPlaybooks();});
+
+
+/* ------------------------------------------------------------------ *
  * 概览页统计：优先用 /api/overview 一次性取回全部头条指标，
  * 快照不可用时（旧服务端没有该接口）回退到各个明细接口；
  * 存储始终来自 /api/diagnostics。
@@ -1679,7 +1736,7 @@ async function refreshOverviewStats(){
 async function refreshCurrentPage(){
   const id=currentRouteId();
   try{
-    if(id==="status-card"){await refresh();await refreshOverviewStats();await refreshInsights();}
+    if(id==="status-card"){await refresh();await refreshOverviewStats();await refreshInsights();await refreshPlaybooks();}
     else if(id==="files-card")await refreshFiles(currentFilePath,currentFileOffset);
     else if(id==="agent-card"){await refreshAgentStatus();await refreshRecentTasks();await refreshPendingActions();}
     else if(id==="tools-card")await refreshTools();

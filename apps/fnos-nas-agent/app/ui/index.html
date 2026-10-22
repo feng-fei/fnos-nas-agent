@@ -162,6 +162,25 @@
           </div>
         </details>
 
+        <details class="card card--flat">
+          <summary class="card__head">
+            <h3 class="card__title">工作流、运行手册与诊断证据</h3>
+            <p class="card__sub">展开查看可执行的工作流计划、可复用的运行手册和当前能取到的诊断证据（只读）。</p>
+          </summary>
+          <div class="card__body">
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" id="playbooks-refresh" type="button">刷新工作流与手册</button>
+            </div>
+            <p class="field__hint" id="playbooks-status" role="status">登录后点击刷新读取工作流、运行手册与诊断证据。</p>
+            <h4 class="card__title">工作流计划</h4>
+            <pre id="playbooks-workflows">尚未读取。</pre>
+            <h4 class="card__title">运行手册</h4>
+            <pre id="playbooks-runbooks">尚未读取。</pre>
+            <h4 class="card__title">诊断证据</h4>
+            <pre id="playbooks-evidence">尚未读取。</pre>
+          </div>
+        </details>
+
       </div>
     </section>
 

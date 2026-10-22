@@ -77,14 +77,14 @@ Data honesty rule: a section whose collector returns nothing is reported as
 | D05 Confidence statement | Implemented | Phase 162 `confirmed` / `likely` / `suspected` | — |
 | D06 Repair plan | Partly | Phase 162 `readOnlyChecks` | No side-effect statement per step |
 | D07 Read-only diagnosis first | Implemented | Phase 162 read-only check list | — |
-| D08 One-click repair | Open | — | Deliberately not offered without a reviewed write path |
-| D09 Pre-repair checks | Open | — | — |
-| D10 Post-repair verification | Open | — | — |
-| D11 Failure rollback | Open | — | — |
+| D08 One-click repair | Partly | Phase 171 verified write pipeline | The write still needs an approval; there is no unattended repair |
+| D09 Pre-repair checks | Implemented | Phase 162 read-only checks, Phase 171 preflight | — |
+| D10 Post-repair verification | Partly | Phase 171 verification steps | The verification cannot compare a full before and after snapshot |
+| D11 Failure rollback | Partly | Phase 171 rollback snapshot | Only the actions of the same run can be undone |
 | D12 Fault report | Implemented | Phase 162 `report`, Phase 166 `POST /api/diagnostics/report` | — |
-| D13 Historical fault correlation | Open | — | — |
-| D14 Repair knowledge base | Open | — | — |
-| D15 Diagnostic bundle | Open | — | — |
+| D13 Historical fault correlation | Partly | Phase 173 diagnosis history, Phase 167 evidence bundle | Correlation is by conclusion and symptom, not by a time series |
+| D14 Repair knowledge base | Partly | Phase 169 runbook store | The store holds procedures, not the matching rules |
+| D15 Diagnostic bundle | Implemented | Phase 167 `buildEvidenceBundle`, Phase 176 `GET /api/diagnostics/evidence` | — |
 
 The checker refuses destructive suggestions: `isSafeSuggestion` rejects
 removal, formatting, array rebuild and storage service stops, and the report
@@ -217,18 +217,18 @@ require an explicit confirmation with a server-issued capability.
 | W01 Create a task from natural language | Partly | `health-checks.*` API | No natural-language creation yet |
 | W02 Cron and calendar scheduling | Partly | Health-check plans | Calendar rules are missing |
 | W03 Event triggering | Open | — | — |
-| W04 Multi-step orchestration | Partly | `app/agent-core.mjs` plans, `app/workflow-engine.mjs` | Workflow plans exist but cannot be authored in the UI |
+| W04 Multi-step orchestration | Partly | `app/agent-core.mjs` plans, `app/workflow-engine.mjs`, Phase 168 | Workflow plans exist but cannot be authored in the UI |
 | W05 Conditional branches | Partly | `app/workflow-engine.mjs` skip rules | Branches are skip-on-failure, not user-defined conditions |
 | W06 Failure handling | Partly | Failure records are kept, workflow skip policy | No retry policy yet |
 | W07 Idempotency control | Open | — | — |
 | W08 Task lock | Partly | `app/workflow-engine.mjs` per-workflow lock | Only workflow runs are locked, tasks are not |
 | W09 Execution record | Implemented | Health-check history, task history | — |
 | W10 Notification system | Partly | `app/workflow-engine.mjs` notify hook | No delivery target yet, the hook is in-process only |
-| W11 Task templates | Open | — | — |
+| W11 Task templates | Partly | Phase 169 runbook store | A runbook is a procedure, not a scheduled plan |
 | W12 Workflow versioning | Open | — | — |
 | W13 Pause and resume | Partly | Health-check pause and resume | — |
 | W14 Task simulation | Partly | Phase 163 dry-run plan | — |
-| W15 Workflow reuse | Open | — | — |
+| W15 Workflow reuse | Partly | Phase 169 runbook store | A runbook can be reused; a workflow cannot be reused as a template |
 | W16 Scheduler health | Partly | `health-checks.list` | — |
 
 Automatic inspection and automatic change stay separate: a plan may scan and
@@ -241,13 +241,18 @@ warn, but a plan that changes data needs approval.
 | B01 Web search | Open | — | — |
 | B02 Official documentation first | Open | — | — |
 | B03 Log and error-code lookup | Open | — | — |
-| B04 Page content extraction | Open | — | — |
+| B04 Page content extraction | Implemented | Phase 175 `fetchEvidence`, Phase 176 `POST /api/web/fetch` | Only the four allowed content types |
 | B05 Page change monitoring | Open | — | — |
 | B06 Version lookup | Open | — | — |
-| B07 External API calls | Open | — | — |
+| B07 External API calls | Partly | Phase 176 `POST /api/web/fetch` | The policy is closed by default and every redirect hop is re-checked |
 | B08 Web operation planning | Open | — | — |
 | B09 Source citation | Open | — | — |
-| B10 Untrusted content isolation | Partly | Web content cannot reach tools because no web tool exists | Must be re-checked when a web tool is added |
+| B10 Untrusted content isolation | Implemented | Phase 175 evidence, Phase 176 route | The fetched text only becomes evidence; it never reaches a tool |
+
+The web surface of this repository is closed by default: `POST /api/web/fetch`
+refuses a URL that the network policy does not allow, and it re-checks the policy
+before every redirect hop. A fetched page becomes evidence, it never becomes a
+tool argument, so an untrusted page cannot drive the NAS.
 
 ## Module 11 — Local models, cloud models and privacy mode
 

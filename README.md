@@ -34,6 +34,12 @@ Core development is active. The repository currently includes:
 - A migration record that maps every migrated Marvis capability to its implementation, its phase and its file, next to the naming and risk rules of the bridge, the red lines of the round and the limits that are still open (Phase 156).
 - A read-only observation surface: the system snapshot reports the real state of the machine and marks an unmeasured section as unknown, the security inspection turns the audit log into a report, the model usage counts the requests and tokens without keeping a prompt, and the diagnostic report ranks the likely causes and filters every destructive suggestion (Phases 160–166).
 - An MCP stdio entry point: an external client can discover the read-only tool catalogue over JSON-RPC 2.0, under the same tool contract and risk rules as the HTTP side (Phases 164, 166).
+- A verified write pipeline: a write action is registered with its target and its approval level, runs its steps in order, keeps a record of what happened and can undo the actions of the same run (Phase 171).
+- A closed-by-default network policy: every outbound URL is judged before the request and before every redirect hop, so an unknown destination is never contacted (Phase 172).
+- A diagnosis history that keeps the past reports, groups them by conclusion and absorbs a human correction (Phase 173).
+- An observation panel on the overview page: the workflow plans, the runbooks and the last diagnostic evidence are shown side by side, read-only (Phase 174).
+- A controlled web fetch: only the allowed content types are read, the body is capped, the raw page is never returned and the credentials in a URL are removed from the error (Phase 175).
+- Read-only exits for the diagnosis history, the write action registry, the network policy and the controlled fetch, all behind the same session and origin rules (Phase 176).
 
 **Runtime and validation:** Node.js 26.x is the supported development and CI runtime. GitHub Actions builds an unsigned x86 CI test FPK, inspects the archive, verifies SHA-256 and release-manifest consistency, and uploads the artifact for 14 days. A separate job creates GitHub build-provenance attestation only for verified `main` builds; pull requests do not receive OIDC/attestation permissions. CI success does not mean the package has been installed or validated on a real fnOS NAS; lifecycle acceptance remains a separate manual staging gate.
 

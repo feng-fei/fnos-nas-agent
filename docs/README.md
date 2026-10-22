@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 174 documents (159 phase documents and 14 non-phase documents, plus this file).
+This index lists 180 documents (165 phase documents and 14 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -648,6 +648,24 @@ This index lists 174 documents (159 phase documents and 14 non-phase documents, 
 ### Phase 170
 
 - [Phase 170 — Observation routes](phase-170-observation-routes.md) — The evidence, workflow and runbook modules of Phase 167–169 existed but had no exit. This phase wires them into authenticated read-only routes, ships two read-only workflow plans, and proves the chain with a real HTTP test.
+
+### Phase 171
+- [Phase 171 — Verified write pipeline](phase-171-verified-write.md) — The agent could only read or warn. This phase registers a write action, binds it to a target and a one-time approval, runs the steps in order and keeps a verifiable record of what happened.
+
+### Phase 172
+- [Phase 172 — Network policy](phase-172-network-policy.md) — A fetch would have meant an open door to the internet. This phase decides per URL whether a request is allowed, with a closed default and an explicit allow list.
+
+### Phase 173
+- [Phase 173 — Diagnosis history](phase-173-diagnosis-history.md) — A diagnosis was lost as soon as it was shown. This phase keeps the history, groups it by conclusion and can absorb a human correction.
+
+### Phase 174
+- [Phase 174 — Observation panel](phase-174-observation-panel.md) — The workflow plans, the runbooks and the diagnostic evidence existed on the server but not on the screen. This phase shows all three on the overview page, in parallel and read-only.
+
+### Phase 175
+- [Phase 175 — Controlled web fetch](phase-175-web-fetch.md) — The policy could decide, but nothing could fetch. This phase fetches a page under the policy, re-checks every redirect hop and returns cleaned evidence instead of the raw page.
+
+### Phase 176
+- [Phase 176 — Diagnosis and policy routes](phase-176-diagnosis-and-policy-routes.md) — The modules of Phase 171–175 had no exit. This phase exposes the diagnosis history, the write action registry, the network policy and the controlled fetch over authenticated routes and proves the chain with a real HTTP test.
 
 ## This index
 

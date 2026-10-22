@@ -47,6 +47,10 @@ import { createSystemCollector, buildUsageEntry } from "./agent-insights.mjs";
 import { createRunbookStore } from "./runbook-store.mjs";
 import { buildEvidenceBundle, collectDiagnosticEvidence } from "./diagnostic-evidence.mjs";
 import { createWorkflowEngine } from "./workflow-engine.mjs";
+import { createDiagnosisHistory } from "./diagnosis-history.mjs";
+import { createVerifiedWritePipeline } from "./verified-write.mjs";
+import { createNetworkPolicy } from "./network-policy.mjs";
+import { createWebFetcher } from "./web-fetch.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -364,6 +368,29 @@ const usageMeter = createUsageMeter({ maxEntries: 500 });
 // The runbook store keeps the operating knowledge of the operator: the
 // procedures that the agent may reuse. It is a plain store, it never acts.
 const runbookStore = createRunbookStore(dataDir ? { dataDir } : {});
+// The diagnosis history keeps the conclusions of the operator: a symptom, the
+// causes that were named and the corrections that were made later. It is an
+// in-process notebook, it never changes anything on the machine.
+const diagnosisHistory = createDiagnosisHistory({ maxEntries: 200 });
+// The verified write pipeline defines the order of a write path: preview,
+// approval, apply, verify. No action is registered yet: the server refuses to
+// offer a write path it cannot verify.
+const verifiedWritePipeline = createVerifiedWritePipeline({});
+// The network policy is closed by default: an empty allow list refuses every
+// URL. The operator has to open it explicitly with AGENT_NETWORK_ALLOW_LIST.
+const networkPolicy = createNetworkPolicy({
+  allowList: String(process.env.AGENT_NETWORK_ALLOW_LIST || "")
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean),
+  denyList: String(process.env.AGENT_NETWORK_DENY_LIST || "")
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean)
+});
+// The fetcher asks the policy before every request and before every redirect
+// hop. With a closed policy it never opens a connection.
+const webFetcher = createWebFetcher({ policy: networkPolicy });
 // Privacy mode is a read-only report flag: it says how many cloud calls the
 // meter saw. It is not a gate, the gate would have to live in the adapter.
 const privacyModeEnabled = /^(1|true|on|yes)$/i.test(String(process.env.AGENT_PRIVACY_MODE || ""));
@@ -626,6 +653,13 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/runbooks") return method === "GET" ? "runbooks.list" : method === "POST" ? "runbooks.write" : "other_api";
   if (pathname === "/api/runbooks/stats") return "runbooks.stats";
   if (pathname.startsWith("/api/runbooks/")) return method === "DELETE" ? "runbooks.delete" : "runbooks.read";
+  if (pathname === "/api/diagnoses") return "diagnoses.list";
+  if (pathname === "/api/diagnoses/stats") return "diagnoses.stats";
+  if (pathname.startsWith("/api/diagnoses/")) return pathname.endsWith("/corrections") ? "diagnoses.correct" : "diagnoses.read";
+  if (pathname === "/api/write-actions") return "write.actions.list";
+  if (pathname === "/api/network/policy") return "network.policy";
+  if (pathname === "/api/network/check") return "network.check";
+  if (pathname === "/api/web/fetch") return "web.fetch";
   if (pathname === "/api/tasks/clear-history") return "tasks.clear";
   if (pathname === "/api/health-checks") return method === "GET" ? "health-checks.list" : method === "POST" ? "health-checks.create" : "other_api";
   if (/^\/api\/health-checks\/[a-f0-9-]{36}\/run$/i.test(pathname)) return "health-checks.run";
@@ -1426,10 +1460,25 @@ const server = createServer(async (req, res) => {
       // The report is a read-only diagnosis: it names the most likely causes
       // and the checks that would confirm them. It never performs a change.
       const report = buildDiagnosticReport({ symptom, evidence, causes: [], now: new Date().toISOString() });
+      // The conclusion is written into the history: a diagnosis that is never
+      // remembered cannot be corrected later. Only the symptom, the causes and
+      // the evidence references are kept, the evidence text is not copied.
+      let historyId = "";
+      try {
+        const record = diagnosisHistory.record({
+          symptom: symptom || "未描述症状",
+          causes: Array.isArray(report.causes) ? report.causes.slice(0, 10).map(cause => String(cause?.title || cause?.cause || cause || "")) : [],
+          evidenceRefs: evidence.slice(0, 20).map(item => String(item?.source || "") + ":" + String(item?.detail || "").slice(0, 120))
+        });
+        historyId = record?.entry?.id || "";
+      } catch (error) {
+        console.error(`[history] Could not record the diagnosis: ${error?.message || "unknown error"}`);
+      }
       return reply(res, 200, {
         ...report,
         evidenceSummary: bundle.stats,
-        evidenceTruncated: bundle.truncated
+        evidenceTruncated: bundle.truncated,
+        historyId
       });
     }
     if (url.pathname === "/api/diagnostics/evidence") {
@@ -1450,6 +1499,100 @@ const server = createServer(async (req, res) => {
         now: new Date().toISOString()
       });
       return reply(res, 200, { evidence, count: evidence.length });
+    }
+    if (url.pathname === "/api/diagnoses" || url.pathname === "/api/diagnoses/stats") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      if (url.pathname === "/api/diagnoses/stats") return reply(res, 200, diagnosisHistory.stats());
+      const symptom = url.searchParams.get("symptom") || "";
+      return reply(res, 200, diagnosisHistory.list({
+        symptom,
+        limit: numberParam(url.searchParams.get("limit"), 50, 200),
+        offset: numberParam(url.searchParams.get("offset"), 0, 100000)
+      }));
+    }
+    if (url.pathname.startsWith("/api/diagnoses/")) {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      const rest = url.pathname.slice("/api/diagnoses/".length);
+      const diagnosisId = decodeURIComponent(rest.endsWith("/corrections") ? rest.slice(0, -"/corrections".length) : rest);
+      if (!diagnosisHistory.get(diagnosisId)) return reply(res, 404, { error: "Not found" });
+      if (rest.endsWith("/corrections")) {
+        // A correction is a write: it needs a session, the same origin and a
+        // JSON body. The original conclusion is kept, the correction is
+        // appended as a traceable event.
+        if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+        if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+        if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+          return reply(res, 415, { error: "Expected application/json" });
+        const input = await jsonBody(req);
+        const outcome = typeof input?.outcome === "string" ? input.outcome : "";
+        if (!outcome) return reply(res, 400, { error: "An outcome is required" });
+        const result = diagnosisHistory.applyCorrection(diagnosisId, {
+          outcome,
+          note: typeof input?.note === "string" ? input.note : "",
+          correctedBy: typeof input?.correctedBy === "string" ? input.correctedBy : ""
+        });
+        if (!result?.corrected) return reply(res, result?.code === "not-found" ? 404 : 400, { error: result?.reason || "Rejected", code: result?.code || "rejected" });
+        return reply(res, 200, { entry: result.entry });
+      }
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, diagnosisHistory.get(diagnosisId));
+    }
+    if (url.pathname === "/api/write-actions") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // The list is empty on purpose: the server offers no write path it
+      // cannot preview, approve and verify.
+      const actions = verifiedWritePipeline.listActions();
+      return reply(res, 200, { actions, registered: actions.length });
+    }
+    if (url.pathname === "/api/network/policy") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // The settings are readable so the operator can see that the egress is
+      // closed. The check itself never opens a connection.
+      const settings = networkPolicy.settings();
+      return reply(res, 200, {
+        settings,
+        open: Array.isArray(settings.allowList) && settings.allowList.length > 0
+      });
+    }
+    if (url.pathname === "/api/network/check") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const url = typeof input?.url === "string" ? input.url : "";
+      if (!url) return reply(res, 400, { error: "A url is required" });
+      // A check never opens a connection: it only asks the policy.
+      const decision = await networkPolicy.isUrlAllowed(url);
+      return reply(res, 200, { decision });
+    }
+    if (url.pathname === "/api/web/fetch") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const url = typeof input?.url === "string" ? input.url : "";
+      if (!url) return reply(res, 400, { error: "A url is required" });
+      // The policy is closed by default, so this route normally refuses. It
+      // never falls back to a direct request.
+      const result = await webFetcher.fetchEvidence(url, { fetchedAt: new Date().toISOString() });
+      if (!result.ok) {
+        const status = result.error?.code === "invalid-url" ? 400 : result.error?.code === "network-url-not-allowed" ? 403 : 502;
+        return reply(res, status, { error: result.error?.message || "Fetch failed", code: result.error?.code || "fetch-failed", reason: result.error?.reason || "" });
+      }
+      return reply(res, 200, { evidence: result.evidence, truncated: result.truncated === true });
     }
     if (url.pathname === "/api/security/inspection") {
       const active = sessionFor(req);
