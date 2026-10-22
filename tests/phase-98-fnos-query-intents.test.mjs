@@ -11,7 +11,12 @@ const definitions = [
   { id: "files.inspect", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, days: { type: "integer", minimum: 1, maximum: 3650 }, minBytes: { type: "integer", minimum: 0, maximum: 1000000000 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, additionalProperties: false } },
   { id: "documents.index-status", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
   { id: "documents.search", risk: "read-only", inputSchema: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 160 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, required: ["query"], additionalProperties: false } },
-  { id: "documents.index-refresh", risk: "write", inputSchema: { type: "object", properties: { force: { type: "boolean" }, maxFiles: { type: "integer", minimum: 1, maximum: 500 } }, additionalProperties: false } }
+  { id: "documents.index-refresh", risk: "write", inputSchema: { type: "object", properties: { force: { type: "boolean" }, maxFiles: { type: "integer", minimum: 1, maximum: 500 } }, additionalProperties: false } },
+  { id: "health-checks.list", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { id: "health-checks.create", risk: "write", inputSchema: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 80 }, type: { type: "string", minLength: 1, maxLength: 20 }, intervalMinutes: { type: "integer", minimum: 5, maximum: 10080 }, enabled: { type: "boolean" } }, required: ["name","type","intervalMinutes"], additionalProperties: false } },
+  { id: "health-checks.run", risk: "write", inputSchema: { type: "object", properties: { checkId: { type: "string", minLength: 1, maxLength: 36 } }, required: ["checkId"], additionalProperties: false } },
+  { id: "health-checks.update", risk: "write", inputSchema: { type: "object", properties: { checkId: { type: "string", minLength: 1, maxLength: 36 }, enabled: { type: "boolean" }, intervalMinutes: { type: "integer", minimum: 5, maximum: 10080 } }, required: ["checkId"], additionalProperties: false } },
+  { id: "health-checks.delete", risk: "write", inputSchema: { type: "object", properties: { checkId: { type: "string", minLength: 1, maxLength: 36 } }, required: ["checkId"], additionalProperties: false } }
 ];
 
 function fixture() {
@@ -89,4 +94,15 @@ test("natural-language local knowledge base requests route to index status, refr
   assert.equal(search.results[0].tool, "documents.search");
   assert.deepEqual(f.calls[2].args, { query: "家庭预算", limit: 10 });
   assert.deepEqual(f.calls.map(item => item.id), ["documents.index-status","documents.index-refresh","documents.search"]);
+});
+
+
+test("natural language can create and list scheduled read-only health checks", async () => {
+  const f = fixture();
+  const created = await f.agent.run({ text: "创建定时巡检 存储 每 30 分钟" });
+  const listed = await f.agent.run({ text: "查看定时巡检计划" });
+  assert.equal(created.results[0].tool, "health-checks.create");
+  assert.deepEqual(f.calls[0].args, { name: "存储定时巡检", type: "storage", intervalMinutes: 30, enabled: true });
+  assert.equal(listed.results[0].tool, "health-checks.list");
+  assert.deepEqual(f.calls.map(item => item.id), ["health-checks.create", "health-checks.list"]);
 });

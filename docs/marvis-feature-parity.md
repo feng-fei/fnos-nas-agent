@@ -18,7 +18,7 @@ Build a persistent, mobile-friendly NAS AI operator that understands storage, fi
 | Browser and web information | Safe URL fetch/search through a constrained provider or Skill | Partial / not a first-class NAS tool | Add explicit network policy, host validation and SSRF protections before web-fetch tools |
 | Specialist agents and delegation | Coordinator plus bounded domain plans for storage, files, Docker, network and diagnostics | Coordinator and structured plans exist; specialist orchestration is not complete | Start with deterministic domain routing and reusable read-only workflows; only split agents when it improves reliability |
 | Skill library | Review, quarantine, import, lifecycle and audit controls | Foundation exists | Continue source-review and directory-confinement hardening; no auto-execution on import |
-| Scheduled tasks and proactive monitoring | Periodic read-only health checks, results history and alerts | Task tracking exists; full scheduler/alerts are incomplete | Add configurable checks, retention and notification targets, with network/offline policy |
+| Scheduled tasks and proactive monitoring | Periodic read-only system/storage/network/Docker/document checks, finite result history and warning summaries | Scheduler and plan/result APIs are being added in this milestone | Add notification targets, delivery controls and retention policy after the in-app history proves reliable |
 | Mobile remote operation | Mobile-friendly authenticated Web console on LAN | Foundation exists | Improve responsive workflow and task history; remote access must be explicitly configured and must not default to public exposure |
 | Cross-device account and cloud computer | Not a direct v0.1 target | Not implemented | Keep out of scope unless there is a clear NAS use case and a safe product design |
 
@@ -53,6 +53,10 @@ The `files.search-content` tool searches common UTF-8 text/code formats under co
 ### Read-only file hygiene inspection
 
 The `files.inspect` tool reports largest files/directories, old large files, temporary/backup file candidates and suspicious sensitive filenames. It reads filesystem metadata only; it does not inspect file contents or mutate the NAS. Traversal depth, number of entries, duration, and report sizes are bounded. Sensitive-name directories are listed as candidates but are not descended into. Partial results are explicitly marked when a limit is hit.
+
+### Scheduled health checks (current milestone)
+
+The `health-checks.*` tools support creating, listing, manually running, pausing, resuming, updating and deleting bounded health-check plans. Plans persist under the app data directory, run only registered read-only tools, and retain a finite history of severity, short summaries and findings. The first types cover system load/memory, storage use, network interfaces, Docker statistics and local document-index status. Notification delivery and automatic remediation remain later milestones.
 
 ### Incremental local document index (current milestone)
 
