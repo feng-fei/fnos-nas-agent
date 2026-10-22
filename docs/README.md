@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 198 documents (183 phase documents and 14 non-phase documents, plus this file).
+This index lists 202 documents (187 phase documents and 14 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -719,6 +719,18 @@ This index lists 198 documents (183 phase documents and 14 non-phase documents, 
 
 ### Phase 197
 - [Phase 197 — Device diagnosis](phase-197-device-diagnosis.md) — Wires the four pure layers to HTTP and the UI: four guarded GET routes plus a default-off smartctl collector, with every unmeasurable case reported as unknown instead of healthy.
+
+### Phase 198
+- [Phase 198 — Certificate check](phase-198-certificate-check.md) — Judges a certificate record the caller supplies: strict date parsing, wildcard-aware hostname matching, and ok/expiring/expired/invalid/unknown verdicts where a missing record or clock is unknown rather than healthy.
+
+### Phase 199
+- [Phase 199 — Idempotency](phase-199-idempotency.md) — A zero-dependency decision store for "the same request twice": execute/replay/in-progress/conflict/reject, request fingerprints from stable serialisation, TTL and LRU eviction, and a permanent in-progress record treated as a lease the caller must close.
+
+### Phase 201
+- [Phase 201 — Deployment precheck](phase-201-deployment-precheck.md) — Validates a structured deployment plan before anything runs: port mappings and conflicts, volume modes, root-user and privileged flags, secret-looking environment keys (names only), and a blocked/needs-review/ok/unknown verdict that never guesses.
+
+### Phase 202
+- [Phase 202 — Deploy, certificate and idempotency wiring](phase-202-deploy-cert-wiring.md) — Gives the three pure layers an outlet: two guarded POST routes that only judge what the caller supplied, optional `x-idempotency-key` replay/conflict handling, and audit route names.
 
 ## This index
 

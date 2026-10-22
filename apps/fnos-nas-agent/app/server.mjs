@@ -59,6 +59,11 @@ import { evaluateDeviceCapabilities, deviceEnvironment, DEVICE_PROFILES } from "
 import { collectServiceStatus } from "./service-status.mjs";
 import { createSystemctlCollector, FNOS_SERVICE_UNITS } from "./service-status-collector.mjs";
 import { buildTrendVerdict } from "./capacity-forecast.mjs";
+// 部署前校验与证书体检都是纯函数：调用方把计划/证书记录交进来，本进程不读系统、
+// 不连 Docker、不发 TLS 握手，所以它们可以被反复调用而不会产生副作用。
+import { precheckDeploymentPlan } from "./deployment-precheck.mjs";
+import { parseCertificateRecord, summarizeCertificate } from "./certificate-check.mjs";
+import { createIdempotencyStore, normalizeIdempotencyKey } from "./idempotency.mjs";
 import { createCapacityHistory } from "./capacity-history.mjs";
 import { planBatchRename, applyBatchRenamePlan } from "./batch-rename.mjs";
 import { normalizeThermalReadings, summarizeThermals } from "./thermal-status.mjs";
@@ -561,6 +566,48 @@ const capacityHistory = createCapacityHistory({ dataDir });
 const MAX_TREND_DISKS = 4;
 const MAX_BATCH_RENAME_APPLY = 50;
 
+// 幂等键只用于「同一请求重放时不要重复执行」：校验类接口本身没有副作用，
+// 所以这里保存的只是结果快照；键缺失就不参与，不会偷偷替调用方去重。
+const idempotencyStore = createIdempotencyStore({ maxRecords: 200 });
+const MAX_IDEMPOTENT_RESULT_BYTES = 8192;
+
+function beginIdempotent(req, pathname, body) {
+  const header = req.headers["x-idempotency-key"];
+  if (typeof header !== "string" || header.trim() === "") return { key: null, decision: null };
+  const key = normalizeIdempotencyKey(header);
+  if (!key) return { key: "invalid", decision: { decision: "reject", reason: "invalid-key" } };
+  return { key, decision: idempotencyStore.begin({ key, action: pathname, params: body ?? null }) };
+}
+
+function idempotentOutcome(res, reply, entry) {
+  if (!entry.decision) return null;
+  const { decision } = entry.decision;
+  if (decision === "conflict")
+    return reply(res, 409, { error: "Idempotency key reused with a different request", code: "idempotency-conflict" });
+  if (decision === "in-progress")
+    return reply(res, 409, { error: "A request with this idempotency key is still running", code: "idempotency-in-progress" });
+  if (decision === "reject") {
+    const capacity = entry.decision.reason === "capacity";
+    return reply(res, capacity ? 429 : 400, {
+      error: capacity ? "Too many idempotent requests in flight" : "Idempotency key rejected",
+      code: `idempotency-${entry.decision.reason}`
+    });
+  }
+  if (decision === "replay") return reply(res, 200, { ...entry.decision.result, replay: true });
+  return null;
+}
+
+function rememberIdempotent(entry, payload) {
+  if (!entry.key || !entry.decision || entry.decision.decision !== "execute") return;
+  let stored = payload;
+  try {
+    if (JSON.stringify(payload).length > MAX_IDEMPOTENT_RESULT_BYTES) stored = { ok: false, note: "result-too-large-to-replay" };
+  } catch {
+    stored = { ok: false, note: "result-not-serialisable" };
+  }
+  idempotencyStore.complete({ key: entry.key, result: stored });
+}
+
 // 温度与日志都是只读采样：读不到时接口如实报 unknown，绝不会被当成健康。
 // 需要排查环境问题时可以用 FNOS_AGENT_THERMAL_COLLECTOR=off / FNOS_AGENT_LOG_COLLECTOR=off 关掉。
 const thermalCollector = process.env.FNOS_AGENT_THERMAL_COLLECTOR === "off" ? null : createThermalCollector({});
@@ -717,6 +764,8 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/files/duplicates") return "files.duplicates";
   if (pathname === "/api/files/rename-plan") return "files.rename-plan";
   if (pathname === "/api/files/rename-apply") return "files.rename-apply";
+  if (pathname === "/api/deploy/precheck") return "deploy.precheck";
+  if (pathname === "/api/network/certificate-check") return "network.certificate-check";
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
   if (/^\/api\/skills\/[a-f0-9]{24}\/source-files$/.test(pathname) || /^\/api\/skills\/[a-f0-9]{24}\/source-preview$/.test(pathname)) return "skills.list";
@@ -1060,6 +1109,66 @@ const server = createServer(async (req, res) => {
         const status = [400, 403, 404, 409, 413, 415, 503, 507].includes(error?.statusCode) ? error.statusCode : 500;
         return reply(res, status, { error: status === 500 ? "Batch rename failed" : error.message });
       }
+    }
+    if (url.pathname === "/api/deploy/precheck") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const body = await jsonBody(req);
+      const entry = beginIdempotent(req, url.pathname, body);
+      const early = idempotentOutcome(res, reply, entry);
+      if (early) return early;
+      // 只看计划本身：本接口不读宿主状态、不连 Docker、不落盘，也不会去部署。
+      const plan = body && typeof body === "object" && body.plan !== undefined ? body.plan : body;
+      let result;
+      try {
+        result = precheckDeploymentPlan(plan, { generate: body?.generate === true });
+      } catch (error) {
+        if (entry.key) idempotencyStore.fail({ key: entry.key });
+        return reply(res, 400, { error: error?.message || "Invalid deployment plan" });
+      }
+      const payload = {
+        ok: result.verdict !== "blocked",
+        verdict: result.verdict,
+        findings: result.findings,
+        serviceCount: result.serviceCount,
+        notes: result.notes
+      };
+      rememberIdempotent(entry, payload);
+      return reply(res, 200, payload);
+    }
+    if (url.pathname === "/api/network/certificate-check") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const body = await jsonBody(req);
+      const entry = beginIdempotent(req, url.pathname, body);
+      const early = idempotentOutcome(res, reply, entry);
+      if (early) return early;
+      // 证书由调用方交进来（或由别的采集器取到后交进来）：本进程不做 TLS 握手，
+      // 也不读系统证书库，所以「读不到」只能是 unknown，不会被说成 ok。
+      const record = parseCertificateRecord(body?.record);
+      let summary;
+      try {
+        summary = summarizeCertificate(record, { now: body?.now, hostname: body?.hostname, warnDays: body?.warnDays });
+      } catch (error) {
+        if (entry.key) idempotencyStore.fail({ key: entry.key });
+        return reply(res, 400, { error: error?.message || "Invalid certificate request" });
+      }
+      const payload = {
+        ok: summary.verdict === "ok",
+        verdict: summary.verdict,
+        summary,
+        record: record
+          ? { subject: record.subject, issuer: record.issuer, notBefore: record.notBefore, notAfter: record.notAfter, parsed: record.parsed }
+          : null
+      };
+      rememberIdempotent(entry, payload);
+      return reply(res, 200, payload);
     }
     if (url.pathname === "/api/files/operations/batch") {
       if (req.method !== "POST") return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"POST"});

@@ -177,7 +177,7 @@ per-intent command string builder in the chat path.
 | N05 Service connectivity | Partly | `app/network-diagnostics.mjs` `checkServiceConnectivity` | Uses recorded probes; the Agent does not open a socket |
 | N06 Throughput analysis | Open | — | — |
 | N07 Connection failure location | Partly | `app/network-diagnostics.mjs` `locateConnectionFailure` | Limited to the evidence that was collected |
-| N08 Certificate check | Open | — | — |
+| N08 Certificate check | Partly | Phase 198 `app/certificate-check.mjs` (verdict, wildcard-aware hostname match), Phase 202 `POST /api/network/certificate-check` | The certificate record is supplied by the caller: no TLS handshake, no collector, no alerting yet |
 | N09 Reverse proxy check | Open | — | — |
 | N10 Repair advice | Partly | Phase 162 read-only checks | — |
 | N11 Network configuration change | Open | — | No remote-access-safe change path exists |
@@ -366,7 +366,7 @@ risk of the action it performs and goes through the same execution policy.
 | O09 Version information | Partly | MCP server info | No single build banner |
 | O10 Upgrade check | Partial | Phase 195 SemVer comparison, Phase 197 `GET /api/system/update-check` | No fetching layer: the caller supplies `latest`; no network access by design |
 | O11 Regression tests | Implemented | `tests/` suite and phase test files | — |
-| O12 Deployment verification | Implemented | FPK CI build job | — |
+| O12 Deployment verification | Partly | FPK CI build job; Phase 201 `app/deployment-precheck.mjs` and Phase 202 `POST /api/deploy/precheck` judge a plan before anything runs | The precheck reads only the plan it is given: it does not query Docker, the host or image registries |
 | O13 Failure recovery test | Partly | Task cancel and timeout tests | No crash-restart test |
 | O14 Resource protection | Partly | Bounded traces, indexes and queues | — |
 | O15 Release check | Implemented | `scripts/check-release-gates.mjs` | — |

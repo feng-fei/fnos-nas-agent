@@ -193,6 +193,10 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 195 — Update Check](docs/phase-195-update-check.md)
 - [Phase 196 — Collectors](docs/phase-196-collectors.md)
 - [Phase 197 — Device Diagnosis](docs/phase-197-device-diagnosis.md)
+- [Phase 198 — Certificate Check](docs/phase-198-certificate-check.md)
+- [Phase 199 — Idempotency](docs/phase-199-idempotency.md)
+- [Phase 201 — Deployment Precheck](docs/phase-201-deployment-precheck.md)
+- [Phase 202 — Deploy, Certificate and Idempotency Wiring](docs/phase-202-deploy-cert-wiring.md)
 
 - [Phase 94 — Model Catalog HTTP Integration](docs/phase-94-model-catalog-http.md)
 - [Phase 95 — Searchable Model Catalog Picker](docs/phase-95-model-catalog-search.md)
