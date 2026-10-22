@@ -8,7 +8,10 @@ const definitions = [
   { id: "fnos.file.ls-dir", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path"], additionalProperties: false } },
   { id: "fnos.monitor.beep-supported", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
   { id: "files.search-content", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, query: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["query"], additionalProperties: false } },
-  { id: "files.inspect", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, days: { type: "integer", minimum: 1, maximum: 3650 }, minBytes: { type: "integer", minimum: 0, maximum: 1000000000 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, additionalProperties: false } }
+  { id: "files.inspect", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, days: { type: "integer", minimum: 1, maximum: 3650 }, minBytes: { type: "integer", minimum: 0, maximum: 1000000000 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, additionalProperties: false } },
+  { id: "documents.index-status", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { id: "documents.search", risk: "read-only", inputSchema: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 160 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, required: ["query"], additionalProperties: false } },
+  { id: "documents.index-refresh", risk: "write", inputSchema: { type: "object", properties: { force: { type: "boolean" }, maxFiles: { type: "integer", minimum: 1, maximum: 500 } }, additionalProperties: false } }
 ];
 
 function fixture() {
@@ -72,4 +75,18 @@ test("natural language file hygiene requests route to a bounded read-only inspec
     id: "files.inspect",
     args: { path: "/vol1/share", days: 90, minBytes: 1048576, limit: 10 }
   }]);
+});
+
+
+test("natural-language local knowledge base requests route to index status, refresh, and search tools", async () => {
+  const f = fixture();
+  const status = await f.agent.run({ text: "查看本地知识库状态" });
+  const refresh = await f.agent.run({ text: "重建本地文档索引 强制" });
+  const search = await f.agent.run({ text: "搜索知识库：家庭预算" });
+  assert.equal(status.results[0].tool, "documents.index-status");
+  assert.equal(refresh.results[0].tool, "documents.index-refresh");
+  assert.deepEqual(f.calls[1].args, { force: true, maxFiles: 500 });
+  assert.equal(search.results[0].tool, "documents.search");
+  assert.deepEqual(f.calls[2].args, { query: "家庭预算", limit: 10 });
+  assert.deepEqual(f.calls.map(item => item.id), ["documents.index-status","documents.index-refresh","documents.search"]);
 });

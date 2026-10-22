@@ -15,9 +15,9 @@ const snapshot = {
 test("registry exposes explicit read-only tools with closed input schemas", () => {
   const registry = createReadOnlyToolRegistry({ getDiagnostics: async () => snapshot, fileBrowser: { list: async () => ({ entries: [] }) }, fileManager: { preview: async path => ({ name: path }) } });
   const tools = registry.list();
-  assert.deepEqual(tools.map(tool => tool.id), ["fnos.system.info","fnos.system.trim-version","fnos.system.kernel-version","fnos.system.hostname","fnos.system.uptime","fnos.system.all-volumes","fnos.system.volumes","fnos.file.ls","fnos.file.ls-dir","fnos.file.usage","fnos.app.list","fnos.docker.image-list","fnos.docker.stats","fnos.docker.container-list","fnos.docker.container-list-all","fnos.docker.compose-list","fnos.download.list","fnos.monitor.cpu","fnos.monitor.memory","fnos.monitor.network","fnos.monitor.disk","fnos.storage.pools","fnos.user.info","fnos.monitor.beep-supported","fnos.photos.folders","fnos.photos.search","system.status","storage.summary","system.process-summary","network.interfaces","files.list","files.preview","files.search","files.search-content","files.inspect","files.create-folder","files.rename","files.move","files.upload","files.create-text","files.delete"]);
+  assert.deepEqual(tools.map(tool => tool.id), ["fnos.system.info","fnos.system.trim-version","fnos.system.kernel-version","fnos.system.hostname","fnos.system.uptime","fnos.system.all-volumes","fnos.system.volumes","fnos.file.ls","fnos.file.ls-dir","fnos.file.usage","fnos.app.list","fnos.docker.image-list","fnos.docker.stats","fnos.docker.container-list","fnos.docker.container-list-all","fnos.docker.compose-list","fnos.download.list","fnos.monitor.cpu","fnos.monitor.memory","fnos.monitor.network","fnos.monitor.disk","fnos.storage.pools","fnos.user.info","fnos.monitor.beep-supported","fnos.photos.folders","fnos.photos.search","system.status","storage.summary","system.process-summary","network.interfaces","files.list","files.preview","files.search","files.search-content","files.inspect","documents.index-status","documents.search","documents.index-refresh","files.create-folder","files.rename","files.move","files.upload","files.create-text","files.delete"]);
   assert.ok(tools.filter(tool => tool.risk === "read-only").length > 0);
-  assert.deepEqual(tools.filter(tool => tool.risk === "write").map(tool => tool.id), ["files.create-folder", "files.rename", "files.move", "files.upload", "files.create-text"]);
+  assert.deepEqual(tools.filter(tool => tool.risk === "write").map(tool => tool.id), ["documents.index-refresh", "files.create-folder", "files.rename", "files.move", "files.upload", "files.create-text"]);
   assert.deepEqual(tools.filter(tool => tool.risk === "destructive").map(tool => tool.id), ["files.delete"]);
   assert.ok(tools.every(tool => ["read-only", "write", "destructive"].includes(tool.risk)));
   assert.ok(tools.every(tool => tool.inputSchema.additionalProperties === false));
@@ -92,4 +92,24 @@ test("file inspection is read-only, schema-bounded and passes defaults", async (
   });
   await assert.rejects(registry.invoke("files.inspect", { command: "rm -rf /" }), { statusCode: 400 });
   await assert.rejects(registry.invoke("files.inspect", { days: 0 }), { statusCode: 400 });
+});
+
+
+test("local document index tools enforce schemas and route only to the local index service", async () => {
+  const calls = [];
+  const registry = createReadOnlyToolRegistry({
+    getDiagnostics: async () => snapshot,
+    documentIndex: {
+      async status() { calls.push(["status"]); return { documentCount: 2 }; },
+      async search(query, limit) { calls.push(["search", query, limit]); return { count: 1, results: [] }; },
+      async refresh(options) { calls.push(["refresh", options]); return { documentCount: 3 }; }
+    }
+  });
+  assert.equal((await registry.invoke("documents.index-status", {})).documentCount, 2);
+  assert.equal((await registry.invoke("documents.search", { query: "合同" })).count, 1);
+  assert.equal((await registry.invoke("documents.index-refresh", { force: true, maxFiles: 40 })).documentCount, 3);
+  assert.deepEqual(calls, [["status"], ["search", "合同", 10], ["refresh", { force: true, maxFiles: 40 }]]);
+  await assert.rejects(registry.invoke("documents.search", { query: "" }), { statusCode: 400 });
+  await assert.rejects(registry.invoke("documents.index-refresh", { force: "yes" }), { statusCode: 400 });
+  await assert.rejects(registry.invoke("documents.index-refresh", { maxFiles: 501 }), { statusCode: 400 });
 });

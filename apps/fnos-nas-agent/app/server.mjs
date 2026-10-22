@@ -18,6 +18,7 @@ import { createTaskManager } from "./task-manager.mjs";
 import { createFixedWindowLimiter } from "./request-limiter.mjs";
 import { createAuditLogger } from "./audit-log.mjs";
 import { createFileBrowser } from "./file-browser.mjs";
+import { createLocalDocumentIndex } from "./document-index.mjs";
 import { createFileManager } from "./file-manager.mjs";
 import { createTrimCliAdapter } from "./trim-cli-adapter.mjs";
 import { createTrimCliLoginCommand, validateTrimCliLoginInput } from "./trim-cli-setup.mjs";
@@ -252,6 +253,7 @@ async function readOnlyDiagnostics() {
 }
 const fileBrowser = createFileBrowser();
 const fileManager = createFileManager();
+const documentIndex = dataDir ? createLocalDocumentIndex({ dataDir, fileBrowser, fileManager }) : null;
 // The execution policy is the single gate for every mutating path.
 const executionPolicy = createExecutionPolicy({ dataDir });
 const skillInstaller = dataDir ? createSkillInstaller({ dataDir }) : null;
@@ -264,7 +266,7 @@ const trimCli = createTrimCliAdapter({
     return official ? join(dataDir, "skill-tools", official.id, "trim-cli") : "";
   }
 });
-const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics, fileBrowser, fileManager, trimCli, executionPolicy });
+const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics, fileBrowser, fileManager, documentIndex, trimCli, executionPolicy });
 const modelProviderStore = dataDir ? createModelProviderStore({ dataDir }) : null;
 const modelAdapter = createModelAdapter({
   configProvider: () => {
