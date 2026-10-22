@@ -15,7 +15,7 @@ const snapshot = {
 test("registry exposes explicit read-only tools with closed input schemas", () => {
   const registry = createReadOnlyToolRegistry({ getDiagnostics: async () => snapshot, fileBrowser: { list: async () => ({ entries: [] }) }, fileManager: { preview: async path => ({ name: path }) } });
   const tools = registry.list();
-  assert.deepEqual(tools.map(tool => tool.id), ["fnos.system.info","fnos.system.trim-version","fnos.system.kernel-version","fnos.system.hostname","fnos.system.uptime","fnos.system.all-volumes","fnos.system.volumes","fnos.file.ls","fnos.file.ls-dir","fnos.file.usage","fnos.app.list","fnos.docker.image-list","fnos.docker.stats","fnos.docker.container-list","fnos.docker.container-list-all","fnos.docker.compose-list","fnos.download.list","fnos.monitor.cpu","fnos.monitor.memory","fnos.monitor.network","fnos.monitor.disk","fnos.storage.pools","fnos.user.info","fnos.monitor.beep-supported","fnos.photos.folders","fnos.photos.search","system.status","storage.summary","system.process-summary","network.interfaces","files.list","files.preview","files.search","files.search-content","files.inspect","documents.index-status","documents.search","documents.index-refresh","health-checks.list","health-checks.create","health-checks.run","health-checks.update","health-checks.delete","files.create-folder","files.rename","files.move","files.upload","files.create-text","files.delete"]);
+  assert.deepEqual(tools.map(tool => tool.id), ["fnos.system.info","fnos.system.trim-version","fnos.system.kernel-version","fnos.system.hostname","fnos.system.uptime","fnos.system.all-volumes","fnos.system.volumes","fnos.file.ls","fnos.file.ls-dir","fnos.file.usage","fnos.app.list","fnos.docker.image-list","fnos.docker.stats","fnos.docker.container-list","fnos.docker.container-list-all","fnos.docker.compose-list","fnos.download.list","fnos.monitor.cpu","fnos.monitor.memory","fnos.monitor.network","fnos.monitor.disk","fnos.storage.pools","fnos.user.info","fnos.monitor.beep-supported","fnos.photos.folders","fnos.photos.search","system.status","storage.summary","system.process-summary","network.interfaces","files.list","files.preview","files.search","files.search-content","files.inspect","media.photos.search","documents.index-status","documents.search","documents.index-refresh","health-checks.list","health-checks.create","health-checks.run","health-checks.update","health-checks.delete","files.create-folder","files.rename","files.move","files.upload","files.create-text","files.delete"]);
   assert.ok(tools.filter(tool => tool.risk === "read-only").length > 0);
   assert.deepEqual(tools.filter(tool => tool.risk === "write").map(tool => tool.id), ["documents.index-refresh", "health-checks.create", "health-checks.run", "health-checks.update", "health-checks.delete", "files.create-folder", "files.rename", "files.move", "files.upload", "files.create-text"]);
   assert.deepEqual(tools.filter(tool => tool.risk === "destructive").map(tool => tool.id), ["files.delete"]);
@@ -37,6 +37,22 @@ test("each tool returns only its scoped diagnostic data", async () => {
   assert.deepEqual(await registry.invoke("system.process-summary", {}), {
     collectedAt: snapshot.collectedAt, processes: snapshot.processes
   });
+});
+
+test("local photo search is registered read-only and forwards bounded metadata filters", async () => {
+  const registry = createReadOnlyToolRegistry({
+    getDiagnostics: async () => snapshot,
+    fileBrowser: { async searchPhotos(args) { return { args }; } }
+  });
+  const tool = registry.list().find(item => item.id === "media.photos.search");
+  assert.equal(tool.risk, "read-only");
+  assert.equal(tool.inputSchema.properties.category.enum.includes("screenshot"), true);
+  assert.deepEqual(await registry.invoke("media.photos.search", { category: "screenshot", dateFrom: "2025-01-01", dateTo: "2025-12-31", limit: 20 }), {
+    args: { category: "screenshot", dateFrom: "2025-01-01", dateTo: "2025-12-31", limit: 20 }
+  });
+  await assert.rejects(registry.invoke("media.photos.search", { category: "shell" }), { statusCode: 400 });
+  await assert.rejects(registry.invoke("media.photos.search", { hasGps: "true" }), { statusCode: 400 });
+  await assert.rejects(registry.invoke("media.photos.search", { command: "cat /etc/passwd" }), { statusCode: 400 });
 });
 
 test("registry validates per-tool arguments and rejects unknown fields", async () => {

@@ -1,74 +1,57 @@
 # Marvis-inspired feature parity for fnOS NAS Agent
 
-This document translates public Marvis product capabilities into a native fnOS NAS product scope. It is a capability reference, not a claim that Marvis source code is available or that its internal implementation is being copied.
+This document maps public Marvis-style capabilities to a native fnOS NAS assistant. It is a product and implementation roadmap; it does not claim that Tencent Marvis source code is public or that its internal implementation is copied.
 
 ## Product direction
 
-Build a persistent, mobile-friendly NAS AI operator that understands storage, files, applications, services, and system health. Keep the current Node.js runtime and FPK delivery. All model output remains untrusted; it can only request registered tools. Do not add arbitrary shell execution to chat or permit a Skill to bypass policy/approval.
+Build a persistent, mobile-friendly NAS AI operator that can find files, understand local document/photo metadata, diagnose storage and services, and run proactive checks. Keep the current lightweight Node.js runtime and FPK delivery. Model output is untrusted and can request only registered tools. Do not expose arbitrary shell execution to chat or let a Skill bypass the policy and approval layers.
 
 ## Capability mapping
 
-| Marvis product capability | fnOS equivalent | Current state | Next implementation |
+| Marvis-style capability | fnOS equivalent | Status | Remaining work |
 | --- | --- | --- | --- |
-| Natural-language computer/system management | Read-only fnOS system, storage, network and Docker tools | Foundation exists | Add diagnostic summaries and safe remediation plans; mutations stay approval-gated |
-| File assistant: find, inspect and manage files | Scoped volume browsing, preview, content search, read-only hygiene inspection, and guarded write operations | Foundation exists; content search has landed and hygiene inspection is in progress | Add a local document index and more report-based file organization suggestions; no automatic deletion |
-| Local knowledge base | Bounded incremental local text-document index, status and retrieval within configured volumes | First implementation in this milestone; stores terms and redacted excerpts in private app data | Add richer extraction, persistent indexing of additional formats, and semantic search only after privacy/resource validation |
-| Image understanding and gallery | fnOS photo-folder/search adapter | Basic provider tools exist | Verify the official query semantics; add metadata/EXIF/OCR only where a supported API or safe local parser exists |
-| Document understanding | Bounded extraction of text from supported formats | Plain-text preview exists | Add UTF-8/Markdown/CSV first; later add optional PDF/DOCX/XLSX extraction with size/page limits |
-| Browser and web information | Safe URL fetch/search through a constrained provider or Skill | Partial / not a first-class NAS tool | Add explicit network policy, host validation and SSRF protections before web-fetch tools |
-| Specialist agents and delegation | Coordinator plus bounded domain plans for storage, files, Docker, network and diagnostics | Coordinator and structured plans exist; specialist orchestration is not complete | Start with deterministic domain routing and reusable read-only workflows; only split agents when it improves reliability |
-| Skill library | Review, quarantine, import, lifecycle and audit controls | Foundation exists | Continue source-review and directory-confinement hardening; no auto-execution on import |
-| Scheduled tasks and proactive monitoring | Periodic read-only system/storage/network/Docker/document checks, finite result history and warning summaries | Scheduler and plan/result APIs are being added in this milestone | Add notification targets, delivery controls and retention policy after the in-app history proves reliable |
-| Mobile remote operation | Mobile-friendly authenticated Web console on LAN | Foundation exists | Improve responsive workflow and task history; remote access must be explicitly configured and must not default to public exposure |
-| Cross-device account and cloud computer | Not a direct v0.1 target | Not implemented | Keep out of scope unless there is a clear NAS use case and a safe product design |
+| Natural-language computer/system management | Registered fnOS system, storage, network and Docker tools | Foundation exists | Improve diagnostics and safe remediation plans; all state-changing actions remain approval-gated |
+| File assistant | Scoped volume browsing, content search, hygiene reports and guarded file operations | Implemented in layers | Add more useful organization suggestions and polish the user-facing results |
+| Local knowledge base | Persistent bounded text index with incremental refresh and retrieval | First lexical implementation delivered | Add optional document-format extraction and, later, privacy-preserving semantic search |
+| Photo gallery | Search local images by name, EXIF capture date, camera brand, category, dimensions, and GPS-metadata presence | First local metadata search in this milestone | Add opt-in OCR/image understanding only after resource and privacy validation |
+| Document understanding | Bounded text retrieval from supported UTF-8 text formats | Basic text support delivered | Optional PDF/DOCX/XLSX parsers with page/size limits; no automatic upload of NAS content |
+| Proactive assistant | Scheduled read-only system, storage, network, Docker and document-index checks with bounded result history | Implemented; API and tools are available | Add explicit notification targets and delivery controls |
+| Specialist agents | Coordinator and structured plans over registered tools | Coordinator foundation exists | Add focused storage, file/document, Docker and network diagnostic flows before introducing more agent complexity |
+| Skill library | Review, quarantine, import, lifecycle and audit controls | Foundation exists | Continue source-review and directory-confinement hardening; never auto-run an imported Skill |
+| Browser information | Constrained URL fetch and search | Partial | Explicit network policy, destination validation and SSRF protections are prerequisites |
+| Mobile remote operation | Authenticated, mobile-friendly LAN Web console | Foundation exists | Improve responsive task/approval/history UI; remote access must never be public by default |
 
-## Milestone started here: bounded text-content search
+## Implemented capabilities
 
-The files.search-content tool adds a first content-based file retrieval primitive alongside existing filename search:
+### 1. Bounded file-content search
 
-- Searches common UTF-8 text/code/document formats under configured storage roots.
-- Skips symbolic links, common secret/credential filenames, binary files, and oversized files.
-- Opens directories/files with Linux descriptor and no-follow checks, validates file identity, and bounds traversal depth, entries, file size, total bytes, result count and elapsed time.
-- Returns one matching line per file with a short snippet; common credential assignments and token-like values are redacted.
-- Reports when results may be partial. It does not persist an index or send file contents to an external service itself.
+The `files.search-content` tool searches common UTF-8 text/code formats under configured storage roots. It skips symlinks, common sensitive filenames, binary or oversized files, caps total bytes and traversal, and redacts common credential/token patterns from returned snippets. This is lexical search, not semantic/vector search.
 
-This is lexical content search, not semantic/vector search, full PDF/OCR parsing, or a persistent knowledge base. Those are later milestones and need their own privacy and resource controls.
+### 2. Read-only file-hygiene inspection
 
-## Milestones delivered
+The `files.inspect` tool reports largest files/directories, old large files, temporary/backup filename candidates and suspicious sensitive filenames. It only reads file-system metadata, never reads file bodies, and never moves or deletes NAS files. Traversal depth, visit count, execution time and result count are bounded. Sensitive-name directories are reported as candidates but not traversed. Partial results are marked.
 
-### Bounded text-content search
+### 3. Incremental local document index
 
-The `files.search-content` tool searches common UTF-8 text/code formats under configured roots. It skips symlinks, common sensitive filenames, binary/oversized files, caps reads and traversal, and redacts common credential/token patterns from returned snippets. This is lexical search only, not semantic/vector search, full PDF/OCR extraction, or a persistent knowledge base.
+The `documents.index-refresh` tool builds or refreshes a private app-data index for bounded UTF-8 text, Markdown, CSV/TSV, JSON/YAML, HTML/XML and log files. It stores capped term sets and short redacted excerpts, not full document bodies. `documents.search` uses keyword and Chinese bigram overlap; `documents.index-status` reports index counts, update time and partial-scan status. Unchanged files are skipped by size/mtime unless a forced refresh is requested. PDF/OCR extraction and semantic vectors are not included in this first version.
 
-### Read-only file hygiene inspection (current milestone)
+### 4. Scheduled read-only health checks
 
-The `files.inspect` tool reports largest files/directories, old large files, temporary/backup file candidates and suspicious sensitive filenames. It reads filesystem metadata only; it does not inspect file contents or mutate the NAS. Traversal depth, number of entries, duration, and report sizes are bounded. Sensitive-name directories are listed as candidates but are not descended into. Partial results are explicitly marked when a limit is hit.
+The `health-checks.*` tools and authenticated API can create, list, manually run, pause, resume, update and delete scheduled checks. The initial check types cover system memory/load, storage usage, network interfaces, Docker statistics and local document-index status. Plans and the latest finite history persist in the app-data directory. Execution uses registered read-only tools; summaries are bounded and errors do not persist arbitrary command output. External notifications and automatic remediation remain future work.
 
-## Milestones delivered
+### 5. Local photo metadata search (current milestone)
 
-### Bounded text-content search
+The `media.photos.search` tool searches image files inside configured storage roots. It supports filename/camera/date queries, date ranges, category filters (photo, screenshot, scan, other), and filtering by GPS-metadata presence. The parser reads only a capped image header, supports JPEG EXIF camera brand/capture date/GPS-presence metadata and basic PNG/GIF/WebP dimensions, and reports file modification date when capture time is unavailable. It never returns GPS coordinates and never uploads image content.
 
-The `files.search-content` tool searches common UTF-8 text/code formats under configured roots. It skips symlinks, common sensitive filenames, binary/oversized files, caps reads and traversal, and redacts common credential/token patterns from returned snippets. This is lexical search only, not semantic/vector search, full PDF/OCR extraction, or a persistent knowledge base.
-
-### Read-only file hygiene inspection
-
-The `files.inspect` tool reports largest files/directories, old large files, temporary/backup file candidates and suspicious sensitive filenames. It reads filesystem metadata only; it does not inspect file contents or mutate the NAS. Traversal depth, number of entries, duration, and report sizes are bounded. Sensitive-name directories are listed as candidates but are not descended into. Partial results are explicitly marked when a limit is hit.
-
-### Scheduled health checks (current milestone)
-
-The `health-checks.*` tools support creating, listing, manually running, pausing, resuming, updating and deleting bounded health-check plans. Plans persist under the app data directory, run only registered read-only tools, and retain a finite history of severity, short summaries and findings. The first types cover system load/memory, storage use, network interfaces, Docker statistics and local document-index status. Notification delivery and automatic remediation remain later milestones.
-
-### Incremental local document index (current milestone)
-
-The `documents.index-refresh` tool builds or refreshes a private index for bounded UTF-8 text, Markdown, CSV and similar text files. It stores a capped term set and short redacted excerpts, not full document bodies, under the application data directory with a restrictive file mode. `documents.search` ranks documents by keyword/CJK bigram overlap; `documents.index-status` reports freshness and partial-scan information. Unchanged files are skipped by size/mtime metadata unless a forced refresh is requested. This first version is lexical retrieval, not semantic vector search, and does not perform PDF/OCR extraction.
+Limits are deliberately small for NAS responsiveness: at most 2,500 visited entries, depth 8, 3 seconds, 128 KiB per image header, 4 MiB total header reads, and 50 results. Symlinks, common secret directories, and sensitive-name entries are skipped. This is metadata discovery, not semantic image recognition, face recognition, OCR, or a persistent photo index.
 
 ## Recommended delivery order
 
-1. Validate and merge the incremental local document index after CI passes.
-2. Finish user-facing output, task progress and approval UX.
-3. Add structured storage diagnostics, safe remediation plans and read-only NAS health reports.
-4. Add scheduled health checks and notifications with retention, pause/disable controls and explicit delivery targets.
-5. Add specialist task routes for storage, files/documents, Docker and network/system over registered tools.
-6. Expand into optional PDF/DOCX/XLSX extraction, OCR and photo metadata search after resource measurement on supported fnOS hardware.
+1. Validate and merge the local photo metadata search after Node tests and release/FPK CI pass.
+2. Polish the task progress, approval, document-search and health-check UI.
+3. Add opt-in PDF/DOCX/XLSX text extraction with strict page, file-size, total-byte and timeout limits.
+4. Add scheduled-check notification channels only after configuration, failure reporting, and delivery-target privacy controls are defined.
+5. Add focused diagnostic workflows for storage, files/documents, Docker, and network/system using registered tools.
+6. Evaluate OCR and semantic document/photo search on actual supported fnOS hardware before adding native dependencies or model runtime overhead.
 7. Add constrained web-information tools only after explicit network policy and SSRF protections are validated.
-8. Validate FPK install, upgrade, rollback and uninstall on a real disposable fnOS device before declaring a release ready.
+8. Verify FPK install, upgrade, rollback and uninstall on a disposable real fnOS device before declaring a release ready.
