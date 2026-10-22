@@ -406,10 +406,11 @@ body.authenticated .workspace-nav a{flex:0 0 auto;padding:11px 12px;border-radiu
 body.authenticated .workspace-nav a:hover,body.authenticated .workspace-nav a[aria-current="page"]{background:var(--accent-soft);color:var(--accent-hover)}
 .app-topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:76px;padding:14px clamp(20px,3vw,42px);border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(14px)}
 .topbar-context{display:grid;gap:2px}.topbar-eyebrow{color:var(--muted);font-size:.68rem;font-weight:760;letter-spacing:.11em}.topbar-context strong{font-size:1.12rem;letter-spacing:-.025em}.topbar-actions{display:flex;align-items:center;gap:12px}.session-indicator{color:var(--muted);font-size:.8rem;white-space:nowrap}.session-indicator .online-dot{margin-right:7px}
-body.authenticated .page-panel{display:block;width:min(100%,1450px);margin:0 auto;padding:28px clamp(20px,3vw,42px) 55px}
+body.authenticated .page-panel{display:block!important;visibility:visible!important;width:min(100%,1450px);margin:0 auto;padding:28px clamp(20px,3vw,42px) 55px}
 body.authenticated .page-panel>.card{display:none;width:100%;margin:0;padding:clamp(20px,2vw,30px);border-radius:16px}
-body.authenticated .page-panel>.card.active-page{display:block}
+body.authenticated .page-panel>.card.active-page{display:block!important;visibility:visible!important;opacity:1!important}
 body.authenticated .page-panel>.card.hidden{display:none!important}
+body.authenticated .page-panel>.card.active-page:not(.hidden){display:block!important;visibility:visible!important}
 body.authenticated .page-panel h2{font-size:1.18rem}body.authenticated #logout{margin:0}
 @media(max-width:850px){body.authenticated main.workspace-root{margin-left:205px}body.authenticated .workspace-nav{width:190px;padding:20px 10px}body.authenticated .page-panel{padding:22px 18px 38px}body.authenticated .app-topbar{padding:12px 20px}}
 @media(max-width:640px){body.authenticated main.workspace-root{margin:0;padding-top:117px}body.authenticated .workspace-nav{top:0;bottom:auto;width:100%;height:auto;max-height:116px;padding:10px 12px 8px;flex-direction:row;align-items:center;gap:4px;overflow-x:auto;overflow-y:hidden;border-right:0;border-bottom:1px solid var(--border);box-shadow:0 5px 18px rgb(15 23 42 / 5%)}body.authenticated .workspace-nav::before{flex:0 0 auto;padding:7px 9px;margin:0 4px 0 0;font-size:.78rem}body.authenticated .workspace-nav::after{display:none}body.authenticated .workspace-nav a{flex:0 0 auto;padding:8px 10px;font-size:.8rem}body.authenticated .app-topbar{position:relative;min-height:60px;padding:10px 15px}body.authenticated .topbar-context strong{font-size:1rem}body.authenticated .topbar-eyebrow{font-size:.6rem}body.authenticated .session-indicator{display:none}body.authenticated .topbar-actions button{min-height:34px;padding:6px 9px;font-size:.8rem}body.authenticated .page-panel{padding:18px 12px 32px}body.authenticated .page-panel>.card{padding:16px;border-radius:13px}body.auth-screen main,body:not(.authenticated) main{width:min(calc(100% - 24px),520px);padding:24px 0}body.auth-screen #login-card,body.auth-screen #setup-card,body:not(.authenticated) #login-card,body:not(.authenticated) #setup-card{padding:19px}}
@@ -1393,8 +1394,9 @@ function buildWorkspaceLayout(){
  audit.append(title,intro);
  const statusPanel=document.querySelector("#status-card");
  const get=id=>document.getElementById(id);
- const outcomeLabel=statusPanel.querySelector('label[for="audit-outcome"]');
- const routeLabel=statusPanel.querySelector('label[for="audit-route"]');
+ // The layout initializer also runs before authentication; tolerate incomplete/legacy markup.
+ const outcomeLabel=statusPanel?.querySelector('label[for="audit-outcome"]')||null;
+ const routeLabel=statusPanel?.querySelector('label[for="audit-route"]')||null;
  if(get("show-audit")){get("show-audit").textContent="刷新操作记录";audit.appendChild(get("show-audit"));}
  if(outcomeLabel)audit.appendChild(outcomeLabel);
  if(get("audit-outcome"))audit.appendChild(get("audit-outcome"));
