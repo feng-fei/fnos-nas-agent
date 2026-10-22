@@ -6,7 +6,17 @@ const definitions = [
   { id: "fnos.system.info", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
   { id: "fnos.file.usage", risk: "read-only", inputSchema: { type: "object", properties: { volumeId: { type: "integer", minimum: 1, maximum: 10000 } }, required: ["volumeId"], additionalProperties: false } },
   { id: "fnos.file.ls-dir", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path"], additionalProperties: false } },
-  { id: "fnos.monitor.beep-supported", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } }
+  { id: "fnos.monitor.beep-supported", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { id: "files.search-content", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, query: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["query"], additionalProperties: false } },
+  { id: "files.inspect", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, days: { type: "integer", minimum: 1, maximum: 3650 }, minBytes: { type: "integer", minimum: 0, maximum: 1000000000 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, additionalProperties: false } },
+  { id: "documents.index-status", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { id: "documents.search", risk: "read-only", inputSchema: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 160 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, required: ["query"], additionalProperties: false } },
+  { id: "documents.index-refresh", risk: "write", inputSchema: { type: "object", properties: { force: { type: "boolean" }, maxFiles: { type: "integer", minimum: 1, maximum: 500 } }, additionalProperties: false } },
+  { id: "health-checks.list", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { id: "health-checks.create", risk: "write", inputSchema: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 80 }, type: { type: "string", minLength: 1, maxLength: 20 }, intervalMinutes: { type: "integer", minimum: 5, maximum: 10080 }, enabled: { type: "boolean" } }, required: ["name","type","intervalMinutes"], additionalProperties: false } },
+  { id: "health-checks.run", risk: "write", inputSchema: { type: "object", properties: { checkId: { type: "string", minLength: 1, maxLength: 36 } }, required: ["checkId"], additionalProperties: false } },
+  { id: "health-checks.update", risk: "write", inputSchema: { type: "object", properties: { checkId: { type: "string", minLength: 1, maxLength: 36 }, enabled: { type: "boolean" }, intervalMinutes: { type: "integer", minimum: 5, maximum: 10080 } }, required: ["checkId"], additionalProperties: false } },
+  { id: "health-checks.delete", risk: "write", inputSchema: { type: "object", properties: { checkId: { type: "string", minLength: 1, maxLength: 36 } }, required: ["checkId"], additionalProperties: false } }
 ];
 
 function fixture() {
@@ -49,4 +59,50 @@ test("invalid volume identifiers fail tool schema validation without invoking a 
   const f = fixture();
   await assert.rejects(f.agent.run({ text: "查看存储卷容量 99999" }), { statusCode: 400 });
   assert.deepEqual(f.calls, []);
+});
+
+
+test("natural-language document content search routes to bounded read-only content search", async () => {
+  const f = fixture();
+  const result = await f.agent.run({ text: "搜索文件内容 报价" });
+  assert.equal(result.mode, "rules");
+  assert.equal(result.results[0].tool, "files.search-content");
+  assert.deepEqual(f.calls, [{ id: "files.search-content", args: { query: "报价", limit: 30 } }]);
+});
+
+
+test("natural language file hygiene requests route to a bounded read-only inspection", async () => {
+  const f = fixture();
+  const result = await f.agent.run({ text: "巡检文件 /vol1/share" });
+  assert.equal(result.mode, "rules");
+  assert.equal(result.results[0].tool, "files.inspect");
+  assert.deepEqual(f.calls, [{
+    id: "files.inspect",
+    args: { path: "/vol1/share", days: 90, minBytes: 1048576, limit: 10 }
+  }]);
+});
+
+
+test("natural-language local knowledge base requests route to index status, refresh, and search tools", async () => {
+  const f = fixture();
+  const status = await f.agent.run({ text: "查看本地知识库状态" });
+  const refresh = await f.agent.run({ text: "重建本地文档索引 强制" });
+  const search = await f.agent.run({ text: "搜索知识库：家庭预算" });
+  assert.equal(status.results[0].tool, "documents.index-status");
+  assert.equal(refresh.results[0].tool, "documents.index-refresh");
+  assert.deepEqual(f.calls[1].args, { force: true, maxFiles: 500 });
+  assert.equal(search.results[0].tool, "documents.search");
+  assert.deepEqual(f.calls[2].args, { query: "家庭预算", limit: 10 });
+  assert.deepEqual(f.calls.map(item => item.id), ["documents.index-status","documents.index-refresh","documents.search"]);
+});
+
+
+test("natural language can create and list scheduled read-only health checks", async () => {
+  const f = fixture();
+  const created = await f.agent.run({ text: "创建定时巡检 存储 每 30 分钟" });
+  const listed = await f.agent.run({ text: "查看定时巡检计划" });
+  assert.equal(created.results[0].tool, "health-checks.create");
+  assert.deepEqual(f.calls[0].args, { name: "存储定时巡检", type: "storage", intervalMinutes: 30, enabled: true });
+  assert.equal(listed.results[0].tool, "health-checks.list");
+  assert.deepEqual(f.calls.map(item => item.id), ["health-checks.create", "health-checks.list"]);
 });

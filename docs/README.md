@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 141 documents (129 phase documents and 11 non-phase documents, plus this file).
+This index lists 142 documents (129 phase documents and 12 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -15,6 +15,7 @@ This index lists 141 documents (129 phase documents and 11 non-phase documents, 
 - [FPK CI build](fpk-ci-build.md) — GitHub Actions builds an unsigned x86 CI test FPK from an isolated copy of apps/fnos-nas-agent/. On main, a separate job additionally produces a GitHub artifact attestation for the FPK…
 - [Native FPK validation plan](fpk-test-plan.md) — Official reference material:
 - [Official fnOS trim-cli read-only adapter](official-trim-cli-adapter.md) — The Agent integrates the official trim-cli as an optional capability provider. An explicit TRIM_CLI_PATH override takes precedence; otherwise the Agent uses the CLI installed from the…
+- [Marvis-inspired feature parity](marvis-feature-parity.md) — Translate Marvis-style file, system, knowledge, automation, and cross-device capabilities into a security-first fnOS NAS roadmap; document the bounded text-content search milestone.
 - [Practical file management](practical-file-management.md) — Extends the authenticated mobile file browser with bounded UTF-8 text preview, streaming downloads, binary uploads up to 25 MiB, folder creation, rename, move, and delete.
 - [Private remote access from a phone](private-remote-access.md) — The Agent is a self-hosted web service. For access away from home, use a private VPN overlay such as Tailscale or WireGuard rather than exposing port 18787 directly to the internet.
 - [Security Model](security.md) — Examples: show Agent version, show enabled Skills, display task history metadata. No NAS mutation.

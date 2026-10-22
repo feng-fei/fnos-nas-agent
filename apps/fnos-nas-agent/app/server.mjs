@@ -18,6 +18,8 @@ import { createTaskManager } from "./task-manager.mjs";
 import { createFixedWindowLimiter } from "./request-limiter.mjs";
 import { createAuditLogger } from "./audit-log.mjs";
 import { createFileBrowser } from "./file-browser.mjs";
+import { createLocalDocumentIndex } from "./document-index.mjs";
+import { createScheduledHealthChecks } from "./scheduled-health-checks.mjs";
 import { createFileManager } from "./file-manager.mjs";
 import { createTrimCliAdapter } from "./trim-cli-adapter.mjs";
 import { createTrimCliLoginCommand, validateTrimCliLoginInput } from "./trim-cli-setup.mjs";
@@ -300,6 +302,7 @@ async function readOnlyDiagnostics() {
 }
 const fileBrowser = createFileBrowser();
 const fileManager = createFileManager();
+const documentIndex = dataDir ? createLocalDocumentIndex({ dataDir, fileBrowser, fileManager }) : null;
 // The execution policy is the single gate for every mutating path.
 const executionPolicy = createExecutionPolicy({ dataDir });
 const skillInstaller = dataDir ? createSkillInstaller({ dataDir }) : null;
@@ -312,7 +315,15 @@ const trimCli = createTrimCliAdapter({
     return official ? join(dataDir, "skill-tools", official.id, "trim-cli") : "";
   }
 });
-const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics, fileBrowser, fileManager, trimCli, executionPolicy });
+let scheduledHealthChecks = null;
+const readOnlyTools = createReadOnlyToolRegistry({
+  getDiagnostics: readOnlyDiagnostics, fileBrowser, fileManager, documentIndex,
+  getScheduledHealthChecks: () => scheduledHealthChecks, trimCli, executionPolicy
+});
+scheduledHealthChecks = dataDir ? createScheduledHealthChecks({
+  dataDir,
+  runTool: (toolId, args) => readOnlyTools.invoke(toolId, args)
+}) : null;
 const modelProviderStore = dataDir ? createModelProviderStore({ dataDir }) : null;
 const modelAdapter = createModelAdapter({
   configProvider: () => {
@@ -444,6 +455,9 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/agent/trim-cli/login-command") return "agent.trim-cli-login-command";
   if (pathname === "/api/agent/message") return "agent.message";
   if (pathname === "/api/tasks/clear-history") return "tasks.clear";
+  if (pathname === "/api/health-checks") return method === "GET" ? "health-checks.list" : method === "POST" ? "health-checks.create" : "other_api";
+  if (/^\/api\/health-checks\/[a-f0-9-]{36}\/run$/i.test(pathname)) return "health-checks.run";
+  if (/^\/api\/health-checks\/[a-f0-9-]{36}$/i.test(pathname)) return method === "DELETE" ? "health-checks.delete" : method === "PATCH" || method === "PUT" ? "health-checks.update" : "other_api";
   if (pathname === "/api/tasks/status") return "tasks.status";
   if (pathname === "/api/tasks") return "tasks.list";
   if (/^\/api\/tasks\/[a-f0-9-]{8,64}\/cancel$/i.test(pathname)) return "tasks.cancel";
@@ -1146,6 +1160,57 @@ const server = createServer(async (req, res) => {
       }
       return reply(res, 202, { task });
     }
+    if (url.pathname === "/api/health-checks") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (!scheduledHealthChecks) return reply(res, 503, { error: "App data directory is not configured" });
+      if (req.method === "GET") return reply(res, 200, scheduledHealthChecks.list());
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const decision = executionPolicy.evaluate({ risk: "write", approved: false });
+      if (!decision.allowed) return reply(res, decision.statusCode || 403, { error: policyMessage(decision) });
+      try { return reply(res, 201, { check: await scheduledHealthChecks.create(await jsonBody(req)) }); }
+      catch (error) {
+        const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status >= 500 ? "Unable to create scheduled health check" : error.message });
+      }
+    }
+    const healthCheckRunMatch = url.pathname.match(/^\/api\/health-checks\/([a-f0-9-]{36})\/run$/i);
+    if (healthCheckRunMatch) {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!scheduledHealthChecks) return reply(res, 503, { error: "App data directory is not configured" });
+      const decision = executionPolicy.evaluate({ risk: "write", approved: false });
+      if (!decision.allowed) return reply(res, decision.statusCode || 403, { error: policyMessage(decision) });
+      try { return reply(res, 200, await scheduledHealthChecks.runNow(healthCheckRunMatch[1])); }
+      catch (error) {
+        const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status >= 500 ? "Unable to run scheduled health check" : error.message });
+      }
+    }
+    const healthCheckMatch = url.pathname.match(/^\/api\/health-checks\/([a-f0-9-]{36})$/i);
+    if (healthCheckMatch) {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!scheduledHealthChecks) return reply(res, 503, { error: "App data directory is not configured" });
+      if (req.method !== "PATCH" && req.method !== "PUT" && req.method !== "DELETE")
+        return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "PATCH, PUT, DELETE" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      const decision = executionPolicy.evaluate({ risk: "write", approved: false });
+      if (!decision.allowed) return reply(res, decision.statusCode || 403, { error: policyMessage(decision) });
+      try {
+        const id = healthCheckMatch[1];
+        if (req.method === "DELETE") return reply(res, 200, await scheduledHealthChecks.remove(id));
+        if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+          return reply(res, 415, { error: "Expected application/json" });
+        return reply(res, 200, { check: await scheduledHealthChecks.update(id, await jsonBody(req)) });
+      } catch (error) {
+        const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status >= 500 ? "Unable to update scheduled health check" : error.message });
+      }
+    }
     if (url.pathname === "/api/tasks/clear-history") {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
       const active = sessionFor(req);
@@ -1309,6 +1374,10 @@ if (modelProviderStore) {
 }
 try { await taskManager.ready; }
 catch (error) { console.error("Task history unavailable; the agent started without task history:", error?.message || error); }
+if (scheduledHealthChecks) {
+  try { await scheduledHealthChecks.ready; scheduledHealthChecks.start(); }
+  catch (error) { console.error("Scheduled health checks unavailable; the agent started without scheduler:", error?.message || error); }
+}
 await ensureSetupCode();
 // The state file can also be edited out of band (for example over SSH), so the
 // in-memory mode is refreshed on a timer. The timer never keeps the process alive.
@@ -1324,6 +1393,7 @@ let shuttingDown = false;
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+  scheduledHealthChecks?.stop();
   server.close(() => { void Promise.all([auditLogger?.flush(), taskManager.flush()]).finally(() => process.exit(0)); });
   // Idle connections close right away; in-flight requests get a short grace
   // period before the process is forced to exit.

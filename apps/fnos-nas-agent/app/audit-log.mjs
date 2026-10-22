@@ -6,7 +6,7 @@ const ROUTES = new Set([
   "setup", "login", "logout", "diagnostics", "audit.list", "files.list", "files.manage", "files.checksum", "skills.list", "skills.register",
   "skills.import", "skills.transition", "skills.remove", "skills.install-cli", "agent.status", "agent.trim-cli-test", "agent.trim-cli-login-command", "agent.message",
   "tasks.status", "tasks.list", "tasks.cancel", "tasks.clear", "tasks.get", "actions.pending", "actions.confirm", "tools.list",
-  "tools.run", "models.presets", "models.list", "models.add", "models.update", "models.remove", "models.default", "models.test", "execution.mode", "other_api"
+  "tools.run", "health-checks.list", "health-checks.create", "health-checks.update", "health-checks.delete", "health-checks.run", "models.presets", "models.list", "models.add", "models.update", "models.remove", "models.default", "models.test", "execution.mode", "other_api"
 ]);
 
 // Audit events are written from a response "finish" listener that runs outside the

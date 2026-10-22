@@ -31,6 +31,17 @@ const DIRECT_INTENTS = [
   { pattern: /^(?:查看|查询|显示|列出)?\s*(?:存储池|存储池列表)\s*[。！!？?]?$/i, tool: "fnos.storage.pools", message: "正在读取存储池列表，不会修改存储配置。" },
   { pattern: /^(?:查看|查询|显示)?\s*(?:当前用户|NAS用户信息|用户信息)\s*[。！!？?]?$/i, tool: "fnos.user.info", message: "正在读取当前用户信息。" },
   { pattern: /^(?:查看|查询|显示|检查|看看|列出|浏览)?\s*(?:文件|文件夹|目录)(?:列表)?(?:\s+(.{1,2048}))?\s*[。！!？?]?$/i, tool: "files.list", args: match => match[1] ? ({ path: match[1].trim() }) : ({}), message: "正在读取允许存储卷中的文件目录。" },
+  { pattern: /^(?:建立|创建|更新|刷新|重建)(?:一下)?(?:本地)?(?:文档索引|知识库)(?:\s+(强制|全量))?$/i, tool: "documents.index-refresh", args: match => ({ force: Boolean(match[1]), maxFiles: 500 }), message: "正在更新本地文档索引；仅保存索引与脱敏摘要，扫描范围和资源消耗均有限制。" },
+  { pattern: /^(?:查看|查询)(?:本地)?(?:文档索引|知识库)(?:状态)?$/i, tool: "documents.index-status", message: "正在读取本地文档库的索引状态与更新时间。" },
+  { pattern: /^(?:搜索|检索)(?:本地)?(?:知识库|文档库)[：:\s]+(.{1,160})$/i, tool: "documents.search", args: match => ({ query: match[1].trim(), limit: 10 }), message: "正在搜索本地文档索引；只返回授权目录内文件和已脱敏摘要，不访问外部网络。" },
+  { pattern: /^(?:查看|列出)(?:一下)?(?:所有)?(?:定时巡检|定时健康检查)(?:计划|列表)?$/i, tool: "health-checks.list", message: "正在读取定时健康检查计划和最近执行摘要。" },
+  { pattern: /^(?:创建|添加)(?:一个)?定时(?:巡检|健康检查)\s+(系统|存储|网络|docker|文档库)(?:\s+每\s*(\d{1,5})\s*(?:分钟|min))?$/i, tool: "health-checks.create", args: match => { const key = match[1].toLowerCase(); const type = key === "系统" ? "system" : key === "存储" ? "storage" : key === "网络" ? "network" : (key === "docker" ? "docker" : "documents"); const labels = { system: "系统", storage: "存储", network: "网络", docker: "Docker", documents: "文档库" }; return { name: labels[type] + "定时巡检", type, intervalMinutes: Number(match[2] || 60), enabled: true }; }, message: "正在创建定时巡检计划；计划仅调用注册的只读工具，最小间隔为 5 分钟。" },
+  { pattern: /^(?:立即运行|执行一次)(?:定时)?巡检\s+([a-f0-9-]{36})$/i, tool: "health-checks.run", args: match => ({ checkId: match[1] }), message: "正在手动运行指定只读健康检查，并保存摘要结果。" },
+  { pattern: /^(?:暂停|停用)(?:定时)?巡检\s+([a-f0-9-]{36})$/i, tool: "health-checks.update", args: match => ({ checkId: match[1], enabled: false }), message: "正在暂停该定时巡检计划；不会删除历史记录。" },
+  { pattern: /^(?:恢复|启用)(?:定时)?巡检\s+([a-f0-9-]{36})$/i, tool: "health-checks.update", args: match => ({ checkId: match[1], enabled: true }), message: "正在恢复该定时巡检计划。" },
+  { pattern: /^(?:巡检|检查)(?:一下)?(?:文件卫生|文件|目录|大文件|临时文件)(?:情况|问题|分布|清理建议)?(?:\s+(.{1,2048}))?\s*[。！!？?]?$/i, tool: "files.inspect", args: match => ({ ...(match[1] ? { path: match[1].trim() } : {}), days: 90, minBytes: 1048576, limit: 10 }), message: "正在只读巡检授权目录，列出大文件、久未修改文件、临时文件及敏感文件名候选；不会自动删除或移动。" },
+  { pattern: /^(?:查找|找出|列出)(?:一下)?(?:大文件|临时文件|久未修改的大文件)(?:\s+于\s+(.{1,2048}))?$/i, tool: "files.inspect", args: match => ({ ...(match[1] ? { path: match[1].trim() } : {}), days: 90, minBytes: 1048576, limit: 10 }), message: "正在只读巡检授权目录，扫描结果有数量和时间上限，不会自动删除或移动。" },
+  { pattern: /^(?:搜索|查找|检索)(?:一下)?(?:文件|文档)?(?:中的|里的)?内容[：:\s]+(.{1,200}?)(?:\s+于\s+(.{1,2048}))?$/i, tool: "files.search-content", args: match => ({ query: match[1].trim(), ...(match[2] ? { path: match[2].trim() } : {}), limit: 30 }), message: "正在在授权目录内搜索文本内容；扫描范围、读取量与结果数量均有限制。" },
   { pattern: /^搜索文件\s+(.{1,200}?)(?:\s+于\s+(.{1,2048}))?$/i, tool: "files.search", args: match => ({ query: match[1].trim(), ...(match[2] ? { path: match[2].trim() } : {}), limit: 50 }), message: "正在按文件名搜索允许存储卷；搜索范围和结果数量有上限。" },
   { pattern: /^(?:预览|读取|查看)文本文件\s+(.{1,2048})$/i, tool: "files.preview", args: match => ({ path: match[1].trim() }), message: "正在预览 UTF-8 文本文件。" },
   { pattern: /^(?:查看|列出|浏览)(?:一下)?fnOS文件(?:列表)?\s+(.{1,2048})$/i, tool: "fnos.file.ls", args: match => ({ path: match[1].trim() }), message: "正在读取 fnOS 文件列表。" },
@@ -52,6 +63,7 @@ function argsMatchSchema(args, schema) {
     const rule = properties[key]; if (!rule) return false;
     if (rule.type === "string" && (typeof value !== "string" || (rule.minLength && value.length < rule.minLength) || (rule.maxLength && value.length > rule.maxLength))) return false;
     if (rule.type === "integer" && (!Number.isInteger(value) || (rule.minimum !== undefined && value < rule.minimum) || (rule.maximum !== undefined && value > rule.maximum))) return false;
+    if (rule.type === "boolean" && typeof value !== "boolean") return false;
   }
   return true;
 }
