@@ -1,6 +1,15 @@
 const MAX_HISTORY_MESSAGES = 8;
 const MAX_HISTORY_MESSAGE_CHARS = 1200;
 const MAX_HISTORY_TOTAL_CHARS = 2400;
+// The head of a message carries the instruction, so the tail is what gets cut.
+// The marker keeps the model aware that the message continues beyond the budget.
+const TRUNCATION_MARKER = "…（后续内容已截断）";
+
+function keepHead(text, limit) {
+  if (text.length <= limit) return text;
+  if (limit <= TRUNCATION_MARKER.length) return text.slice(0, limit);
+  return text.slice(0, limit - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
+}
 
 export function normalizeConversationHistory(value) {
   if (value === undefined || value === null) return [];
@@ -17,7 +26,7 @@ export function normalizeConversationHistory(value) {
     }
     return {
       role: item.role,
-      content: item.content.trim().slice(-MAX_HISTORY_MESSAGE_CHARS)
+      content: keepHead(item.content.trim(), MAX_HISTORY_MESSAGE_CHARS)
     };
   });
 
@@ -25,7 +34,7 @@ export function normalizeConversationHistory(value) {
   const bounded = [];
   for (let index = normalized.length - 1; index >= 0 && remaining > 0; index--) {
     const message = normalized[index];
-    const content = message.content.slice(-remaining);
+    const content = keepHead(message.content, remaining);
     if (content) bounded.push({ role: message.role, content });
     remaining -= content.length;
   }

@@ -81,8 +81,20 @@ export function inspectSkillSource(buffer, validatedArchive = null) {
     }
   }
 
+  // Phase 136: every archive entry that is neither a directory nor a text
+  // file this scanner can read was not reviewed at all. Such an entry is
+  // reported so that an unreviewed binary payload can never look like a
+  // clean archive.
+  let unreviewedEntries = 0;
+  for (const entry of archive.entries) {
+    if (entry.name.endsWith("/")) continue;
+    if (isPreviewableSkillTextPath(entry.name)) continue;
+    unreviewedEntries++;
+    addFinding("unreviewed-binary-entry: " + entry.name);
+  }
+
   return Object.freeze({
-    status: incomplete ? "incomplete" : "completed",
+    status: unreviewedEntries ? "needs_review" : incomplete ? "incomplete" : "completed",
     scannedFiles,
     scannedBytes,
     incomplete,

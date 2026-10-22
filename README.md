@@ -177,6 +177,13 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 131 — Server Hardening](docs/phase-131-server-hardening.md)
 - [Phase 132 — Real NAS Staging Acceptance](docs/phase-132-nas-staging-acceptance.md)
 - [Phase 133 — Model Fallback and Scan Bounds](docs/phase-133-model-fallback-and-scan-bounds.md)
+- [Phase 134 — Overview Service](docs/phase-134-overview-service.md)
+- [Phase 135 — Mobile First User Interface](docs/phase-135-mobile-first-user-interface.md)
+- [Phase 136 — Skill Trust Hardening](docs/phase-136-skill-trust-hardening.md)
+- [Phase 139 — Reverse Proxy Deployment](docs/phase-139-reverse-proxy-deployment.md)
+- [Phase 137 — Task and Approval Lifecycle](docs/phase-137-task-approval-lifecycle.md)
+- [Phase 138 — File Domain Hardening](docs/phase-138-file-domain-hardening.md)
+- [Phase 140 — Model Provider Resilience](docs/phase-140-model-provider-resilience.md)
 - [Documentation index](docs/README.md)
 
 ## License

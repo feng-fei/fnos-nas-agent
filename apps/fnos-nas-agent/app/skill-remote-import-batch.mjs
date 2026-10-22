@@ -6,6 +6,27 @@ function fail(statusCode, message, code = "SKILL_REMOTE_BATCH_INVALID") {
 }
 
 /**
+ * Phase 136: a failed download still transferred bytes. The downloader
+ * reports the number of bytes it already read on the error, so the batch
+ * budget can be charged for them instead of only for successful archives.
+ */
+function readTransferredBytes(error, archive) {
+  const candidates = [error?.bytesRead, error?.downloadedBytes, error?.bytes, error?.transferredBytes];
+  for (const candidate of candidates) {
+    if (Number.isSafeInteger(candidate) && candidate >= 0) return candidate;
+  }
+  if (archive && Buffer.isBuffer(archive.buffer)) return archive.buffer.length;
+  return null;
+}
+
+/** Errors raised while the archive body is being streamed. */
+function isReadStageError(error, status) {
+  return error?.code === "SKILL_REMOTE_TOO_LARGE" ||
+    error?.code === "SKILL_REMOTE_READ_FAILED" ||
+    status === 413;
+}
+
+/**
  * Downloads and quarantines a bounded list of GitHub Skill archives sequentially.
  * Each archive uses the existing pinned-commit downloader; total downloaded bytes
  * are capped across the whole batch, and no imported code is executed.
@@ -92,12 +113,24 @@ export async function importGitHubSkillBatch(items, {
       });
     } catch (error) {
       const status = Number.isInteger(error?.statusCode) ? error.statusCode : 502;
-      // A streaming-size failure may happen after consuming the remaining budget.
-      // Stop all later downloads when actual bytes consumed cannot be known exactly.
+      const isRemote = typeof error?.code === "string" && error.code.startsWith("SKILL_REMOTE_");
+      // Phase 136: only remote download failures belong to this item. A local
+      // failure (quarantine storage, metadata persistence, …) is a fault of
+      // this host and is reported as it is, with its own status and message.
+      if (!isRemote) throw error;
+
+      // Phase 136: the bytes of a failed download are charged to the batch
+      // budget as well. When they cannot be measured exactly, the remaining
+      // budget is voided instead of being spent on later items.
+      const transferred = readTransferredBytes(error, archive);
+      if (transferred !== null) {
+        downloadedBytes = Math.min(maxTotalBytes, downloadedBytes + transferred);
+      } else if (isReadStageError(error, status)) {
+        downloadedBytes = maxTotalBytes;
+      }
       if (error?.code === "SKILL_REMOTE_TOO_LARGE" || status === 413) downloadedBytes = maxTotalBytes;
       const errorMessage = status >= 500
-        ? (typeof error?.code === "string" && error.code.startsWith("SKILL_REMOTE_")
-          ? error.message : "Unable to import this GitHub Skill archive.")
+        ? (error.message || "Unable to import this GitHub Skill archive.")
         : error.message || "GitHub Skill import failed.";
       results.push({
         index, ok: false,

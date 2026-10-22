@@ -1,5 +1,12 @@
 import { DELETE_CAPABILITY, hasDeleteCapability } from "./execution-capability.mjs";
 
+// The agent upload limit and its Base64 representation are derived from one
+// single number, so the advertised schema limit and the runtime limit can
+// never drift apart.
+const MAX_UPLOAD_BYTES = 1024 * 1024;
+const MAX_UPLOAD_BASE64_CHARS = 4 * Math.ceil(MAX_UPLOAD_BYTES / 3);
+const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
 const TRIM_CLI_TOOLS = [
   ["fnos.system.info", "system.info", "读取 fnOS 系统信息。", {}],
   ["fnos.system.trim-version", "system.trim-version", "读取 fnOS 系统版本。", {}],
@@ -59,8 +66,15 @@ const definitions = [
     risk: "read-only"
   },
   {
-    id: "files.list", title: "浏览文件目录", description: "列出允许存储卷中的目录和文件元数据，不读取文件内容。", risk: "read-only",
-    inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, limit: { type: "integer", minimum: 1, maximum: 200 } }, additionalProperties: false }
+    id: "files.list", title: "浏览文件目录", description: "列出允许存储卷中的目录和文件元数据，不读取文件内容；可用 offset 翻页，用 sort 排序，用 query 过滤名称，用 type 过滤类型。", risk: "read-only",
+    inputSchema: { type: "object", properties: {
+      path: { type: "string", maxLength: 2048 },
+      limit: { type: "integer", minimum: 1, maximum: 200 },
+      offset: { type: "integer", minimum: 0, maximum: 100000 },
+      sort: { type: "string", enum: ["directories-first", "name-asc", "name-desc", "size-desc", "modified-desc"] },
+      query: { type: "string", maxLength: 160 },
+      type: { type: "string", enum: ["all", "directory", "file"] }
+    }, additionalProperties: false }
   },
   {
     id: "files.preview", title: "预览文本文件", description: "读取允许存储卷中不超过 1 MiB 的 UTF-8 文本文件。", risk: "read-only",
@@ -100,7 +114,7 @@ const definitions = [
   },
   {
     id: "files.upload", title: "上传文件", description: "将 Base64 编码文件写入允许的存储卷；最大 1 MiB，不覆盖已有文件。", risk: "write",
-    inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, name: { type: "string", minLength: 1, maxLength: 255 }, contentBase64: { type: "string", maxLength: 1398104 } }, required: ["path", "name", "contentBase64"], additionalProperties: false }
+    inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, name: { type: "string", minLength: 1, maxLength: 255 }, contentBase64: { type: "string", maxLength: MAX_UPLOAD_BASE64_CHARS } }, required: ["path", "name", "contentBase64"], additionalProperties: false }
   },
   {
     id: "files.create-text", title: "创建文本文件", description: "在允许的存储卷内创建 UTF-8 文本文件；最大 1 MiB，不覆盖已有文件。", risk: "write",
@@ -112,6 +126,28 @@ const definitions = [
   }
 ];
 
+/**
+ * Decodes the Base64 payload of an upload.
+ *
+ * The two failure modes are kept apart: a payload that is not valid Base64 is
+ * a malformed request (400), a payload that is larger than the allowed size is
+ * a capacity problem (413).
+ *
+ * @throws {Error & { statusCode: 400|413 }}
+ */
+export function decodeUploadPayload(encoded) {
+  if (typeof encoded !== "string") throw Object.assign(new Error("Invalid Base64 upload content"), { statusCode: 400 });
+  if (encoded.length > MAX_UPLOAD_BASE64_CHARS) throw Object.assign(new Error("Agent uploads are limited to 1 MiB"), { statusCode: 413 });
+  if (encoded.length % 4 !== 0 || !BASE64_PATTERN.test(encoded)) throw Object.assign(new Error("Invalid Base64 upload content"), { statusCode: 400 });
+  const buffer = Buffer.from(encoded, "base64");
+  if (buffer.length > MAX_UPLOAD_BYTES) throw Object.assign(new Error("Agent uploads are limited to 1 MiB"), { statusCode: 413 });
+  // A canonical encoding re-encodes to the very same text. Base64 accepts
+  // several byte patterns for the same padding, so the round trip is what
+  // separates a valid payload from a malformed one.
+  if (buffer.toString("base64") !== encoded) throw Object.assign(new Error("Invalid Base64 upload content"), { statusCode: 400 });
+  return buffer;
+}
+
 function validArgs(args, schema) {
   if (!args || typeof args !== "object" || Array.isArray(args)) return false;
   const properties = schema.properties || {};
@@ -122,6 +158,8 @@ function validArgs(args, schema) {
     if (rule.type === "string" && (typeof value !== "string" || (rule.minLength && value.length < rule.minLength) || (rule.maxLength && value.length > rule.maxLength))) return false;
     if (Array.isArray(rule.enum) && !rule.enum.includes(value)) return false;
     if (rule.type === "integer" && (!Number.isInteger(value) || (rule.minimum !== undefined && value < rule.minimum) || (rule.maximum !== undefined && value > rule.maximum))) return false;
+    // A boolean argument is checked as well: the schema advertises the type,
+    // so a value of the wrong kind is refused before the call.
     if (rule.type === "boolean" && typeof value !== "boolean") return false;
   }
   return true;
@@ -140,6 +178,11 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
   async function invoke(id, args = {}, options = {}) {
     const tool = definitions.find(item => item.id === id);
     if (!tool) throw Object.assign(new Error("Unknown tool"), { statusCode: 404 });
+    // The upload size limit is checked before the generic schema validation: an
+    // oversized payload is a capacity problem (413), not a malformed argument
+    // list (400).
+    if (id === "files.upload" && typeof args?.contentBase64 === "string" && args.contentBase64.length > MAX_UPLOAD_BASE64_CHARS)
+      throw Object.assign(new Error("Agent uploads are limited to 1 MiB"), { statusCode: 413 });
     if (!validArgs(args, tool.inputSchema || { type: "object", properties: {}, additionalProperties: false })) throw Object.assign(new Error("Invalid tool arguments"), { statusCode: 400 });
     const capability = options && typeof options === "object" ? options.capability : undefined;
     const approved = hasDeleteCapability(capability);
@@ -161,7 +204,18 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     }
     if (id === "files.list") {
       if (!fileBrowser) throw Object.assign(new Error("File browser is unavailable"), { statusCode: 503 });
-      return fileBrowser.list(args.path || "", args.limit ?? 100);
+      // The offset makes the listing pageable: without it a client could only
+      // ever see the first page of a directory. The sort mode, the name query
+      // and the type filter are forwarded in the order the browser expects
+      // them, so the agent can sort and filter a page as well.
+      return fileBrowser.list(
+        args.path || "",
+        args.limit ?? 100,
+        args.offset ?? 0,
+        args.sort ?? "directories-first",
+        args.query ?? "",
+        args.type ?? "all"
+      );
     }
     if (id === "files.preview") {
       if (!fileManager) throw Object.assign(new Error("File preview is unavailable"), { statusCode: 503 });
@@ -217,10 +271,7 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     }
     if (id === "files.upload") {
       if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
-      const encoded = args.contentBase64;
-      if (typeof encoded !== "string" || encoded.length > 1398104 || encoded.length % 4 !== 0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) throw Object.assign(new Error("Invalid Base64 upload content"), { statusCode: 400 });
-      const buffer = Buffer.from(encoded, "base64");
-      if (buffer.length > 1024 * 1024 || buffer.toString("base64") !== encoded) throw Object.assign(new Error("Agent uploads are limited to 1 MiB"), { statusCode: 413 });
+      const buffer = decodeUploadPayload(args.contentBase64);
       return fileManager.upload(args.path, args.name, buffer);
     }
     if (id === "files.create-text") {

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { importGitHubSkillBatch } from "../apps/fnos-nas-agent/app/skill-remote-import-batch.mjs";
+import { readUiSource } from "./helpers/ui-source.mjs";
 
 const eightBytes = Buffer.from([80, 75, 3, 4, 0, 0, 0, 0]);
 function makeArchive(repo, overrides = {}) {
@@ -139,7 +140,7 @@ test("batch import rejects inconsistent archive byte metadata without storing it
 
 test("batch API and mobile UI enforce authenticated sequential quarantine import", async () => {
   const server = await readFile(new URL("../apps/fnos-nas-agent/app/server.mjs", import.meta.url), "utf8");
-  const html = await readFile(new URL("../apps/fnos-nas-agent/app/ui/index.html", import.meta.url), "utf8");
+  const html = await readUiSource();
   const routeStart = server.indexOf('if (url.pathname === "/api/skills/import-remote-batch")');
   const routeEnd = server.indexOf('if (url.pathname === "/api/skills/transitions/batch")', routeStart);
   assert.ok(routeStart >= 0 && routeEnd > routeStart, "batch API must be registered before other skill transition routes");

@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readUiSource } from "./helpers/ui-source.mjs";
 
-const html = await readFile(new URL("../apps/fnos-nas-agent/app/ui/index.html", import.meta.url), "utf8");
+const html = await readUiSource();
 
 test("model provider manager provides add/edit fields and stores API keys only in a password input", () => {
   assert.match(html, /id="models-card"/);

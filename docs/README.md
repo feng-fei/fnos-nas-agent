@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 135 documents (122 phase documents and 12 non-phase documents, plus this file).
+This index lists 142 documents (129 phase documents and 12 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -503,6 +503,33 @@ This index lists 135 documents (122 phase documents and 12 non-phase documents, 
 ### Phase 133
 
 - [Phase 133 — Model fallback, scan bounds and one decision point](phase-133-model-fallback-and-scan-bounds.md) — Phase 126 moved the execution decision into a single policy module. Phase 133 removes the remaining places where a second, weaker decision was made, and repairs the two availability bugs the audit found behind it.
+
+### Phase 134
+
+- [Phase 134 — Overview service](phase-134-overview-service.md) — The overview page used to need six parallel API calls. Phase 134 adds one aggregation service and one endpoint that returns every headline number in a single, secret-free snapshot.
+
+### Phase 135
+
+- [Phase 135 — Mobile first user interface](phase-135-mobile-first-user-interface.md) — The console was a desktop page squeezed onto a phone. Phase 135 rebuilds it mobile first and splits the single file into a static shell, one stylesheet and two scripts.
+
+### Phase 136
+
+- [Phase 136 — Skill trust hardening](phase-136-skill-trust-hardening.md) — The Skill domain let the client declare its own static review verdict and point the record at a quarantine file of its choosing. Phase 136 moves every such decision back to the server, makes Skill names unique regardless of letter case, requires a server-side review before approval and before the official CLI is installed, reports unscanned archive entries as findings, charges the batch download budget for failed downloads, keeps local failures out of the remote error path, and normalizes a `.git` suffix before any GitHub request is built.
+
+### Phase 137
+
+- [Phase 137 — Task and approval lifecycle](phase-137-task-approval-lifecycle.md) — A destructive action used to be a one-off: the agent asked for approval, the operator confirmed it, and the task record quietly claimed success. Phase 137 makes the approval and the task one lifecycle, keeps awaiting-approval out of the terminal states, and scopes every task lookup to the session that owns it.
+
+### Phase 138
+
+- [Phase 138 — File domain hardening](phase-138-file-domain-hardening.md) — The file tools worked, but their edge cases lied: the agent could not page through a directory, a symlink reported itself as an out-of-root path, a failed upload reported the wrong status code, and one oversized folder could abort a whole search. Phase 138 gives the file list an offset, tells symlinks and out-of-root paths apart, publishes uploads atomically even without hard link support, decodes Base64 with the right status code, and reports directory counts from a single source of truth.
+
+### Phase 139
+
+- [Phase 139 — Reverse proxy deployment](phase-139-reverse-proxy-deployment.md) — The agent never documented which environment variables it actually reads, and it rejected every write request that arrived through a TLS-terminating reverse proxy. Phase 139 rewrites the environment template from the real defaults and documents how to put the agent behind nginx or the fnOS portal without breaking the origin check or the session cookie.
+### Phase 140
+
+- [Phase 140 — Model provider resilience](phase-140-model-provider-resilience.md) — A model provider that could not answer was treated as the end of the line: the configured fallback was never tried, a single corrupted record disabled every provider, and a request that had already been cancelled still spent minutes on the wire. Phase 140 promotes an enabled fallback to the primary slot, keeps one broken record from taking the whole catalog down, distinguishes a cancelled request from a failed one, and reports HTTP attempts and wall-clock latency next to the existing counters.
 
 ## This index
 

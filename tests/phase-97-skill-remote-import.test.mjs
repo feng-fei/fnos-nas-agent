@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fetchGitHubSkillArchive, validateGitHubArchiveUrl, validateGitHubRepositoryUrl } from "../apps/fnos-nas-agent/app/skill-remote-import.mjs";
+import { readUiSource } from "./helpers/ui-source.mjs";
 
 const repository = "example/project";
 const apiBase = "https://api.github.com/repos/" + repository;
@@ -148,7 +149,7 @@ test("remote import rejects failed or empty archive responses without leaking re
 
 test("remote Skill import remains authenticated, rate-limited, and quarantine-only in the API and UI", async () => {
   const server = await readFile(new URL("../apps/fnos-nas-agent/app/server.mjs", import.meta.url), "utf8");
-  const html = await readFile(new URL("../apps/fnos-nas-agent/app/ui/index.html", import.meta.url), "utf8");
+  const html = await readUiSource();
   const start = server.indexOf('if (url.pathname === "/api/skills/import-remote")');
   const end = server.indexOf('if (url.pathname === "/api/skills/transitions/batch")', start);
   assert.ok(start >= 0 && end > start, "remote import route must be registered");
@@ -251,7 +252,7 @@ test("explicit SHA archive URLs are already pinned and do not require another re
 
 test("source provenance records the immutable SHA and UI displays the abbreviated commit", async () => {
   const server = await readFile(new URL("../apps/fnos-nas-agent/app/server.mjs", import.meta.url), "utf8");
-  const html = await readFile(new URL("../apps/fnos-nas-agent/app/ui/index.html", import.meta.url), "utf8");
+  const html = await readUiSource();
   const routeStart = server.indexOf('if (url.pathname === "/api/skills/import-remote")');
   const routeEnd = server.indexOf('if (url.pathname === "/api/skills/transitions/batch")', routeStart);
   const route = server.slice(routeStart, routeEnd);

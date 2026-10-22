@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readUiSource } from "./helpers/ui-source.mjs";
 
 test("mobile file browser supports sequential multi-file upload with aggregate progress and cancellation", async () => {
-  const html = await readFile(new URL("../apps/fnos-nas-agent/app/ui/index.html", import.meta.url), "utf8");
+  const html = await readUiSource();
   assert.match(html, /id="file-upload"[^>]*multiple/);
   assert.match(html, /Array\.from\(field\.files\|\|\[\]\)/);
   assert.match(html, /files\.length>20/);

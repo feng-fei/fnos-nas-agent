@@ -95,7 +95,28 @@ async function responseText(response) {
   return Buffer.concat(chunks, size).toString("utf8");
 }
 
-export function validateModelProviderInput(input, { creating = false, currentHasKey = false, currentFallback = false } = {}) {
+// One stored record without its secret. A record that does not match the
+// contract is rejected here, so a single damaged entry can be skipped without
+// taking the whole store down.
+function normalizeProviderRecord(item) {
+  if (!item || !/^[a-f0-9]{24}$/.test(item.id || "") || typeof item.name !== "string" ||
+      typeof item.endpoint !== "string" || typeof item.model !== "string" || typeof item.enabled !== "boolean" ||
+      typeof item.createdAt !== "string" || typeof item.updatedAt !== "string") throw new Error("Invalid model provider record");
+  return {
+    id: item.id, name: item.name, endpoint: endpoint(item.endpoint), model: item.model,
+    apiKey: "", enabled: item.enabled, fallback: item.fallback === true, createdAt: item.createdAt, updatedAt: item.updatedAt,
+    lastTest: item.lastTest && typeof item.lastTest === "object" ? {
+      ok: item.lastTest.ok === true, at: typeof item.lastTest.at === "string" ? item.lastTest.at : "",
+      message: typeof item.lastTest.message === "string" ? item.lastTest.message.slice(0, 240) : "",
+      ...(Number.isInteger(item.lastTest.statusCode) && item.lastTest.statusCode >= 100 && item.lastTest.statusCode <= 599
+        ? { statusCode: item.lastTest.statusCode } : {}),
+      ...(Number.isSafeInteger(item.lastTest.durationMs) && item.lastTest.durationMs >= 0
+        ? { durationMs: item.lastTest.durationMs } : {})
+    } : null
+  };
+}
+
+export function validateModelProviderInput(input, { creating = false, currentHasKey = false, currentFallback = false, currentEnabled = false } = {}) {
   if (!input || typeof input !== "object" || Array.isArray(input)) fail(400, "Request body must be an object.", "MODEL_INVALID_BODY");
   const allowed = new Set(["name", "endpoint", "model", "apiKey", "enabled", "clearApiKey", "fallback"]);
   if (Object.keys(input).some(key => !allowed.has(key))) fail(400, "Unknown model provider field.", "MODEL_UNKNOWN_FIELD");
@@ -109,7 +130,9 @@ export function validateModelProviderInput(input, { creating = false, currentHas
   if (input.clearApiKey !== undefined && typeof input.clearApiKey !== "boolean") fail(400, "clearApiKey must be boolean.", "MODEL_INVALID_FIELD");
   if (input.clearApiKey && apiKey) fail(400, "Send either a replacement API key or clearApiKey, not both.", "MODEL_INVALID_FIELD");
   if (!creating && !apiKey && !currentHasKey && !input.clearApiKey) fail(400, "This provider has no saved API key; enter one before enabling it.", "MODEL_KEY_REQUIRED");
-  return Object.freeze({ name, endpoint: apiEndpoint, model, apiKey, enabled: input.enabled ?? true, fallback: input.fallback ?? (creating ? false : currentFallback), clearApiKey: input.clearApiKey === true });
+  // An update without an "enabled" field keeps the current state, so a disabled
+  // provider is never switched on by a rename.
+  return Object.freeze({ name, endpoint: apiEndpoint, model, apiKey, enabled: input.enabled ?? (creating ? true : currentEnabled), fallback: input.fallback ?? (creating ? false : currentFallback), clearApiKey: input.clearApiKey === true });
 }
 
 export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () => new Date().toISOString(), timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
@@ -184,29 +207,43 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
         try { raw = JSON.parse(await readFile(storePath, "utf8")); }
         catch (error) { if (error.code === "ENOENT") raw = { version: 1, activeProviderId: null, providers: [] }; else throw error; }
         if (!raw || raw.version !== 1 || !Array.isArray(raw.providers) || raw.providers.length > MAX_PROVIDERS) throw new Error("Invalid model provider store");
-        const loadedProviders = raw.providers.map(item => {
-          if (!item || !/^[a-f0-9]{24}$/.test(item.id || "") || typeof item.name !== "string" ||
-              typeof item.endpoint !== "string" || typeof item.model !== "string" || typeof item.enabled !== "boolean" ||
-              typeof item.createdAt !== "string" || typeof item.updatedAt !== "string") throw new Error("Invalid model provider record");
+        const loadedProviders = [];
+        const seenIds = new Set();
+        let skipped = 0;
+        for (const item of raw.providers) {
+          let record = null;
+          try { record = normalizeProviderRecord(item); }
+          catch (error) {
+            // One damaged record must not take every provider and every backup
+            // provider down with it.
+            skipped++;
+            console.error("Skipping an invalid model provider record:", error?.message || "invalid record");
+            continue;
+          }
+          if (seenIds.has(record.id)) {
+            skipped++;
+            console.error("Skipping a duplicate model provider record:", record.id);
+            continue;
+          }
+          seenIds.add(record.id);
+          // A secret that cannot be decrypted is a key failure, not a damaged
+          // record: the store stays closed instead of silently losing the key.
           const apiKey = item.apiKeyEncrypted ? decrypt(item.apiKeyEncrypted) : "";
-          return {
-            id: item.id, name: item.name, endpoint: endpoint(item.endpoint), model: item.model,
-            apiKey, enabled: item.enabled && Boolean(apiKey), fallback: item.fallback === true, createdAt: item.createdAt, updatedAt: item.updatedAt,
-            lastTest: item.lastTest && typeof item.lastTest === "object" ? {
-              ok: item.lastTest.ok === true, at: typeof item.lastTest.at === "string" ? item.lastTest.at : "",
-              message: typeof item.lastTest.message === "string" ? item.lastTest.message.slice(0, 240) : "",
-              ...(Number.isInteger(item.lastTest.statusCode) && item.lastTest.statusCode >= 100 && item.lastTest.statusCode <= 599
-                ? { statusCode: item.lastTest.statusCode } : {}),
-              ...(Number.isSafeInteger(item.lastTest.durationMs) && item.lastTest.durationMs >= 0
-                ? { durationMs: item.lastTest.durationMs } : {})
-            } : null
-          };
-        });
-        if (new Set(loadedProviders.map(item => item.id)).size !== loadedProviders.length) throw new Error("Duplicate provider ID");
+          record.apiKey = apiKey;
+          record.enabled = item.enabled && Boolean(apiKey);
+          loadedProviders.push(record);
+        }
         const active = typeof raw.activeProviderId === "string" && loadedProviders.some(item => item.id === raw.activeProviderId) ? raw.activeProviderId : null;
-        if (active && !loadedProviders.find(item => item.id === active)?.enabled) throw new Error("Default provider is disabled");
-        providers = loadedProviders; activeProviderId = active; loaded = true; unavailable = false;
+        // An active provider that is disabled is a normal state, not a broken
+        // store: the slot falls back to nothing instead of failing the load.
+        const activeItem = active ? loadedProviders.find(item => item.id === active) : null;
+        providers = loadedProviders;
+        activeProviderId = activeItem && activeItem.enabled ? activeItem.id : null;
+        loaded = true; unavailable = false;
         if (!raw.providers.length) await persist();
+        else if (skipped) await persist().catch(error => {
+          console.error("Unable to persist the repaired model provider store:", error?.message || "write failed");
+        });
       } catch (error) {
         masterKey = null; loaded = false; unavailable = true;
         const safeCause = typeof error?.code === "string" && /^[A-Z0-9_]+$/.test(error.code) ? error.code : error?.name === "SyntaxError" ? "INVALID_JSON" : typeof error?.message === "string" ? error.message.replace(/[^a-zA-Z0-9]+/g, "_").slice(0, 64).toUpperCase() : "INVALID_STORE";
@@ -220,7 +257,10 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
     if (!loaded || unavailable || !masterKey) return null;
     if (!providers.length) return null;
     const item = providers.find(provider => provider.id === activeProviderId && provider.enabled && provider.apiKey);
-    if (!item) return { enabled: false, endpoint: null, apiKey: null, model: null, timeoutMs: 15_000, providerId: null, providerName: null };
+    // No qualified active provider means the caller falls back to the
+    // environment configuration. A placeholder object would be truthy and would
+    // hide that configuration.
+    if (!item) return null;
     return { enabled: true, endpoint: item.endpoint, apiKey: item.apiKey, model: item.model, timeoutMs: 15_000, providerId: item.id, providerName: item.name };
   }
   function runtimeFallbackConfigs() {
@@ -249,14 +289,16 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
     return series(async () => {
       ready(); const id = idValue(idInput), existing = providers.find(item => item.id === id);
       if (!existing) fail(404, "Model provider not found.", "MODEL_PROVIDER_NOT_FOUND");
-      const value = validateModelProviderInput(input, { currentHasKey: Boolean(existing.apiKey), currentFallback: existing.fallback === true });
+      const value = validateModelProviderInput(input, { currentHasKey: Boolean(existing.apiKey), currentFallback: existing.fallback === true, currentEnabled: existing.enabled === true });
       const apiKey = value.clearApiKey ? "" : value.apiKey || existing.apiKey;
       const updated = { ...existing, name: value.name, endpoint: value.endpoint, model: value.model, apiKey, fallback: value.fallback,
         enabled: value.enabled && Boolean(apiKey), updatedAt: now(),
         lastTest: existing.endpoint === value.endpoint && existing.model === value.model && !value.apiKey && !value.clearApiKey ? existing.lastTest : null };
       const oldProviders = providers, oldActive = activeProviderId;
       providers = providers.map(item => item.id === id ? updated : item);
-      if (activeProviderId === id && !updated.enabled) activeProviderId = null;
+      // A disabled active provider hands the main slot to another enabled
+      // provider, exactly like a removal does.
+      if (activeProviderId === id && !updated.enabled) activeProviderId = providers.find(item => item.enabled && item.apiKey)?.id || null;
       try { await persist(); } catch { rollback(oldProviders, oldActive); fail(500, "Unable to save model settings securely.", "MODEL_STORE_WRITE_FAILED"); }
       return publicProvider(updated, activeProviderId);
     });

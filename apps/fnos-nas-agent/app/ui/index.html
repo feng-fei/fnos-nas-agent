@@ -1,1457 +1,797 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>fnOS NAS Agent</title>
-<style>:root {
-  color-scheme: light;
-  --page: #f3f6fb;
-  --surface: #ffffff;
-  --surface-soft: #f7f9fc;
-  --text: #17233b;
-  --muted: #64748b;
-  --border: #dce4ef;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-soft: #eff6ff;
-  --danger: #b42318;
-  --warning: #a16207;
-  --success: #087f5b;
-  --shadow: 0 14px 36px rgb(15 23 42 / 6%);
-}
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body {
-  margin: 0;
-  min-height: 100vh;
-  background:
-    radial-gradient(ellipse at 12% 0%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 34rem),
-    var(--page);
-  color: var(--text);
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  font-size: 14px;
-  line-height: 1.65;
-  -webkit-font-smoothing: antialiased;
-}
-main {
-  width: min(100%, 1360px);
-  margin: 0 auto;
-  padding: 34px 30px 64px;
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  align-items: start;
-  gap: 20px;
-}
-main > h1,
-main > p:first-of-type { grid-column: 1 / -1; }
-main > h1 {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  margin: 0;
-  font-size: clamp(1.75rem, 2.4vw, 2.2rem);
-  line-height: 1.25;
-  font-weight: 760;
-  letter-spacing: -0.045em;
-}
-main > h1::before {
-  content: "FN";
-  display: inline-grid;
-  place-items: center;
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #2563eb, #14b8a6);
-  color: #fff;
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  box-shadow: 0 8px 18px rgb(37 99 235 / 22%);
-}
-main > p:first-of-type {
-  margin: -14px 0 3px 57px;
-  color: var(--muted);
-  font-size: 0.96rem;
-}
-.card {
-  min-width: 0;
-  margin: 0;
-  padding: 23px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-}
-#setup-card, #login-card { grid-column: 3 / span 8; }
-#status-card { grid-column: span 5; }
-#models-card { grid-column: span 7; }
-#files-card { grid-column: span 8; }
-#tools-card { grid-column: span 4; }
-#agent-card, #skills-card { grid-column: 1 / -1; }
-main > section.card:last-of-type {
-  grid-column: 3 / span 8;
-  background: var(--surface-soft);
-  box-shadow: none;
-}
-.hidden { display: none !important; }
-h2, h3 {
-  color: var(--text);
-  line-height: 1.35;
-}
-h2 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 14px;
-  font-size: 1.12rem;
-  font-weight: 720;
-  letter-spacing: -0.015em;
-}
-h2::before {
-  content: "";
-  display: inline-block;
-  flex: 0 0 4px;
-  width: 4px;
-  height: 19px;
-  border-radius: 4px;
-  background: var(--accent);
-}
-main > section.card:last-of-type h2::before { background: var(--warning); }
-h3 {
-  margin: 22px 0 10px;
-  font-size: 0.98rem;
-  font-weight: 700;
-}
-p { margin: 8px 0 13px; }
-.muted { color: var(--muted); }
-label {
-  display: block;
-  margin: 12px 0 5px;
-  color: var(--text);
-  font-size: 0.87rem;
-  font-weight: 620;
-}
-input, select, textarea, button {
-  font: inherit;
-}
-input:not([type="checkbox"]):not([type="radio"]),
-select,
-textarea {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  min-height: 42px;
-  margin: 5px 0 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  outline: none;
-  background: var(--surface-soft);
-  color: var(--text);
-  box-shadow: inset 0 1px 1px rgb(15 23 42 / 2%);
-  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
-}
-textarea { min-height: 100px; resize: vertical; }
-input[type="file"] { padding: 7px; }
-input[type="checkbox"], input[type="radio"] {
-  width: 16px !important;
-  height: 16px;
-  min-height: 0;
-  accent-color: var(--accent);
-  vertical-align: middle;
-  flex: 0 0 auto;
-}
-label:has(input[type="checkbox"]), label:has(input[type="radio"]) {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  line-height: 1.5;
-  cursor: pointer;
-}
-input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--accent) 27%, transparent);
-  outline-offset: 2px;
-}
-input:focus, select:focus, textarea:focus {
-  border-color: var(--accent);
-  background: var(--surface);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
-}
-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  max-width: 100%;
-  min-height: 38px;
-  margin: 4px 5px 4px 0;
-  padding: 8px 13px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--text);
-  font-weight: 650;
-  line-height: 1.35;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgb(15 23 42 / 3%);
-  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
-}
-button:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
-  background: var(--accent-soft);
-  color: var(--accent-hover);
-  box-shadow: 0 3px 9px rgb(15 23 42 / 5%);
-  transform: translateY(-1px);
-}
-button:active:not(:disabled) { transform: translateY(0); }
-button:disabled { opacity: 0.48; cursor: not-allowed; box-shadow: none; }
-button[type="submit"], #login-form button, #setup-form button, #model-provider-save {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 4px 12px rgb(37 99 235 / 17%);
-}
-button[type="submit"]:hover:not(:disabled), #login-form button:hover:not(:disabled), #setup-form button:hover:not(:disabled), #model-provider-save:hover:not(:disabled) {
-  border-color: var(--accent-hover);
-  background: var(--accent-hover);
-  color: #fff;
-}
-#logout {
-  border-color: color-mix(in srgb, var(--danger) 30%, var(--border));
-  color: var(--danger);
-}
-.warning {
-  padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, var(--warning) 23%, var(--border));
-  border-left: 4px solid #c88719;
-  border-radius: 10px;
-  background: color-mix(in srgb, #f59e0b 8%, var(--surface));
-  color: var(--text);
-}
-.error { color: var(--danger); font-weight: 600; }
-pre {
-  max-width: 100%;
-  max-height: 420px;
-  overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-soft);
-  color: var(--text);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 0.84rem;
-  line-height: 1.65;
-  tab-size: 2;
-}
-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 0.9rem;
-}
-th, td {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-  vertical-align: top;
-}
-th {
-  background: var(--surface-soft);
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 720;
-  letter-spacing: 0.025em;
-}
-tr:last-child td { border-bottom: 0; }
-#file-breadcrumbs {
-  margin: 12px 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-soft);
-  overflow-wrap: anywhere;
-}
-#file-list, #model-provider-list, #tool-list, #skill-list, #agent-recent-tasks {
-  min-width: 0;
-}
-#file-list > *, #model-provider-list > *, #tool-list > *, #skill-list > *, #agent-recent-tasks > * {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-#file-list button, #model-provider-list button, #tool-list button, #skill-list button, #agent-recent-tasks button {
-  max-width: 100%;
-}
-progress {
-  display: block;
-  width: 100%;
-  height: 9px;
-  margin: 10px 0;
-  overflow: hidden;
-  accent-color: var(--accent);
-  border-radius: 99px;
-}
-hr { border: 0; border-top: 1px solid var(--border); margin: 18px 0; }
-a { color: var(--accent); }
-::selection { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --page: #0c1220;
-    --surface: #121b2c;
-    --surface-soft: #182337;
-    --text: #e6edf7;
-    --muted: #a3b0c5;
-    --border: #2a3950;
-    --accent: #7aa7ff;
-    --accent-hover: #9bbaff;
-    --accent-soft: #1b2e4b;
-    --danger: #ff8c86;
-    --warning: #f5c66a;
-    --success: #6ee7b7;
-    --shadow: 0 16px 40px rgb(0 0 0 / 18%);
-  }
-  button[type="submit"], #login-form button, #setup-form button, #model-provider-save {
-    color: #0b1220;
-    box-shadow: none;
-  }
-  button[type="submit"]:hover:not(:disabled), #login-form button:hover:not(:disabled), #setup-form button:hover:not(:disabled), #model-provider-save:hover:not(:disabled) {
-    color: #0b1220;
-  }
-  .warning { background: color-mix(in srgb, #f59e0b 9%, var(--surface)); }
-}
-@media (max-width: 1050px) {
-  main { padding: 28px 22px 48px; gap: 16px; }
-  #status-card, #models-card, #files-card, #tools-card { grid-column: span 6; }
-  #setup-card, #login-card, main > section.card:last-of-type { grid-column: 2 / span 10; }
-  .card { padding: 20px; }
-}
-@media (max-width: 720px) {
-  main {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 14px;
-    padding: 22px 14px 36px;
-  }
-  main > h1 { font-size: 1.65rem; gap: 10px; }
-  main > h1::before { flex-basis: 40px; width: 40px; height: 40px; border-radius: 12px; }
-  main > p:first-of-type { margin: -8px 0 4px 50px; font-size: 0.9rem; }
-  .card { width: 100%; padding: 18px; border-radius: 15px; }
-  #setup-card, #login-card, #status-card, #models-card, #files-card, #tools-card, #agent-card, #skills-card, main > section.card:last-of-type {
-    width: 100%;
-    grid-column: auto;
-  }
-  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
-  button { min-height: 40px; }
-  table { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; }
-  th, td { padding: 9px 10px; }
-}
-@media (max-width: 420px) {
-  main { padding-right: 10px; padding-left: 10px; }
-  .card { padding: 15px; }
-  button { padding: 8px 10px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
-}
-.workspace-nav {
-  display: none;
-  grid-column: 1 / -1;
-  position: sticky;
-  top: 10px;
-  z-index: 20;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  padding: 7px;
-  overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-  box-shadow: 0 8px 24px rgb(15 23 42 / 6%);
-  backdrop-filter: blur(14px);
-  scrollbar-width: thin;
-}
-body:has(#status-card:not(.hidden)) .workspace-nav { display: flex; }
-.workspace-nav a {
-  flex: 0 0 auto;
-  padding: 8px 12px;
-  border-radius: 9px;
-  color: var(--muted);
-  font-size: 0.84rem;
-  font-weight: 680;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: background 150ms ease, color 150ms ease;
-}
-.workspace-nav a:hover, .workspace-nav a:focus-visible {
-  outline-offset: -2px;
-  background: var(--accent-soft);
-  color: var(--accent-hover);
-}
-section[id] { scroll-margin-top: 94px; }
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0f172a">
+<meta name="description" content="fnOS NAS Agent —— 自托管的 NAS 助手：文件管理、模型服务、Skill 隔离审核与受限只读 fnOS 工具。">
+<title>fnOS NAS Agent</title>
+<link rel="stylesheet" href="/ui/styles.css">
+<link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
+</head>
+<body class="app">
 
-/* Independent feature pages with persistent navigation and shared controls */
-body.auth-screen main,body:not(.authenticated) main{display:flex;flex-direction:column;justify-content:center;align-items:stretch;width:min(calc(100% - 32px),520px);min-height:100vh;margin:0 auto;padding:36px 0 28px;gap:18px}
-body.auth-screen main>h1,body.auth-screen main>p:first-of-type,body.auth-screen .workspace-nav,body.auth-screen .app-topbar,body.auth-screen .page-panel,body:not(.authenticated) main>h1,body:not(.authenticated) main>p:first-of-type,body:not(.authenticated) .workspace-nav,body:not(.authenticated) .app-topbar,body:not(.authenticated) .page-panel{display:none!important}
-body.auth-screen #login-card,body.auth-screen #setup-card,body:not(.authenticated) #login-card,body:not(.authenticated) #setup-card{display:block;width:100%;margin:0;grid-column:auto;padding:25px}
-body.auth-screen #security-note,body:not(.authenticated) #security-note{display:none!important}
-body.authenticated main.workspace-root{display:block;width:auto;max-width:none;min-height:100vh;margin:0 0 0 250px;padding:0 0 50px}
-body.authenticated main.workspace-root>h1,body.authenticated main.workspace-root>p:first-of-type{display:none}
-body.authenticated .workspace-nav{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;position:fixed;left:0;top:0;bottom:0;z-index:50;width:232px;height:100vh;padding:24px 14px;gap:5px;overflow-y:auto;overflow-x:hidden;border:0;border-right:1px solid var(--border);border-radius:0;background:var(--surface);box-shadow:4px 0 24px rgb(15 23 42 / 3%);backdrop-filter:none}
-body.authenticated .workspace-nav::before{content:"FNOS NAS AGENT";display:block;padding:3px 10px 25px;margin-bottom:6px;color:var(--text);font-size:.98rem;font-weight:800;letter-spacing:-.025em}
-body.authenticated .workspace-nav::after{content:"安全的本地管理控制台";display:block;margin-top:auto;padding:16px 10px 2px;border-top:1px solid var(--border);color:var(--muted);font-size:.76rem}
-body.authenticated .workspace-nav a{flex:0 0 auto;padding:11px 12px;border-radius:10px;color:var(--muted);font-size:.88rem;font-weight:620;text-decoration:none;white-space:nowrap}
-body.authenticated .workspace-nav a:hover,body.authenticated .workspace-nav a[aria-current="page"]{background:var(--accent-soft);color:var(--accent-hover)}
-.app-topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:76px;padding:14px clamp(20px,3vw,42px);border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(14px)}
-.topbar-context{display:grid;gap:2px}.topbar-eyebrow{color:var(--muted);font-size:.68rem;font-weight:760;letter-spacing:.11em}.topbar-context strong{font-size:1.12rem;letter-spacing:-.025em}.topbar-actions{display:flex;align-items:center;gap:12px}.session-indicator{color:var(--muted);font-size:.8rem;white-space:nowrap}.session-indicator .online-dot{margin-right:7px}
-body.authenticated .page-panel{display:block!important;visibility:visible!important;width:min(100%,1450px);margin:0 auto;padding:28px clamp(20px,3vw,42px) 55px}
-body.authenticated .page-panel>.card{display:none;width:100%;margin:0;padding:clamp(20px,2vw,30px);border-radius:16px}
-body.authenticated .page-panel>.card.active-page{display:block!important;visibility:visible!important;opacity:1!important}
-body.authenticated .page-panel>.card.hidden{display:none!important}
-body.authenticated .page-panel>.card.active-page:not(.hidden){display:block!important;visibility:visible!important}
-body.authenticated .page-panel h2{font-size:1.18rem}body.authenticated #logout{margin:0}
-@media(max-width:850px){body.authenticated main.workspace-root{margin-left:205px}body.authenticated .workspace-nav{width:190px;padding:20px 10px}body.authenticated .page-panel{padding:22px 18px 38px}body.authenticated .app-topbar{padding:12px 20px}}
-@media(max-width:640px){body.authenticated main.workspace-root{margin:0;padding-top:117px}body.authenticated .workspace-nav{top:0;bottom:auto;width:100%;height:auto;max-height:116px;padding:10px 12px 8px;flex-direction:row;align-items:center;gap:4px;overflow-x:auto;overflow-y:hidden;border-right:0;border-bottom:1px solid var(--border);box-shadow:0 5px 18px rgb(15 23 42 / 5%)}body.authenticated .workspace-nav::before{flex:0 0 auto;padding:7px 9px;margin:0 4px 0 0;font-size:.78rem}body.authenticated .workspace-nav::after{display:none}body.authenticated .workspace-nav a{flex:0 0 auto;padding:8px 10px;font-size:.8rem}body.authenticated .app-topbar{position:relative;min-height:60px;padding:10px 15px}body.authenticated .topbar-context strong{font-size:1rem}body.authenticated .topbar-eyebrow{font-size:.6rem}body.authenticated .session-indicator{display:none}body.authenticated .topbar-actions button{min-height:34px;padding:6px 9px;font-size:.8rem}body.authenticated .page-panel{padding:18px 12px 32px}body.authenticated .page-panel>.card{padding:16px;border-radius:13px}body.auth-screen main,body:not(.authenticated) main{width:min(calc(100% - 24px),520px);padding:24px 0}body.auth-screen #login-card,body.auth-screen #setup-card,body:not(.authenticated) #login-card,body:not(.authenticated) #setup-card{padding:19px}}
+<a class="skip-link" href="#page-panel">跳到主内容</a>
 
-</style></head>
-<body><main><h1>fnOS NAS Agent</h1><p class="muted">轻量 NAS 助手 · 安全验证测试版</p>
-<nav class="workspace-nav" aria-label="工作区快捷导航">
-  <a href="#status-card" data-page="status-card">运行概览</a>
-  <a href="#models-card" data-page="models-card">模型服务</a>
-  <a href="#files-card" data-page="files-card">文件管理</a>
-  <a href="#tools-card" data-page="tools-card">NAS 工具</a>
-  <a href="#agent-card" data-page="agent-card">智能助手</a>
-  <a href="#skills-card" data-page="skills-card">Skill 管理</a>
-  <a href="#audit-card" data-page="audit-card">操作审计</a>
-  <a href="#security-note" data-page="security-note">安全说明</a>
+<div id="toast-host" class="toast-host" aria-live="polite" aria-atomic="false"></div>
+<div id="modal-host" class="modal-host" hidden></div>
+
+<header class="app-header" id="app-header">
+  <div class="app-header__brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22" focusable="false"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
+    </span>
+    <div class="app-header__titles">
+      <p class="eyebrow">FNOS NAS AGENT</p>
+      <h1 class="app-header__title" id="page-heading">运行概览</h1>
+    </div>
+  </div>
+  <div class="app-header__actions">
+    <span class="pill pill--neutral" id="connection-pill" title="与 Agent 服务的连接状态">
+      <span class="pill__dot" id="connection-dot" aria-hidden="true"></span>
+      <span id="connection-text">连接中</span>
+    </span>
+    <span class="pill pill--accent hidden" id="mode-pill" title="当前执行模式">
+      <span id="mode-pill-text">正常</span>
+    </span>
+    <button class="btn btn--ghost btn--sm" id="refresh" type="button" title="刷新当前页面数据">刷新</button>
+    <button class="btn btn--ghost btn--sm" id="logout" type="button" title="退出登录">退出</button>
+  </div>
+</header>
+
+<div class="app-body">
+
+  <nav class="nav-rail" id="nav-rail" aria-label="主导航">
+    <p class="nav-rail__title">导航</p>
+    <a class="nav-rail__link" href="#status-card" data-page="status-card"><span class="nav-rail__icon" aria-hidden="true">◍</span><span>运行概览</span></a>
+    <a class="nav-rail__link" href="#files-card" data-page="files-card"><span class="nav-rail__icon" aria-hidden="true">▤</span><span>文件管理</span></a>
+    <a class="nav-rail__link" href="#agent-card" data-page="agent-card"><span class="nav-rail__icon" aria-hidden="true">✦</span><span>智能助手</span></a>
+    <a class="nav-rail__link" href="#tools-card" data-page="tools-card"><span class="nav-rail__icon" aria-hidden="true">⚒</span><span>NAS 工具</span></a>
+    <a class="nav-rail__link" href="#models-card" data-page="models-card"><span class="nav-rail__icon" aria-hidden="true">◇</span><span>模型服务</span></a>
+    <a class="nav-rail__link" href="#skills-card" data-page="skills-card"><span class="nav-rail__icon" aria-hidden="true">❖</span><span>Skill 管理</span></a>
+    <a class="nav-rail__link" href="#audit-card" data-page="audit-card"><span class="nav-rail__icon" aria-hidden="true">◷</span><span>操作审计</span></a>
+    <a class="nav-rail__link" href="#security-note" data-page="security-note"><span class="nav-rail__icon" aria-hidden="true">⛨</span><span>安全说明</span></a>
+    <div class="nav-rail__foot">
+      <p class="muted">任意系统命令执行关闭；导入的 Skill 只隔离不执行。</p>
+    </div>
+  </nav>
+
+  <main class="app-main" id="page-panel">
+
+    <!-- ============================ 运行概览 ============================ -->
+    <section class="page" id="status-card" data-title="运行概览" data-sub="服务状态、执行模式与系统概览">
+      <div class="page__head">
+        <h2 class="page__title">运行概览</h2>
+        <p class="page__sub">一屏看清 Agent 是否在线、当前能做什么、NAS 资源够不够。</p>
+      </div>
+      <div class="page__body">
+
+        <div class="banner banner--danger hidden" id="degraded-banner" role="alert">
+          <p class="banner__title">部分组件降级</p>
+          <p class="banner__body" id="degraded-list"></p>
+        </div>
+
+        <div class="grid-stats" id="overview-stats">
+          <div class="stat">
+            <p class="stat__label">服务状态</p>
+            <p class="stat__value" id="stat-service">—</p>
+            <p class="stat__hint" id="stat-service-hint">正在检查…</p>
+          </div>
+          <div class="stat">
+            <p class="stat__label">执行模式</p>
+            <p class="stat__value" id="stat-mode">—</p>
+            <p class="stat__hint" id="stat-mode-hint">正常 / 只读 / 停机</p>
+          </div>
+          <div class="stat">
+            <p class="stat__label">存储占用</p>
+            <p class="stat__value" id="stat-storage">—</p>
+            <p class="stat__hint" id="stat-storage-hint">正在读取…</p>
+          </div>
+          <div class="stat">
+            <p class="stat__label">任务队列</p>
+            <p class="stat__value" id="stat-tasks">—</p>
+            <p class="stat__hint" id="stat-tasks-hint">排队 / 运行中</p>
+          </div>
+          <div class="stat">
+            <p class="stat__label">模型服务</p>
+            <p class="stat__value" id="stat-models">—</p>
+            <p class="stat__hint" id="stat-models-hint">正在读取…</p>
+          </div>
+          <div class="stat">
+            <p class="stat__label">Skill 审核</p>
+            <p class="stat__value" id="stat-skills">—</p>
+            <p class="stat__hint" id="stat-skills-hint">待审核 / 已启用</p>
+          </div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">服务状态</h3>
+            <p class="card__sub" id="detail">任意系统命令执行关闭；已登记文件工具按权限策略执行。</p>
+          </div>
+          <div class="card__body">
+            <p id="status">正在检查…</p>
+            <div class="mode-control stack">
+              <label class="field__label" for="execution-mode">执行模式</label>
+              <div class="row row--wrap">
+                <select class="select" id="execution-mode">
+                  <option value="normal">正常</option>
+                  <option value="read-only">只读（禁止写操作与删除）</option>
+                  <option value="halted">停机（禁止全部工具）</option>
+                </select>
+                <button class="btn btn--primary" id="execution-mode-apply" type="button">应用</button>
+              </div>
+              <p class="field__hint" id="execution-mode-status" role="status">未设置过执行模式时默认为「正常」。</p>
+            </div>
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" data-action="refresh" type="button">刷新状态</button>
+              <button class="btn btn--secondary" id="show-audit" type="button">查看操作记录</button>
+              <button class="btn btn--ghost" data-action="logout" type="button">退出登录</button>
+            </div>
+          </div>
+        </div>
+
+        <details class="card card--flat">
+          <summary class="card__head">
+            <h3 class="card__title">只读系统诊断</h3>
+            <p class="card__sub">展开查看主机、CPU、内存与存储明细（只读）。</p>
+          </summary>
+          <div class="card__body">
+            <pre id="diagnostics">登录后加载诊断信息…</pre>
+          </div>
+        </details>
+
+      </div>
+    </section>
+
+    <!-- ============================ 文件管理 ============================ -->
+    <section class="page hidden" id="files-card" data-title="文件管理" data-sub="浏览、上传与整理 NAS 文件">
+      <div class="page__head">
+        <h2 class="page__title">文件管理</h2>
+        <p class="page__sub">浏览、预览、下载、上传、建文件夹、重命名、移动与删除；删除需要服务端确认。</p>
+      </div>
+      <div class="page__body">
+
+        <div class="toolbar">
+          <div class="toolbar__group row row--wrap">
+            <label class="visually-hidden" for="file-search">搜索当前目录</label>
+            <input class="input" id="file-search" type="search" maxlength="160" placeholder="按文件名筛选…" autocomplete="off">
+            <label class="visually-hidden" for="file-type-filter">类型</label>
+            <select class="select" id="file-type-filter">
+              <option value="all">全部类型</option>
+              <option value="directory">文件夹</option>
+              <option value="file">文件</option>
+            </select>
+            <label class="visually-hidden" for="file-sort">排序</label>
+            <select class="select" id="file-sort">
+              <option value="name-asc">名称 A–Z</option>
+              <option value="name-desc">名称 Z–A</option>
+              <option value="size-desc">大小从大到小</option>
+              <option value="modified-desc">最近修改</option>
+            </select>
+          </div>
+          <div class="toolbar__spacer"></div>
+          <div class="toolbar__group row row--wrap">
+            <button class="btn btn--secondary" id="file-mkdir" type="button">新建文件夹</button>
+          </div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__body">
+            <div class="stack" id="file-roots"></div>
+            <nav id="file-breadcrumbs" aria-label="目录路径" class="breadcrumbs"></nav>
+            <form class="row row--wrap" id="file-form">
+              <label class="visually-hidden" for="file-path">当前目录</label>
+              <input class="input" id="file-path" maxlength="2048" placeholder="选择一个存储卷" autocomplete="off">
+              <button class="btn btn--primary" type="submit">打开目录</button>
+              <button class="btn btn--secondary" id="file-parent" type="button" disabled>上一级</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="file-list-controls card card--flat">
+          <div class="card__body">
+            <div class="row row--between">
+              <p id="file-page-info" class="muted">正在读取目录…</p>
+              <div class="row">
+                <button class="btn btn--ghost btn--sm" id="file-page-prev" type="button" disabled>上一页</button>
+                <button class="btn btn--ghost btn--sm" id="file-page-next" type="button" disabled>下一页</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">上传文件</h3>
+            <p class="card__sub">单文件上限 25 MiB，可多选；上传过程可随时取消。</p>
+          </div>
+          <div class="card__body">
+            <div class="file-actions row row--wrap">
+              <label class="visually-hidden" for="file-upload">上传文件（最大 25 MiB）</label>
+              <input id="file-upload" type="file" multiple>
+              <button class="btn btn--primary" id="file-upload-button" type="button">上传所选文件</button>
+              <button class="btn btn--ghost" id="file-upload-cancel" type="button" disabled>取消上传</button>
+            </div>
+            <progress id="file-upload-progress" max="100" value="0" class="hidden"></progress>
+            <p id="file-upload-status" class="muted" role="status"></p>
+            <p id="file-operation-status" class="muted" role="status"></p>
+            <p id="file-error" class="error" role="status"></p>
+          </div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">目录内容</h3>
+          </div>
+          <div class="card__body">
+            <div class="list" id="file-list"><p class="muted">登录后加载目录。</p></div>
+          </div>
+        </div>
+
+        <details class="card card--flat" id="file-preview-panel">
+          <summary class="card__head">
+            <h3 class="card__title">文本预览</h3>
+            <p class="card__sub">仅预览文本内容，不会修改文件。</p>
+          </summary>
+          <div class="card__body">
+            <pre id="file-preview" class="hidden"></pre>
+          </div>
+        </details>
+
+      </div>
+    </section>
+
+    <!-- ============================ 智能助手 ============================ -->
+    <section class="page hidden" id="agent-card" data-title="智能助手" data-sub="规则优先的工具调用与任务队列">
+      <div class="page__head">
+        <h2 class="page__title">智能助手</h2>
+        <p class="page__sub">助手只调用已登记、参数校验通过的工具；对话上下文只留在当前页面。</p>
+      </div>
+      <div class="page__body">
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">助手状态</h3>
+            <p class="card__sub" id="agent-status">规则优先；模型仅可请求已登记且参数校验通过的工具。</p>
+          </div>
+          <div class="card__body">
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" id="trim-cli-test" type="button">检测官方 CLI 连接</button>
+              <button class="btn btn--ghost" id="agent-clear-context" type="button">清空对话上下文</button>
+            </div>
+            <p id="trim-cli-test-result" class="muted" role="status">尚未执行连接检测。CLI 可执行不代表 OAuth 已授权。</p>
+            <p id="trim-cli-connection-detail" class="muted" role="status">完成授权后，这里会显示最近一次检测状态与恢复建议。</p>
+            <p id="agent-context-status" class="muted">对话上下文只保存在当前页面内存中，不写入 NAS 任务历史。</p>
+          </div>
+        </div>
+
+        <details class="card card--flat" id="trim-cli-setup">
+          <summary class="card__head">
+            <h3 class="card__title">首次授权 / 连接配置指南</h3>
+            <p class="card__sub">只生成命令，不接收验证码或令牌。</p>
+          </summary>
+          <div class="card__body">
+            <p class="muted">当前版本不会把 OAuth 验证码通过网页转发，也不会收集密码或令牌。请在 NAS 终端中运行官方 CLI 登录，完成后回到这里检测连接。</p>
+            <div class="field">
+              <label class="field__label" for="trim-cli-host">NAS 地址（仅主机名或 IP，不含协议）</label>
+              <input class="input" id="trim-cli-host" maxlength="253" autocomplete="url" placeholder="例如 192.168.1.20 或 nas.example.com">
+            </div>
+            <div class="field">
+              <label class="field__label" for="trim-cli-port">端口</label>
+              <input class="input" id="trim-cli-port" type="number" min="1" max="65535" step="1" value="5667" required>
+            </div>
+            <div class="field">
+              <label class="field__label" for="trim-cli-scheme">连接协议</label>
+              <select class="select" id="trim-cli-scheme">
+                <option value="https">HTTPS（推荐）</option>
+                <option value="http">HTTP（仅可信局域网且需显式允许）</option>
+              </select>
+              <p class="field__hint">HTTPS 常见端口：直接连接 IP 通常是 5667，域名通常是 443；请以 NAS 的实际 CLI/API 配置为准。HTTP 仅建议用于可信局域网。</p>
+            </div>
+            <div class="field">
+              <label class="field__label" for="trim-cli-flow">授权方式</label>
+              <select class="select" id="trim-cli-flow">
+                <option value="login">首次登录 / 交互授权</option>
+                <option value="refresh">重新授权（login --refresh）</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="checkbox">
+                <input id="trim-cli-self-signed" type="checkbox">
+                <span>HTTPS 使用自签名证书（仅确认可信证书后勾选）</span>
+              </label>
+            </div>
+            <button class="btn btn--primary" id="trim-cli-command" type="button">生成登录命令</button>
+            <pre id="trim-cli-command-output">填写 NAS 地址后生成命令。</pre>
+            <button class="btn btn--secondary" id="trim-cli-copy" type="button" disabled>复制命令</button>
+            <ol class="stack">
+              <li>先审核并安装官方 fnOS Skill 中的 CLI，并启用该 Skill。</li>
+              <li>通过 fnOS 终端或可信 SSH 登录 NAS，再粘贴执行生成的命令。命令会切换到 Agent 的运行账户，并把 OAuth profile 放在 Agent 私有数据目录中，确保 Agent 后续能读取它。</li>
+              <li>CLI 输出授权链接后，在你自己的浏览器中登录并确认授权，再将一次性 code 直接粘贴到 CLI 的交互提示符。</li>
+              <li>CLI 显示登录成功后，回到本页面点击“检测官方 CLI 连接”。</li>
+            </ol>
+            <p class="warning">本页面只生成命令，不会执行登录，不会接收验证码或令牌。切勿把验证码、access token、refresh token 或完整调试输出发送给助手。命令使用 sudo 切换运行账户；若 NAS 没有 sudo，请先切换至 Agent 服务账户，再删除命令开头的 <code>sudo -u … --</code> 前缀，不能改用其他账户保存 profile。</p>
+          </div>
+        </details>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">对话</h3>
+            <p class="card__sub">例如：查看系统状态 / 然后打开刚才的目录。</p>
+          </div>
+          <div class="card__body">
+            <div class="chat">
+              <div class="chat__thread" id="agent-history" aria-live="polite"><p class="muted">登录后可开始查询。</p></div>
+              <form class="composer" id="agent-form">
+                <label class="visually-hidden" for="agent-input">你想了解什么？</label>
+                <input class="input composer__input" id="agent-input" maxlength="2000" autocomplete="off" placeholder="例如：查看系统状态 / 然后打开刚才的目录" required>
+                <button class="btn btn--primary composer__send" id="agent-send" type="submit">发送</button>
+              </form>
+            </div>
+            <p id="agent-error" class="error" role="status"></p>
+          </div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">待确认的危险操作</h3>
+            <p class="card__sub">确认只对下面显示的具体目标有效，60 秒内有效且只能执行一次。</p>
+          </div>
+          <div class="card__body">
+            <button class="btn btn--secondary btn--sm" id="refresh-pending-actions" type="button">刷新待确认操作</button>
+            <div class="stack" id="pending-actions"><p class="muted">没有待确认操作。</p></div>
+          </div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">任务队列</h3>
+            <p class="card__sub" id="task-stats">正在读取队列状态…</p>
+          </div>
+          <div class="card__body">
+            <div class="toolbar">
+              <div class="toolbar__group row row--wrap">
+                <label class="visually-hidden" for="task-history-status">按状态筛选</label>
+                <select class="select" id="task-history-status">
+                  <option value="">全部状态</option>
+                  <option value="queued">排队中</option>
+                  <option value="running">运行中</option>
+                  <option value="completed">已完成</option>
+                  <option value="failed">失败</option>
+                  <option value="cancelled">已取消</option>
+                </select>
+                <label class="visually-hidden" for="task-history-search">搜索任务 ID、状态或阶段</label>
+                <input class="input" id="task-history-search" type="search" maxlength="100" placeholder="搜索任务 ID、状态或阶段">
+              </div>
+              <div class="toolbar__spacer"></div>
+              <div class="toolbar__group row row--wrap">
+                <button class="btn btn--ghost btn--sm" id="agent-refresh-tasks" type="button">刷新</button>
+                <button class="btn btn--ghost btn--sm" id="task-history-clear" type="button">清理已结束任务</button>
+              </div>
+            </div>
+            <p class="muted">排队中和运行中的任务会保留，不会被取消。</p>
+            <p id="task-history-count" class="muted">正在加载任务历史…</p>
+            <div class="row row--between">
+              <div class="row">
+                <button class="btn btn--ghost btn--sm" id="task-history-prev" type="button" disabled>上一页</button>
+                <button class="btn btn--ghost btn--sm" id="task-history-next" type="button" disabled>下一页</button>
+              </div>
+            </div>
+            <div class="stack" id="agent-recent-tasks"><p class="muted">暂无任务记录。</p></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================ NAS 工具 ============================ -->
+    <section class="page hidden" id="tools-card" data-title="NAS 工具" data-sub="受限只读的 fnOS 工具清单">
+      <div class="page__head">
+        <h2 class="page__title">NAS 工具</h2>
+        <p class="page__sub">只读查询可直接执行；创建文件夹、重命名和移动属于常规文件操作。删除、系统配置变更和任意命令执行仍未开放。</p>
+      </div>
+      <div class="page__body">
+        <div class="card card--flat">
+          <div class="card__body">
+            <div class="stack" id="tool-list"><p class="muted">登录后加载工具清单…</p></div>
+          </div>
+        </div>
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">执行结果</h3>
+          </div>
+          <div class="card__body">
+            <pre id="tool-result">选择工具后显示结果。</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ 模型服务 ============================ -->
+    <section class="page hidden" id="models-card" data-title="模型服务" data-sub="多服务商、连接测试与运行时切换">
+      <div class="page__head">
+        <h2 class="page__title">模型服务</h2>
+        <p class="page__sub">API Key 只在提交时发送到服务端并加密保存；页面不会回显已存密钥。</p>
+      </div>
+      <div class="page__body">
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">已配置的服务商</h3>
+            <p class="card__sub" id="model-provider-metrics">模型调用统计仅在当前进程内汇总；服务重启后清零。</p>
+          </div>
+          <div class="card__body">
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" id="model-provider-refresh" type="button">刷新模型列表</button>
+              <button class="btn btn--secondary" id="model-provider-test-batch" type="button">批量测试连接（每批最多 5 个）</button>
+            </div>
+            <p id="model-provider-test-batch-status" class="muted" role="status">可按批次测试已启用且已配置密钥的模型；每批最多 5 个，避免触发连接测试限流。</p>
+            <p id="model-provider-status" class="muted">正在读取模型配置…</p>
+            <div class="stack" id="model-provider-list"><p class="muted">登录后加载。</p></div>
+          </div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">添加或编辑服务商</h3>
+            <p class="card__sub">选择预设可自动填写 Endpoint；模型 ID 仍需按你的账户填写。</p>
+          </div>
+          <div class="card__body">
+            <div class="field">
+              <label class="field__label" for="model-provider-preset">快速选择服务商</label>
+              <select class="select" id="model-provider-preset"><option value="">正在加载服务商预设…</option></select>
+              <p class="field__hint" id="model-provider-preset-help">选择预设可自动填写 Endpoint；模型 ID 仍需按你的账户填写。</p>
+            </div>
+            <form id="model-provider-form">
+              <input id="model-provider-id" type="hidden">
+              <div class="field">
+                <label class="field__label" for="model-provider-name">服务商名称</label>
+                <input class="input" id="model-provider-name" maxlength="80" placeholder="例如 OpenAI、硅基流动、DeepSeek" required>
+              </div>
+              <div class="field">
+                <label class="field__label" for="model-provider-endpoint">API Endpoint（完整地址）</label>
+                <input class="input" id="model-provider-endpoint" type="url" maxlength="2048" placeholder="https://api.example.com/v1/chat/completions" required>
+              </div>
+              <div class="field">
+                <label class="field__label" for="model-provider-model">模型 ID</label>
+                <input class="input" id="model-provider-model" maxlength="160" placeholder="例如 gpt-4.1-mini" required>
+              </div>
+              <div class="field">
+                <label class="field__label" for="model-provider-key">API Key</label>
+                <input class="input" id="model-provider-key" type="password" maxlength="2048" autocomplete="new-password" placeholder="添加时必填；编辑时留空表示保留已保存密钥">
+              </div>
+              <div class="field">
+                <label class="checkbox">
+                  <input id="model-provider-enabled" type="checkbox" checked>
+                  <span>启用此服务商</span>
+                </label>
+              </div>
+              <div class="field">
+                <label class="checkbox">
+                  <input id="model-provider-fallback" type="checkbox">
+                  <span>设为备用模型（主模型出现网络、限流或服务错误时才切换）</span>
+                </label>
+              </div>
+              <div class="field">
+                <label class="checkbox">
+                  <input id="model-provider-clear-key" type="checkbox">
+                  <span>清除已保存的 API Key（需重新输入才能启用）</span>
+                </label>
+              </div>
+              <div class="row row--wrap">
+                <button class="btn btn--primary" id="model-provider-save" type="submit">添加模型服务商</button>
+                <button class="btn btn--ghost" id="model-provider-reset" type="button">清空表单</button>
+              </div>
+            </form>
+            <p id="model-provider-error" class="error" role="status"></p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================ Skill 管理 ============================ -->
+    <section class="page hidden" id="skills-card" data-title="Skill 管理" data-sub="上传、隔离与审核 Skill">
+      <div class="page__head">
+        <h2 class="page__title">Skill 管理</h2>
+        <p class="page__sub">ZIP 上传后只会检查结构并存入隔离目录，不会解压或执行。每个 ZIP 最大 25 MiB（解压声明总量不超过 64 MiB）。</p>
+      </div>
+      <div class="page__body">
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">从 ZIP 导入</h3>
+            <p class="card__sub">导入后只存入隔离区并进行静态审核。</p>
+          </div>
+          <div class="card__body">
+            <form id="skill-import-form">
+              <div class="field">
+                <label class="field__label" for="import-skill-name">Skill 名称</label>
+                <input class="input" id="import-skill-name" maxlength="100" required>
+              </div>
+              <div class="field">
+                <label class="field__label" for="import-skill-version">版本（可选）</label>
+                <input class="input" id="import-skill-version" maxlength="40">
+              </div>
+              <div class="field">
+                <label class="field__label" for="import-skill-source">来源备注（可选）</label>
+                <input class="input" id="import-skill-source" maxlength="100">
+              </div>
+              <div class="field">
+                <label class="field__label" for="skill-archive">Skill ZIP 文件</label>
+                <input id="skill-archive" type="file" accept=".zip,application/zip" multiple required>
+              </div>
+              <button class="btn btn--primary" id="skill-import-submit" type="submit">上传并隔离待审核</button>
+              <progress id="skill-import-progress" max="100" value="0" class="hidden"></progress>
+              <p id="skill-import-status" class="muted" role="status"></p>
+              <button class="btn btn--ghost" id="skill-import-cancel" type="button" disabled>取消上传</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">从 GitHub 导入</h3>
+            <p class="card__sub">下载内容只进入隔离审核区，不会执行。</p>
+          </div>
+          <div class="card__body">
+            <form id="skill-remote-import-form">
+              <div class="field">
+                <label class="field__label" for="skill-remote-url">GitHub 仓库地址或 ZIP URL</label>
+                <input class="input" id="skill-remote-url" type="url" maxlength="2048" placeholder="https://github.com/owner/repo" required>
+              </div>
+              <div class="field">
+                <label class="field__label" for="skill-remote-name">Skill 名称</label>
+                <input class="input" id="skill-remote-name" maxlength="100" placeholder="导入后显示的名称" required>
+              </div>
+              <div class="field">
+                <label class="field__label" for="skill-remote-version">版本（可选）</label>
+                <input class="input" id="skill-remote-version" maxlength="40" placeholder="例如 v1.2.0">
+              </div>
+              <button class="btn btn--primary" id="skill-remote-import-submit" type="submit">从 GitHub 下载并隔离</button>
+              <p id="skill-remote-import-status" class="muted" role="status">可直接粘贴仓库地址（自动识别默认分支），也可粘贴分支/标签 ZIP；下载内容只进入隔离审核区，不会执行。</p>
+            </form>
+            <form id="skill-remote-batch-form">
+              <div class="field">
+                <label class="field__label" for="skill-remote-batch-urls">批量 GitHub 仓库或 ZIP 地址（每行一个，最多 5 个）</label>
+                <textarea class="textarea" id="skill-remote-batch-urls" rows="4" maxlength="10240" placeholder="https://github.com/owner/skill-one&#10;https://github.com/owner/skill-two" required></textarea>
+              </div>
+              <div class="field">
+                <label class="field__label" for="skill-remote-batch-version">统一版本备注（可选）</label>
+                <input class="input" id="skill-remote-batch-version" maxlength="40" placeholder="例如 imported-2026-10">
+              </div>
+              <button class="btn btn--primary" id="skill-remote-batch-submit" type="submit">批量下载并隔离</button>
+              <p id="skill-remote-batch-status" class="muted" role="status">按行顺序导入；所有项目共享 25 MiB 累计下载上限。单项失败不会撤销已成功的隔离导入。</p>
+            </form>
+          </div>
+        </div>
+
+        <details class="card card--flat">
+          <summary class="card__head">
+            <h3 class="card__title">手动登记已有归档摘要（仅元数据）</h3>
+          </summary>
+          <div class="card__body">
+            <form id="skill-form">
+              <div class="field">
+                <label class="field__label" for="skill-name">Skill 名称</label>
+                <input class="input" id="skill-name" maxlength="100" required>
+              </div>
+              <div class="field">
+                <label class="field__label" for="skill-version">版本（可选）</label>
+                <input class="input" id="skill-version" maxlength="40">
+              </div>
+              <div class="field">
+                <label class="field__label" for="skill-hash">归档 SHA-256</label>
+                <input class="input" id="skill-hash" minlength="64" maxlength="64" pattern="[a-fA-F0-9]{64}" required>
+                <p class="muted">归档必须已经通过「上传 ZIP」或「GitHub 导入」进入隔离区；服务端会按该摘要自行完成静态审核，客户端无法声明审核结论。</p>
+              </div>
+              <div class="field">
+                <label class="field__label" for="skill-source">来源备注（可选）</label>
+                <input class="input" id="skill-source" maxlength="100">
+              </div>
+              <button class="btn btn--primary" type="submit">登记元数据</button>
+            </form>
+          </div>
+        </details>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">已登记的 Skill</h3>
+            <p class="card__sub">审核通过后才能启用；批量变更失败项仍保留选择。</p>
+          </div>
+          <div class="card__body">
+            <div class="skill-filters toolbar">
+              <div class="toolbar__group row row--wrap">
+                <label class="visually-hidden" for="skill-search">搜索 Skill</label>
+                <input class="input" id="skill-search" maxlength="100" placeholder="搜索名称、版本、来源、摘要或能力">
+                <label class="visually-hidden" for="skill-state-filter">状态筛选</label>
+                <select class="select" id="skill-state-filter">
+                  <option value="">全部状态</option>
+                  <option value="pending_review">待审核</option>
+                  <option value="approved">已批准</option>
+                  <option value="enabled">已启用</option>
+                  <option value="disabled">已停用</option>
+                  <option value="rejected">已拒绝</option>
+                </select>
+                <button class="btn btn--secondary" id="skill-filter-apply" type="button">筛选</button>
+              </div>
+            </div>
+            <div class="toolbar">
+              <div class="toolbar__group row row--wrap">
+                <label class="checkbox">
+                  <input id="skill-select-visible" type="checkbox">
+                  <span>选择本页</span>
+                </label>
+                <label class="visually-hidden" for="skill-batch-state">批量目标状态</label>
+                <select class="select" id="skill-batch-state">
+                  <option value="approved">批准</option>
+                  <option value="enabled">启用</option>
+                  <option value="disabled">停用</option>
+                  <option value="rejected">拒绝</option>
+                </select>
+                <label class="visually-hidden" for="skill-batch-note">批量审核备注（可选）</label>
+                <input class="input" id="skill-batch-note" maxlength="500" placeholder="统一备注">
+                <button class="btn btn--primary" id="skill-batch-apply" type="button" disabled>执行批量变更</button>
+              </div>
+              <div class="toolbar__spacer"></div>
+              <span id="skill-selected-count" class="muted">已选择 0 个</span>
+            </div>
+            <p id="skill-error" class="error" role="status"></p>
+            <div class="row row--between">
+              <p id="skill-count" class="muted">尚未加载</p>
+              <div class="row">
+                <button class="btn btn--ghost btn--sm" id="skill-page-prev" type="button" disabled>上一页</button>
+                <button class="btn btn--ghost btn--sm" id="skill-page-next" type="button" disabled>下一页</button>
+              </div>
+            </div>
+            <div class="stack" id="skill-list"><p class="muted">尚未加载</p></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================ 操作审计 ============================ -->
+    <section class="page hidden" id="audit-card" data-title="操作审计" data-sub="按结果与接口筛选最近操作">
+      <div class="page__head">
+        <h2 class="page__title">操作审计</h2>
+        <p class="page__sub">记录已登录会话的操作、结果与状态码；敏感字段不会写入审计。</p>
+      </div>
+      <div class="page__body">
+        <div class="card card--flat">
+          <div class="card__body">
+            <div class="toolbar">
+              <div class="toolbar__group row row--wrap">
+                <label class="visually-hidden" for="audit-outcome">结果筛选</label>
+                <select class="select" id="audit-outcome">
+                  <option value="">全部结果</option>
+                  <option value="success">成功</option>
+                  <option value="rejected">已拒绝</option>
+                  <option value="error">错误</option>
+                </select>
+                <label class="visually-hidden" for="audit-route">接口筛选（可选）</label>
+                <input class="input" id="audit-route" maxlength="80" placeholder="例如 tasks.list">
+                <button class="btn btn--secondary" id="audit-apply" type="button">筛选记录</button>
+              </div>
+              <div class="toolbar__spacer"></div>
+              <p id="audit-count" class="muted">尚未加载</p>
+            </div>
+            <div class="row row--between">
+              <div class="row">
+                <button class="btn btn--ghost btn--sm" id="audit-prev" type="button" disabled>上一页</button>
+                <button class="btn btn--ghost btn--sm" id="audit-next" type="button" disabled>下一页</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">记录</h3>
+          </div>
+          <div class="card__body">
+            <pre id="audit-output" class="hidden">尚未加载操作记录。</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ 安全说明 ============================ -->
+    <section class="page hidden" id="security-note" data-title="安全说明" data-sub="这个 Agent 能做什么、不能做什么">
+      <div class="page__head">
+        <h2 class="page__title">安全说明</h2>
+        <p class="page__sub">边界写清楚，比事后追责更重要。</p>
+      </div>
+      <div class="page__body">
+        <div class="card card--flat">
+          <div class="card__body">
+            <p class="muted">任意系统命令和导入 Skill 执行默认关闭。已登记的常规文件操作需通过有效会话及参数校验。HTTP 不加密传输内容，因此仅限可信局域网，不要暴露到公网。</p>
+            <ul class="stack">
+              <li>破坏性动作（删除）必须经过服务端审批，授权与会话绑定，浏览器无法自行伪造确认。</li>
+              <li>全局只读模式与停机开关会阻断全部变更型调用，可在概览页或 <code>/api/execution-mode</code> 切换。</li>
+              <li>首启设置管理密码时，非本机请求还必须提供设备安装码。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<nav class="tabbar" id="tabbar" aria-label="快捷导航">
+  <a class="tabbar__link" href="#status-card" data-page="status-card"><span class="tabbar__icon" aria-hidden="true">◍</span><span>概览</span></a>
+  <a class="tabbar__link" href="#files-card" data-page="files-card"><span class="tabbar__icon" aria-hidden="true">▤</span><span>文件</span></a>
+  <a class="tabbar__link" href="#agent-card" data-page="agent-card"><span class="tabbar__icon" aria-hidden="true">✦</span><span>助手</span></a>
+  <a class="tabbar__link" href="#tools-card" data-page="tools-card"><span class="tabbar__icon" aria-hidden="true">⚒</span><span>工具</span></a>
+  <button class="tabbar__link" id="tabbar-more" type="button" aria-haspopup="dialog" aria-expanded="false"><span class="tabbar__icon" aria-hidden="true">⋯</span><span>更多</span></button>
 </nav>
-<section class="card hidden" id="setup-card"><h2>首次安全设置</h2><p>首次使用请设置管理密码（至少 10 个字符）。以后只需输入密码即可登录。</p><p class="warning">首次设置期间，页面可由可信局域网访问。当前版本不执行任意系统命令，也不会运行导入的 Skill。请勿将端口转发到公网或在不可信网络中设置。</p><form id="setup-form"><label for="new-token">设置管理密码</label><input id="new-token" type="password" minlength="10" maxlength="128" autocomplete="new-password" required><label for="setup-code">设备安装码</label><input id="setup-code" type="text" maxlength="64" autocomplete="off" placeholder="见 NAS 终端首次启动日志中的 setup code"><p class="muted" id="setup-code-hint">服务端启用安装码保护时必须填写；安装码打印在 NAS 终端的首次启动日志中。</p><button type="submit">保存密码</button></form><p id="setup-error" class="error" role="status"></p></section>
-<section class="card" id="login-card"><h2>登录验证</h2><p class="muted" id="login-help">输入管理密码登录。密码不会保存在浏览器本地存储中。</p><form id="login-form"><label for="token">管理密码</label><input id="token" name="token" type="password" autocomplete="current-password" minlength="10" required><label><input id="remember" type="checkbox" style="width:auto;margin-right:8px">在此设备保持登录 30 天</label><p class="muted">仅在个人可信设备上勾选；共享设备请勿勾选。</p><button type="submit">登录</button></form><p id="login-error" class="error" role="status"></p></section>
-<section class="card hidden" id="status-card"><h2>服务状态</h2><p id="status">正在检查…</p><p id="detail" class="muted">任意系统命令执行关闭；已登记文件工具按权限策略执行。</p><div class="mode-control"><label for="execution-mode">执行模式</label><select id="execution-mode"><option value="normal">正常</option><option value="read-only">只读（禁止写操作与删除）</option><option value="halted">停机（禁止全部工具）</option></select><button id="execution-mode-apply" type="button">应用</button><p id="execution-mode-status" class="muted" role="status">未设置过执行模式时默认为「正常」。</p></div><h3>只读系统诊断</h3><pre id="diagnostics">登录后加载诊断信息…</pre><button id="refresh" type="button">刷新状态</button> <button id="show-audit" type="button">查看操作记录</button><label for="audit-outcome">结果筛选</label><select id="audit-outcome"><option value="">全部结果</option><option value="success">成功</option><option value="rejected">已拒绝</option><option value="error">错误</option></select><label for="audit-route">接口筛选（可选）</label><input id="audit-route" maxlength="80" placeholder="例如 tasks.list"><button id="audit-apply" type="button">筛选记录</button><p id="audit-count" class="muted">尚未加载</p><button id="audit-prev" type="button" disabled>上一页</button> <button id="audit-next" type="button" disabled>下一页</button> <button id="logout" type="button">退出登录</button><pre id="audit-output" class="hidden">尚未加载操作记录。</pre></section>
-<section class="card hidden" id="models-card"><h2>大模型管理</h2>
-<p class="muted">支持多服务商、连接测试和运行时切换。API Key 只在提交时发送到服务端并加密保存；页面不会回显已存密钥。</p>
-<label for="model-provider-preset">快速选择服务商</label><select id="model-provider-preset"><option value="">正在加载服务商预设…</option></select>
-<p id="model-provider-preset-help" class="muted">选择预设可自动填写 Endpoint；模型 ID 仍需按你的账户填写。</p>
-<form id="model-provider-form">
-<input id="model-provider-id" type="hidden">
-<label for="model-provider-name">服务商名称</label><input id="model-provider-name" maxlength="80" placeholder="例如 OpenAI、硅基流动、DeepSeek" required>
-<label for="model-provider-endpoint">API Endpoint（完整地址）</label><input id="model-provider-endpoint" type="url" maxlength="2048" placeholder="https://api.example.com/v1/chat/completions" required>
-<label for="model-provider-model">模型 ID</label><input id="model-provider-model" maxlength="160" placeholder="例如 gpt-4.1-mini" required>
-<label for="model-provider-key">API Key</label><input id="model-provider-key" type="password" maxlength="2048" autocomplete="new-password" placeholder="添加时必填；编辑时留空表示保留已保存密钥">
-<label><input id="model-provider-enabled" type="checkbox" style="width:auto;margin-right:8px" checked>启用此服务商</label>
-<label><input id="model-provider-fallback" type="checkbox" style="width:auto;margin-right:8px">设为备用模型（主模型出现网络、限流或服务错误时才切换）</label>
-<label><input id="model-provider-clear-key" type="checkbox" style="width:auto;margin-right:8px">清除已保存的 API Key（需重新输入才能启用）</label>
-<button id="model-provider-save" type="submit">添加模型服务商</button>
-<button id="model-provider-reset" type="button">清空表单</button>
-</form>
-<p id="model-provider-error" class="error" role="status"></p>
-<p id="model-provider-status" class="muted">正在读取模型配置…</p>
-<p id="model-provider-metrics" class="muted">模型调用统计仅在当前进程内汇总；服务重启后清零。</p>
-<button id="model-provider-refresh" type="button">刷新模型列表</button>
-<button id="model-provider-test-batch" type="button">批量测试连接（每批最多 5 个）</button>
-<p id="model-provider-test-batch-status" class="muted" role="status">可按批次测试已启用且已配置密钥的模型；每批最多 5 个，避免触发连接测试限流。</p>
-<div id="model-provider-list"><p class="muted">登录后加载。</p></div>
+
+<div class="drawer" id="more-drawer" hidden>
+  <div class="drawer__panel" role="dialog" aria-modal="true" aria-label="更多页面">
+    <div class="drawer__head">
+      <h2 class="drawer__title">更多</h2>
+      <button class="btn btn--ghost btn--sm" id="more-drawer-close" type="button">关闭</button>
+    </div>
+    <div class="drawer__body">
+      <a class="menu__item" href="#models-card" data-page="models-card"><span class="nav-rail__icon" aria-hidden="true">◇</span><span>模型服务</span></a>
+      <a class="menu__item" href="#skills-card" data-page="skills-card"><span class="nav-rail__icon" aria-hidden="true">❖</span><span>Skill 管理</span></a>
+      <a class="menu__item" href="#audit-card" data-page="audit-card"><span class="nav-rail__icon" aria-hidden="true">◷</span><span>操作审计</span></a>
+      <a class="menu__item" href="#security-note" data-page="security-note"><span class="nav-rail__icon" aria-hidden="true">⛨</span><span>安全说明</span></a>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ 首次设置 / 登录 ============================ -->
+<section class="card auth-card" id="setup-card" hidden>
+  <div class="card__head">
+    <h2 class="card__title">首次安全设置</h2>
+    <p class="card__sub">首次使用请设置管理密码（至少 10 个字符）。以后只需输入密码即可登录。</p>
+  </div>
+  <div class="card__body">
+    <p class="warning">首次设置期间，页面可由可信局域网访问。当前版本不执行任意系统命令，也不会运行导入的 Skill。请勿将端口转发到公网或在不可信网络中设置。</p>
+    <form id="setup-form">
+      <div class="field">
+        <label class="field__label" for="new-token">设置管理密码</label>
+        <input class="input" id="new-token" type="password" minlength="10" maxlength="128" autocomplete="new-password" required>
+      </div>
+      <div class="field">
+        <label class="field__label" for="setup-code">设备安装码</label>
+        <input class="input" id="setup-code" type="text" maxlength="64" autocomplete="off" placeholder="见 NAS 终端首次启动日志中的 setup code">
+        <p class="field__hint" id="setup-code-hint">服务端启用安装码保护时必须填写；安装码打印在 NAS 终端的首次启动日志中。</p>
+      </div>
+      <button class="btn btn--primary btn--block" type="submit">保存密码</button>
+    </form>
+    <p id="setup-error" class="error" role="status"></p>
+  </div>
 </section>
-<section class="card hidden" id="files-card"><h2>文件浏览</h2><p class="muted">支持浏览、文本预览、下载、上传、建文件夹、重命名、移动和删除。上传上限 25 MiB；删除需要确认。</p><div id="file-roots"></div><nav id="file-breadcrumbs" aria-label="目录路径"></nav><form id="file-form"><label for="file-path">当前目录</label><input id="file-path" maxlength="2048" placeholder="选择一个存储卷" autocomplete="off"><button type="submit">打开目录</button><button id="file-parent" type="button" disabled>上一级</button></form><div class="file-list-controls"><label for="file-search">搜索当前目录</label><input id="file-search" type="search" maxlength="160" placeholder="按文件名筛选…" autocomplete="off"><label for="file-type-filter">类型</label><select id="file-type-filter"><option value="all">全部</option><option value="directory">文件夹</option><option value="file">文件</option></select><label for="file-sort">排序</label><select id="file-sort"><option value="name-asc">名称 A–Z</option><option value="name-desc">名称 Z–A</option><option value="size-desc">大小从大到小</option><option value="modified-desc">最近修改</option></select></div><div class="file-pagination"><p id="file-page-info" class="muted">正在读取目录…</p><button id="file-page-prev" type="button" disabled>上一页</button> <button id="file-page-next" type="button" disabled>下一页</button></div><div class="file-actions"><button id="file-mkdir" type="button">新建文件夹</button><label for="file-upload">上传文件（最大 25 MiB）</label><input id="file-upload" type="file" multiple><button id="file-upload-button" type="button">上传所选文件</button> <button id="file-upload-cancel" type="button" disabled>取消上传</button><progress id="file-upload-progress" max="100" value="0" class="hidden"></progress><p id="file-upload-status" class="muted" role="status"></p></div><pre id="file-preview" class="hidden"></pre><p id="file-operation-status" class="muted" role="status"></p><p id="file-error" class="error" role="status"></p><div id="file-list"><p class="muted">登录后加载目录。</p></div></section>
-<section class="card hidden" id="tools-card"><h2>NAS 工具</h2><p class="muted">只读查询可直接执行；创建文件夹、重命名和移动属于常规文件操作。删除、系统配置变更和任意命令执行仍未开放。</p><div id="tool-list"><p class="muted">登录后加载工具清单…</p></div><pre id="tool-result">选择工具后显示结果。</pre></section>
-<section class="card hidden" id="agent-card"><h2>NAS 智能助手</h2><p class="muted" id="agent-status">规则优先；模型仅可请求已登记且参数校验通过的工具。</p><button id="trim-cli-test" type="button">检测官方 CLI 连接</button><p id="trim-cli-test-result" class="muted" role="status">尚未执行连接检测。CLI 可执行不代表 OAuth 已授权。</p>
-<p id="trim-cli-connection-detail" class="muted" role="status">完成授权后，这里会显示最近一次检测状态与恢复建议。</p>
-<details id="trim-cli-setup"><summary>首次授权 / 连接配置指南</summary>
-<p class="muted">当前版本不会把 OAuth 验证码通过网页转发，也不会收集密码或令牌。请在 NAS 终端中运行官方 CLI 登录，完成后回到这里检测连接。</p>
-<label for="trim-cli-host">NAS 地址（仅主机名或 IP，不含协议）</label><input id="trim-cli-host" maxlength="253" autocomplete="url" placeholder="例如 192.168.1.20 或 nas.example.com">
-<label for="trim-cli-port">端口</label><input id="trim-cli-port" type="number" min="1" max="65535" step="1" value="5667" required>
-<label for="trim-cli-scheme">连接协议</label><select id="trim-cli-scheme"><option value="https">HTTPS（推荐）</option><option value="http">HTTP（仅可信局域网且需显式允许）</option></select>
-<p class="muted">HTTPS 常见端口：直接连接 IP 通常是 5667，域名通常是 443；请以 NAS 的实际 CLI/API 配置为准。HTTP 仅建议用于可信局域网。</p>
-<label for="trim-cli-flow">授权方式</label><select id="trim-cli-flow"><option value="login">首次登录 / 交互授权</option><option value="refresh">重新授权（login --refresh）</option></select>
-<label><input id="trim-cli-self-signed" type="checkbox" style="width:auto;margin-right:8px">HTTPS 使用自签名证书（仅确认可信证书后勾选）</label>
-<button id="trim-cli-command" type="button">生成登录命令</button>
-<pre id="trim-cli-command-output">填写 NAS 地址后生成命令。</pre>
-<button id="trim-cli-copy" type="button" disabled>复制命令</button>
-<ol><li>先审核并安装官方 fnOS Skill 中的 CLI，并启用该 Skill。</li><li>通过 fnOS 终端或可信 SSH 登录 NAS，再粘贴执行生成的命令。命令会切换到 Agent 的运行账户，并把 OAuth profile 放在 Agent 私有数据目录中，确保 Agent 后续能读取它。</li><li>CLI 输出授权链接后，在你自己的浏览器中登录并确认授权，再将一次性 code 直接粘贴到 CLI 的交互提示符。</li><li>CLI 显示登录成功后，回到本页面点击“检测官方 CLI 连接”。</li></ol>
-<p class="warning">本页面只生成命令，不会执行登录，不会接收验证码或令牌。切勿把验证码、access token、refresh token 或完整调试输出发送给助手。命令使用 sudo 切换运行账户；若 NAS 没有 sudo，请先切换至 Agent 服务账户，再删除命令开头的 <code>sudo -u … --</code> 前缀，不能改用其他账户保存 profile。</p>
-</details><p id="agent-context-status" class="muted">对话上下文只保存在当前页面内存中，不写入 NAS 任务历史。</p><button id="agent-clear-context" type="button">清空对话上下文</button><form id="agent-form"><label for="agent-input">你想了解什么？</label><input id="agent-input" maxlength="2000" autocomplete="off" placeholder="例如：查看系统状态 / 然后打开刚才的目录" required><button id="agent-send" type="submit">发送</button></form><p id="agent-error" class="error" role="status"></p><div id="agent-history" aria-live="polite"><p class="muted">登录后可开始查询。</p></div><h3>任务队列</h3><p id="task-stats" class="muted">正在读取队列状态…</p><h3>待确认的危险操作</h3><p class="muted">确认只对下面显示的具体目标有效，60 秒内有效且只能执行一次。</p><button id="refresh-pending-actions" type="button">刷新待确认操作</button><div id="pending-actions"><p class="muted">没有待确认操作。</p></div><h3>最近任务</h3><label for="task-history-status">按状态筛选</label><select id="task-history-status"><option value="">全部状态</option><option value="queued">排队中</option><option value="running">运行中</option><option value="completed">已完成</option><option value="failed">失败</option><option value="cancelled">已取消</option></select><label for="task-history-search">搜索任务 ID、状态或阶段</label><input id="task-history-search" type="search" maxlength="100" placeholder="输入任务 ID 或阶段关键词"><p id="task-history-count" class="muted">正在加载任务历史…</p><button id="task-history-prev" type="button" disabled>上一页</button> <button id="task-history-next" type="button" disabled>下一页</button> <button id="agent-refresh-tasks" type="button">刷新任务历史</button> <button id="task-history-clear" type="button">清理已结束任务</button><div id="agent-recent-tasks"><p class="muted">暂无任务记录。</p></div></section>
-<section class="card hidden" id="skills-card"><h2>Skill 管理</h2><p class="warning">ZIP 上传后只会检查结构并存入隔离目录，不会解压或执行。每个 ZIP 最大 25 MiB（解压声明总量不超过 64 MiB）；导入后只存入隔离区并进行静态审核，不会解压或执行。</p><form id="skill-import-form"><label for="import-skill-name">Skill 名称</label><input id="import-skill-name" maxlength="100" required><label for="import-skill-version">版本（可选）</label><input id="import-skill-version" maxlength="40"><label for="import-skill-source">来源备注（可选）</label><input id="import-skill-source" maxlength="100"><label for="skill-archive">Skill ZIP 文件</label><input id="skill-archive" type="file" accept=".zip,application/zip" multiple required><button id="skill-import-submit" type="submit">上传并隔离待审核</button><progress id="skill-import-progress" max="100" value="0" class="hidden"></progress><p id="skill-import-status" class="muted" role="status"></p><button id="skill-import-cancel" type="button" disabled>取消上传</button></form>
-<form id="skill-remote-import-form">
-<label for="skill-remote-url">GitHub 仓库地址或 ZIP URL</label><input id="skill-remote-url" type="url" maxlength="2048" placeholder="https://github.com/owner/repo" required>
-<label for="skill-remote-name">Skill 名称</label><input id="skill-remote-name" maxlength="100" placeholder="导入后显示的名称" required>
-<label for="skill-remote-version">版本（可选）</label><input id="skill-remote-version" maxlength="40" placeholder="例如 v1.2.0">
-<button id="skill-remote-import-submit" type="submit">从 GitHub 下载并隔离</button>
-<p id="skill-remote-import-status" class="muted" role="status">可直接粘贴仓库地址（自动识别默认分支），也可粘贴分支/标签 ZIP；下载内容只进入隔离审核区，不会执行。</p>
-</form>
-<form id="skill-remote-batch-form">
-<label for="skill-remote-batch-urls">批量 GitHub 仓库或 ZIP 地址（每行一个，最多 5 个）</label>
-<textarea id="skill-remote-batch-urls" rows="4" maxlength="10240" placeholder="https://github.com/owner/skill-one&#10;https://github.com/owner/skill-two" required></textarea>
-<label for="skill-remote-batch-version">统一版本备注（可选）</label><input id="skill-remote-batch-version" maxlength="40" placeholder="例如 imported-2026-10">
-<button id="skill-remote-batch-submit" type="submit">批量下载并隔离</button>
-<p id="skill-remote-batch-status" class="muted" role="status">按行顺序导入；所有项目共享 25 MiB 累计下载上限。单项失败不会撤销已成功的隔离导入。</p>
-</form><details><summary>手动登记已有归档摘要（仅元数据）</summary><form id="skill-form"><label for="skill-name">Skill 名称</label><input id="skill-name" maxlength="100" required><label for="skill-version">版本（可选）</label><input id="skill-version" maxlength="40"><label for="skill-hash">归档 SHA-256</label><input id="skill-hash" minlength="64" maxlength="64" pattern="[a-fA-F0-9]{64}" required><label for="skill-source">来源备注（可选）</label><input id="skill-source" maxlength="100"><button type="submit">登记元数据</button></form></details><p id="skill-error" class="error" role="status"></p><div class="skill-filters"><label for="skill-search">搜索 Skill 名称、版本、来源、摘要或能力</label><input id="skill-search" maxlength="100" placeholder="输入关键词"><label for="skill-state-filter">状态筛选</label><select id="skill-state-filter"><option value="">全部状态</option><option value="pending_review">待审核</option><option value="approved">已批准</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="rejected">已拒绝</option></select><button id="skill-filter-apply" type="button">筛选</button><label><input id="skill-select-visible" type="checkbox">选择本页</label><label for="skill-batch-state">批量目标状态</label><select id="skill-batch-state"><option value="approved">批准</option><option value="enabled">启用</option><option value="disabled">停用</option><option value="rejected">拒绝</option></select><label for="skill-batch-note">批量审核备注（可选）</label><input id="skill-batch-note" maxlength="500" placeholder="统一备注"><button id="skill-batch-apply" type="button" disabled>执行批量变更</button><span id="skill-selected-count" class="muted">已选择 0 个</span><p id="skill-count" class="muted">尚未加载</p><button id="skill-page-prev" type="button" disabled>上一页</button> <button id="skill-page-next" type="button" disabled>下一页</button></div><div id="skill-list"><p class="muted">尚未加载</p></div></section>
-<section class="card hidden" id="security-note"><h2>安全说明</h2><p class="muted">任意系统命令和导入 Skill 执行默认关闭。已登记的常规文件操作需通过有效会话及参数校验。HTTP 不加密传输内容，因此仅限可信局域网，不要暴露到公网。</p></section>
-<script>
-/* Output formatting helpers: readable units for measurements returned by the API. */
-const DISPLAY_BYTE_UNITS=["B","KB","MB","GB","TB","PB"];
-function formatBytes(value){
- if(value===null||value===undefined||value===""||!Number.isFinite(Number(value)))return "—";
- const bytes=Number(value);if(bytes===0)return "0 B";
- let amount=Math.abs(bytes),unitIndex=0;
- while(amount>=1024&&unitIndex<DISPLAY_BYTE_UNITS.length-1){amount/=1024;unitIndex++;}
- amount=bytes/(1024**unitIndex);
- const digits=unitIndex===0?0:amount>=100?0:amount>=10?1:2;
- return new Intl.NumberFormat("zh-CN",{maximumFractionDigits:digits}).format(amount)+" "+DISPLAY_BYTE_UNITS[unitIndex];
-}
-function formatDurationSeconds(value){
- if(value===null||value===undefined||!Number.isFinite(Number(value)))return "—";
- const seconds=Math.max(0,Math.floor(Number(value)));
- if(seconds<60)return seconds+" 秒";
- const days=Math.floor(seconds/86400),minutes=Math.floor(seconds%3600/60),remaining=seconds%60;
- if(days){const hours=Math.floor(seconds%86400/3600);return days+" 天"+(hours?" "+hours+" 小时":"");}
- if(seconds>=3600)return Math.floor(seconds/3600)+" 小时"+(minutes?" "+minutes+" 分":"");
- return Math.floor(seconds/60)+" 分"+(remaining?" "+remaining+" 秒":"");
-}
-function formatDurationMs(value){
- if(value===null||value===undefined||!Number.isFinite(Number(value)))return "—";
- const milliseconds=Math.max(0,Number(value));
- if(milliseconds<1000)return Math.round(milliseconds)+" ms";
- if(milliseconds<60000)return new Intl.NumberFormat("zh-CN",{maximumFractionDigits:2}).format(milliseconds/1000)+" 秒";
- return formatDurationSeconds(milliseconds/1000);
-}
-function formatDateTime(value){
- if(value===null||value===undefined||value==="")return "—";
- const date=new Date(value);if(!Number.isFinite(date.getTime()))return String(value);
- return new Intl.DateTimeFormat("zh-CN",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(date);
-}
-function formatDisplayValue(value,key=""){
- if(Array.isArray(value))return value.map(item=>formatDisplayValue(item,key));
- if(value!==null&&typeof value==="object")return Object.fromEntries(Object.entries(value).map(([childKey,childValue])=>[childKey,formatDisplayValue(childValue,childKey)]));
- if(typeof value==="number"){
-  if(/(?:bytes?|BytesScanned)$/i.test(key))return formatBytes(value);
-  if(/(?:duration|elapsed|latency|responseTime|requestTime)Ms$/i.test(key))return formatDurationMs(value);
-  if(/(?:uptime|duration|elapsed|runtime)Seconds$/i.test(key))return formatDurationSeconds(value);
-  if(/(?:percent|percentage|progress)$/i.test(key))return new Intl.NumberFormat("zh-CN",{maximumFractionDigits:1}).format(value)+"%";
-  if(/bytesPerSecond|bytesPerSec$/i.test(key))return formatBytes(value)+"/s";
- }
- if(typeof value==="string"){
-  if(/(?:At|Date|Timestamp)$/i.test(key)&&/^\d{4}-\d{2}-\d{2}(?:T|\s)/.test(value))return formatDateTime(value);
-  if(/^(?:stdout|stderr|output|rawOutput|responseText)$/i.test(key)&&/^\s*[\[{]/.test(value)){try{return formatDisplayValue(JSON.parse(value),key);}catch{}}
- }
- return value;
-}
-function formatOutputJson(value){
- let parsed=value;
- if(typeof value==="string"){
-  const trimmed=value.trim();
-  if(trimmed.startsWith("{")||trimmed.startsWith("[")){try{parsed=JSON.parse(value);}catch{return value;}}
-  else return value;
- }
- return JSON.stringify(formatDisplayValue(parsed),null,2);
-}
 
-const setupCard=document.querySelector("#setup-card"),loginCard=document.querySelector("#login-card"),statusCard=document.querySelector("#status-card"),errorEl=document.querySelector("#login-error"),tokenEl=document.querySelector("#token"),newTokenEl=document.querySelector("#new-token");
-async function api(path,options={}){return fetch(path,{cache:"no-store",credentials:"same-origin",...options});}
-async function refresh(){const s=document.querySelector("#status"),d=document.querySelector("#detail"),out=document.querySelector("#diagnostics");try{const r=await api("/api/health");if(!r.ok)throw Error();const h=await r.json();s.textContent=h.ok?"运行正常":"状态异常";d.textContent="版本 "+h.version+"；任意系统命令执行："+(h.executionEnabled?"已启用":"关闭")+"；已登记的常规文件工具可用。";const modeEl=document.querySelector("#execution-mode"),modeStatus=document.querySelector("#execution-mode-status");if(modeEl&&h.executionMode){modeEl.value=h.executionMode;if(modeStatus)modeStatus.textContent="当前执行模式："+({normal:"正常","read-only":"只读",halted:"停机"}[h.executionMode]||h.executionMode)+"（来源："+(h.executionModeSource||"default")+"）。";}const dr=await api("/api/diagnostics");if(!dr.ok)throw Error("诊断读取失败（HTTP "+dr.status+"）");const x=await dr.json();const gib=formatBytes;out.textContent=["系统："+x.system.platform+" "+x.system.release+" / "+x.system.arch,"Node.js："+x.system.nodeVersion+"；运行时间："+formatDurationSeconds(x.system.uptimeSeconds),"CPU："+x.cpu.model+"（逻辑核心 "+x.cpu.logicalCores+"）；负载 "+x.cpu.loadAverage.map(n=>n.toFixed(2)).join(" / "),"内存：已用 "+gib(x.memory.usedBytes)+" / "+gib(x.memory.totalBytes)+"（可用 "+gib(x.memory.freeBytes)+"）","网络："+(x.network.flatMap(n=>n.addresses.map(a=>n.name+" "+a.address)).join("；")||"未发现非回环地址"),"存储："+x.storage.map(v=>v.available?v.label+" 已用 "+gib(v.usedBytes)+" / "+gib(v.totalBytes)+"（可用 "+gib(v.freeBytes)+"）":v.label+" 无法读取").join("；")].join("\n");}catch(e){out.textContent=e.message||"诊断信息暂不可用";if(!s.textContent)s.textContent="无法连接服务";}}
-async function init(){try{const r=await api("/api/session");const x=await r.json();if(x.authenticated){showWorkspace();await refresh();await refreshSkills();await refreshModelPresets();await refreshModels();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();await refreshPendingActions();}else if(x.setupRequired){loginCard.classList.add("hidden");setupCard.classList.remove("hidden");if(x.setupCodeRequired){const codeEl=document.querySelector("#setup-code");if(codeEl){codeEl.required=true;codeEl.focus();}}}}catch{}}
+<section class="card auth-card" id="login-card" hidden>
+  <div class="card__head">
+    <h2 class="card__title">登录验证</h2>
+    <p class="card__sub" id="login-help">输入管理密码登录。密码不会保存在浏览器本地存储中。</p>
+  </div>
+  <div class="card__body">
+    <form id="login-form">
+      <div class="field">
+        <label class="field__label" for="token">管理密码</label>
+        <input class="input" id="token" name="token" type="password" autocomplete="current-password" minlength="10" required>
+      </div>
+      <div class="field">
+        <label class="checkbox">
+          <input id="remember" type="checkbox">
+          <span>在此设备保持登录 30 天</span>
+        </label>
+        <p class="field__hint">仅在个人可信设备上勾选；共享设备请勿勾选。</p>
+      </div>
+      <button class="btn btn--primary btn--block" type="submit">登录</button>
+    </form>
+    <p id="login-error" class="error" role="status"></p>
+  </div>
+</section>
 
-document.querySelector("#setup-form").addEventListener("submit",async e=>{e.preventDefault();document.querySelector("#setup-error").textContent="";try{const token=newTokenEl.value;const codeEl=document.querySelector("#setup-code");const body={password:token};if(codeEl&&codeEl.value.trim())body.code=codeEl.value.trim();const r=await api("/api/setup",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});const x=await r.json();if(!r.ok)throw Error(x.error||"设置失败");tokenEl.value=token;setupCard.classList.add("hidden");loginCard.classList.remove("hidden");document.querySelector("#login-help").textContent="密码已设置，请登录。";newTokenEl.value="";if(codeEl)codeEl.value="";tokenEl.focus();}catch(e){document.querySelector("#setup-error").textContent=e.message||"设置失败";}});
-document.querySelector("#login-form").addEventListener("submit",async e=>{e.preventDefault();errorEl.textContent="";try{const r=await api("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({password:tokenEl.value,remember:document.querySelector("#remember").checked})});const x=await r.json();if(!r.ok)throw Error(x.error||"登录失败");tokenEl.value="";showWorkspace("status-card");await refresh();await refreshSkills();await refreshModels();await refreshTools();await refreshFiles();await refreshAgentStatus();await refreshRecentTasks();}catch(e){errorEl.textContent=e.message||"登录失败";}});
-function clearModelProviderForm(){
- const form=document.querySelector("#model-provider-form");
- form.reset();
- document.querySelector("#model-provider-id").value="";
- document.querySelector("#model-provider-key").value="";
- document.querySelector("#model-provider-enabled").checked=true;
- document.querySelector("#model-provider-fallback").checked=false;
- document.querySelector("#model-provider-clear-key").checked=false;
- document.querySelector("#model-provider-preset").value="";
- document.querySelector("#model-provider-key").placeholder="添加时必填；编辑时留空表示保留已保存密钥";
- document.querySelector("#model-provider-save").textContent="添加模型服务商";
-}
-let cachedModelPresets = [];
-async function refreshModelPresets(){
- const select=document.querySelector("#model-provider-preset");
- try{
-  const response=await api("/api/models/presets"),payload=await response.json();
-  if(!response.ok)throw Error(payload.error||"服务商预设读取失败");
-  cachedModelPresets=Array.isArray(payload.presets)?payload.presets:[];
-  select.replaceChildren();
-  const customOption=document.createElement("option");customOption.value="";customOption.textContent="选择一个服务商预设…";select.append(customOption);
-  for(const preset of cachedModelPresets){
-   const option=document.createElement("option");option.value=preset.id;option.textContent=preset.name;select.append(option);
-  }
- }catch(error){
-  select.replaceChildren();
-  const option=document.createElement("option");option.value="";option.textContent="预设暂不可用，可手动填写";select.append(option);
-  document.querySelector("#model-provider-preset-help").textContent=error.message||"可直接填写自定义 HTTPS Endpoint。";
- }
-}
-document.querySelector("#model-provider-preset").addEventListener("change",()=>{
- const select=document.querySelector("#model-provider-preset"),preset=cachedModelPresets.find(item=>item.id===select.value);
- if(!preset)return;
- const editing=Boolean(document.querySelector("#model-provider-id").value);
- if(!editing&&preset.id!=="custom")document.querySelector("#model-provider-name").value=preset.name;
- document.querySelector("#model-provider-endpoint").value=preset.endpoint||"";
- document.querySelector("#model-provider-model").value="";
- document.querySelector("#model-provider-model").placeholder=preset.modelPlaceholder||"填写服务商提供的模型 ID";
- document.querySelector("#model-provider-preset-help").textContent=preset.description+(preset.docsUrl?" · 官方文档："+preset.docsUrl:"");
- document.querySelector("#model-provider-key").placeholder=preset.id==="ollama-local"?"本机 Ollama 通常忽略 API Key；填入占位值 ollama 即可":"添加时必填；编辑时留空表示保留已保存密钥";
- document.querySelector("#model-provider-error").textContent="";
- if(preset.endpoint)document.querySelector("#model-provider-key").focus();
-});
-async function refreshModels(){
- const host=document.querySelector("#model-provider-list"),status=document.querySelector("#model-provider-status"),error=document.querySelector("#model-provider-error");
- host.replaceChildren();error.textContent="";
- try{
-  const r=await api("/api/models"),data=await r.json();
-  if(!r.ok)throw Error(data.error||"读取模型配置失败");
-  const active=data.providers.find(item=>item.id===data.activeProviderId);
-  status.textContent=active
-   ?"当前默认模型："+active.name+" / "+active.model+(data.modelStatus?.fallbackProviders?"；备用模型 "+data.modelStatus.fallbackProviders+" 个":"")
-   :data.modelStatus?.enabled
-    ?"当前使用服务端环境变量配置的模型："+(data.modelStatus.model||"未命名")
-    :"当前没有启用的大模型；规则匹配功能仍可使用。";
-  const totals=data.metrics?.totals||{};
-  const average=(data.metrics?.providers||[]).filter(item=>item.averageLatencyMs!==null);
-  const avg=average.length?Math.round(average.reduce((sum,item)=>sum+item.averageLatencyMs,0)/average.length):null;
-  document.querySelector("#model-provider-metrics").textContent=
-   "模型调用（当前进程）："+(totals.requests||0)+" 次；成功 "+(totals.successes||0)+"；失败 "+(totals.failures||0)+"；重试 "+(totals.retries||0)+
-   "；Token（服务商有返回时统计）输入 "+(totals.inputTokens||0)+" / 输出 "+(totals.outputTokens||0)+" / 合计 "+(totals.totalTokens||0)+
-   (avg===null?"":"；各模型平均耗时约 "+avg+" ms")+"。不估算费用；重启服务后统计清零。";
-  if(!data.providers.length){
-   const p=document.createElement("p");p.className="muted";p.textContent="尚未添加模型服务商。填写上方表单即可添加。";host.append(p);return;
-  }
-  for(const item of data.providers){
-   const card=document.createElement("div");card.className="card";
-   const labels=[item.isDefault?"当前默认":item.enabled?"已启用":"已停用",item.fallback?"备用模型":""].filter(Boolean).join(" · ");
-   const heading=document.createElement("strong");heading.textContent=item.name+" · "+labels;card.append(heading);
-   const meta=document.createElement("p");meta.className="muted";meta.textContent="模型："+item.model+"；API Key："+(item.hasApiKey?"已加密保存":"未配置")+"；Endpoint："+item.endpoint;card.append(meta);
-   if(item.lastTest){
-    const last=document.createElement("p");last.className=item.lastTest.ok?"muted":"error";
-    last.textContent=(item.lastTest.ok?"最近连接测试成功：":"最近连接测试失败：")+item.lastTest.message+(item.lastTest.at?"（"+formatDateTime(item.lastTest.at)+"）":"")+(Number.isSafeInteger(item.lastTest.durationMs)?" · 耗时 "+formatDurationMs(item.lastTest.durationMs):"")+(Number.isInteger(item.lastTest.statusCode)?" · HTTP "+item.lastTest.statusCode:"");card.append(last);
-   }else{
-    const last=document.createElement("p");last.className="muted";last.textContent="尚未测试连接。";card.append(last);
-   }
-   const actions=document.createElement("div");
-   const edit=document.createElement("button");edit.type="button";edit.textContent="编辑";
-   edit.addEventListener("click",()=>{
-    document.querySelector("#model-provider-id").value=item.id;
-    document.querySelector("#model-provider-name").value=item.name;
-    document.querySelector("#model-provider-endpoint").value=item.endpoint;
-    document.querySelector("#model-provider-model").value=item.model;
-    document.querySelector("#model-provider-model").placeholder="填写服务商提供的模型 ID";
-    document.querySelector("#model-provider-key").value="";
-    document.querySelector("#model-provider-key").placeholder=item.hasApiKey?"留空保留已保存的 API Key":"请输入 API Key";
-    document.querySelector("#model-provider-enabled").checked=item.enabled;
-    document.querySelector("#model-provider-fallback").checked=item.fallback===true;
-    document.querySelector("#model-provider-clear-key").checked=false;
-    document.querySelector("#model-provider-preset").value="";
-    document.querySelector("#model-provider-preset-help").textContent="正在编辑已有服务商；留空 API Key 可以保留原值。";
-    document.querySelector("#model-provider-save").textContent="保存修改";
-    document.querySelector("#model-provider-error").textContent="";
-    document.querySelector("#model-provider-name").focus();
-   });
-   const discoverButton=document.createElement("button");discoverButton.type="button";discoverButton.textContent="发现可用模型";discoverButton.disabled=!item.hasApiKey;
-   discoverButton.addEventListener("click",async()=>{
-    discoverButton.disabled=true;discoverButton.textContent="读取中…";
-    try{
-     const response=await api("/api/models/"+encodeURIComponent(item.id)+"/catalog",{method:"POST"});
-     const payload=await response.json();if(!response.ok)throw Error(payload.error||"读取模型列表失败");
-     if(!payload.ok)throw Error(payload.message||"服务商不支持模型列表接口");
-     const choices=payload.models||[];
-     if(!choices.length){document.querySelector("#model-provider-error").textContent="连接成功，但服务商未返回可用模型 ID。";return;}
-     actions.querySelector(".model-catalog-picker")?.remove();
-     const picker=document.createElement("div");picker.className="model-catalog-picker";
-     const search=document.createElement("input");search.type="search";search.maxLength=160;
-     search.placeholder="搜索模型 ID 或提供方";search.setAttribute("aria-label","搜索模型 ID 或提供方");
-     const label=document.createElement("label");label.textContent="选择服务商模型";
-     const select=document.createElement("select");select.setAttribute("aria-label","选择服务商模型");
-     const count=document.createElement("p");count.className="muted";
-     const apply=document.createElement("button");apply.type="button";apply.textContent="使用所选模型";
-     const renderChoices=()=>{
-      const previous=select.value||item.model,query=search.value.trim().toLocaleLowerCase();
-      const filtered=choices.slice(0,100).filter(model=>(model.id+" "+(model.owned_by||"")).toLocaleLowerCase().includes(query));
-      select.replaceChildren();
-      for(const model of filtered){
-       const option=document.createElement("option");option.value=model.id;
-       option.textContent=model.id+(model.owned_by?" — "+model.owned_by:"");
-       option.selected=model.id===previous;select.append(option);
-      }
-      if(!filtered.some(model=>model.id===previous))select.selectedIndex=0;
-      count.textContent="显示 "+filtered.length+" / "+Math.min(choices.length,100)+" 个模型"+(choices.length>100?"（仅显示前 100 个）":"");
-      apply.disabled=filtered.length===0;
-    };
-     search.addEventListener("input",renderChoices);
-     label.append(select);picker.append(search,label,count,apply);
-     renderChoices();
-     apply.addEventListener("click",()=>{
-      const modelId=select.value;
-      if(!choices.slice(0,100).some(model=>model.id===modelId)){document.querySelector("#model-provider-error").textContent="请选择目录中返回的模型。";return;}
-      document.querySelector("#model-provider-id").value=item.id;
-      document.querySelector("#model-provider-name").value=item.name;
-      document.querySelector("#model-provider-endpoint").value=item.endpoint;
-      document.querySelector("#model-provider-model").value=modelId;
-      document.querySelector("#model-provider-key").value="";
-      document.querySelector("#model-provider-key").placeholder=item.hasApiKey?"留空保留已保存的 API Key":"请输入 API Key";
-      document.querySelector("#model-provider-enabled").checked=item.enabled;
-      document.querySelector("#model-provider-fallback").checked=item.fallback===true;
-      document.querySelector("#model-provider-clear-key").checked=false;
-      document.querySelector("#model-provider-preset").value="";
-      document.querySelector("#model-provider-preset-help").textContent="已从服务商目录选择模型；点击保存修改以应用。";
-      document.querySelector("#model-provider-save").textContent="保存修改";
-      document.querySelector("#model-provider-error").textContent="已选择模型 "+modelId+"，尚未保存。";
-      document.querySelector("#model-provider-model").focus();
-      picker.remove();
-     });
-     const dismiss=document.createElement("button");dismiss.type="button";dismiss.textContent="取消";
-     dismiss.addEventListener("click",()=>picker.remove());
-     picker.append(apply,dismiss);
-     actions.append(picker);
-    }catch(error){document.querySelector("#model-provider-error").textContent=error.message||"读取模型列表失败";}
-    finally{discoverButton.disabled=false;discoverButton.textContent="发现可用模型";}
-   });
-   const testButton=document.createElement("button");testButton.type="button";testButton.textContent="测试连接";testButton.disabled=!item.hasApiKey;
-   testButton.addEventListener("click",async()=>{
-    testButton.disabled=true;testButton.textContent="测试中…";
-    try{
-     const result=await api("/api/models/"+encodeURIComponent(item.id)+"/test",{method:"POST"});
-     const payload=await result.json();if(!result.ok)throw Error(payload.error||"连接测试失败");
-     document.querySelector("#model-provider-error").textContent=(payload.test?.ok?"连接测试成功：":"连接测试失败：")+(payload.test?.message||"未知结果");
-     await refreshModels();await refreshAgentStatus();
-    }catch(error){document.querySelector("#model-provider-error").textContent=error.message||"连接测试失败";}
-    finally{testButton.disabled=false;testButton.textContent="测试连接";}
-   });
-   const makeDefault=document.createElement("button");makeDefault.type="button";makeDefault.textContent="设为默认";makeDefault.disabled=item.isDefault||!item.enabled||!item.hasApiKey;
-   makeDefault.addEventListener("click",async()=>{
-    makeDefault.disabled=true;
-    try{const response=await api("/api/models/"+encodeURIComponent(item.id)+"/default",{method:"POST"});const payload=await response.json();if(!response.ok)throw Error(payload.error||"设置默认模型失败");await refreshModels();await refreshAgentStatus();}
-    catch(error){document.querySelector("#model-provider-error").textContent=error.message||"设置默认模型失败";makeDefault.disabled=false;}
-   });
-   const toggle=document.createElement("button");toggle.type="button";toggle.textContent=item.enabled?"停用":"启用";
-   toggle.disabled=!item.hasApiKey&&!item.enabled;
-   toggle.addEventListener("click",async()=>{
-    toggle.disabled=true;
-    try{
-     const response=await api("/api/models/"+encodeURIComponent(item.id),{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({name:item.name,endpoint:item.endpoint,model:item.model,enabled:!item.enabled})});
-     const payload=await response.json();if(!response.ok)throw Error(payload.error||"更新模型状态失败");
-     await refreshModels();await refreshAgentStatus();
-    }catch(error){document.querySelector("#model-provider-error").textContent=error.message||"更新模型状态失败";toggle.disabled=false;}
-   });
-   const remove=document.createElement("button");remove.type="button";remove.textContent="删除";
-   remove.addEventListener("click",async()=>{
-    if(!confirm("确定删除模型服务商“"+item.name+"”？加密保存的 API Key 也会被移除。"))return;
-    remove.disabled=true;
-    try{const response=await api("/api/models/"+encodeURIComponent(item.id),{method:"DELETE"});const payload=await response.json();if(!response.ok)throw Error(payload.error||"删除模型失败");if(document.querySelector("#model-provider-id").value===item.id)clearModelProviderForm();await refreshModels();await refreshAgentStatus();}
-    catch(error){document.querySelector("#model-provider-error").textContent=error.message||"删除模型失败";remove.disabled=false;}
-   });
-   actions.append(edit,discoverButton,testButton,makeDefault,toggle,remove);card.append(actions);host.append(card);
-  }
- }catch(error){
-  status.textContent="无法读取大模型配置。";
-  const p=document.createElement("p");p.className="error";p.textContent=error.message||"检查 Agent 私有数据目录配置。";host.append(p);
- }
-}
-document.querySelector("#model-provider-form").addEventListener("submit",async event=>{
- event.preventDefault();
- const error=document.querySelector("#model-provider-error"),save=document.querySelector("#model-provider-save");
- error.textContent="";save.disabled=true;
- try{
-  const id=document.querySelector("#model-provider-id").value;
-  const apiKey=document.querySelector("#model-provider-key").value;
-  const clearApiKey=document.querySelector("#model-provider-clear-key").checked;
-  const body={
-   name:document.querySelector("#model-provider-name").value,
-   endpoint:document.querySelector("#model-provider-endpoint").value,
-   model:document.querySelector("#model-provider-model").value,
-   enabled:document.querySelector("#model-provider-enabled").checked,
-   fallback:document.querySelector("#model-provider-fallback").checked
-  };
-  if(apiKey)body.apiKey=apiKey;
-  if(clearApiKey)body.clearApiKey=true;
-  const response=await api(id?"/api/models/"+encodeURIComponent(id):"/api/models",{method:id?"PUT":"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
-  const payload=await response.json();if(!response.ok)throw Error(payload.error||"保存模型配置失败");
-  clearModelProviderForm();await refreshModels();await refreshAgentStatus();
-  error.textContent="模型配置已安全保存。";
- }catch(error){document.querySelector("#model-provider-error").textContent=error.message||"保存模型配置失败";}
- finally{save.disabled=false;}
-});
-let modelBatchTestOffset = 0;
-async function runModelProviderBatchTest(){
- const button=document.querySelector("#model-provider-test-batch");
- const status=document.querySelector("#model-provider-test-batch-status");
- button.disabled=true;
- try{
-  const response=await api("/api/models"),data=await response.json();
-  if(!response.ok)throw Error(data.error||"读取模型配置失败");
-  const enabled=(data.providers||[]).filter(item=>item.enabled&&item.hasApiKey);
-  if(!enabled.length){status.textContent="没有可测试的模型；请先添加模型并启用、配置 API Key。";return;}
-  const start=modelBatchTestOffset>=enabled.length?0:modelBatchTestOffset;
-  const batch=enabled.slice(start,start+5);
-  const results=[];
-  for(let index=0;index<batch.length;index++){
-   const item=batch[index];
-   status.textContent="正在测试第 "+(index+1)+" / "+batch.length+" 个模型："+item.name+"…";
-   try{
-    const result=await api("/api/models/"+encodeURIComponent(item.id)+"/test",{method:"POST"});
-    const payload=await result.json();
-    if(!result.ok)throw Error(payload.error||"连接测试请求失败");
-    results.push({name:item.name,ok:payload.test?.ok===true,message:payload.test?.message||"未返回测试结果",durationMs:Number.isSafeInteger(payload.test?.durationMs)?payload.test.durationMs:null});
-   }catch(error){results.push({name:item.name,ok:false,message:error.message||"连接测试请求失败"});}
-  }
-  modelBatchTestOffset=start+batch.length>=enabled.length?0:start+batch.length;
-  await refreshModels();
-  const passed=results.filter(item=>item.ok).length;
-  const failed=results.length-passed;
-  const details=results.map(item=>(item.ok?"✓ ":"✗ ")+item.name+"："+item.message+(Number.isSafeInteger(item.durationMs)?"（"+formatDurationMs(item.durationMs)+"）":"")).join("；");
-  const remaining=enabled.length-(start+batch.length);
-  status.textContent="本批完成：成功 "+passed+"，失败 "+failed+"。"+(remaining>0?"还有 "+remaining+" 个未测试，继续点击测试下一批。":"已覆盖当前所有启用模型。")+(details?" "+details:"");
- }catch(error){status.textContent=error.message||"批量连接测试失败。";}
- finally{button.disabled=false;}
-}
-document.querySelector("#model-provider-test-batch").addEventListener("click",runModelProviderBatchTest);
-document.querySelector("#model-provider-reset").addEventListener("click",clearModelProviderForm);
-document.querySelector("#model-provider-refresh").addEventListener("click",refreshModels);
-let generatedTrimCliCommand = "";
-const trimHostInput=document.querySelector("#trim-cli-host"),trimPortInput=document.querySelector("#trim-cli-port"),trimSchemeInput=document.querySelector("#trim-cli-scheme");
-let trimPortEdited=false;
-trimPortInput.addEventListener("input",()=>{trimPortEdited=true;});
-function updateDefaultTrimCliPort(){
- if(trimPortEdited)return;
- const host=trimHostInput.value.trim().replace(/^\[|\]$/g,"");
- const isIp=host.includes(":")||/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host);
- trimPortInput.value=trimSchemeInput.value==="http"?"5666":isIp?"5667":"443";
-}
-trimHostInput.addEventListener("change",updateDefaultTrimCliPort);
-trimSchemeInput.addEventListener("change",updateDefaultTrimCliPort);
-document.querySelector("#trim-cli-command").addEventListener("click",async()=>{
- const out=document.querySelector("#trim-cli-command-output"),copy=document.querySelector("#trim-cli-copy"),button=document.querySelector("#trim-cli-command");
- generatedTrimCliCommand="";copy.disabled=true;button.disabled=true;out.textContent="正在生成命令…";
- try{
-  const body={
-   host:document.querySelector("#trim-cli-host").value,
-   port:Number(document.querySelector("#trim-cli-port").value),
-   scheme:document.querySelector("#trim-cli-scheme").value,
-   allowSelfSigned:document.querySelector("#trim-cli-self-signed").checked,
-   flow:document.querySelector("#trim-cli-flow").value
-  };
-  const r=await api("/api/agent/trim-cli/login-command",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
-  const payload=await r.json();if(!r.ok)throw Error(payload.error||"无法生成登录命令");
-  generatedTrimCliCommand=payload.command;out.textContent=generatedTrimCliCommand;copy.disabled=false;
- }catch(error){out.textContent=error.message||"无法生成登录命令";}
- finally{button.disabled=false;}
-});
-document.querySelector("#trim-cli-copy").addEventListener("click",async()=>{
- if(!generatedTrimCliCommand)return;
- const out=document.querySelector("#trim-cli-command-output");
- try{
-  if(navigator.clipboard&&navigator.clipboard.writeText)await navigator.clipboard.writeText(generatedTrimCliCommand);
-  else throw Error("Clipboard API unavailable");
-  out.textContent="命令已复制到剪贴板。\\n\\n"+generatedTrimCliCommand;
- }catch{
-  const area=document.createElement("textarea");area.value=generatedTrimCliCommand;area.setAttribute("readonly","");area.style.position="absolute";area.style.left="-9999px";document.body.append(area);area.select();
-  try{if(!document.execCommand("copy"))throw Error();out.textContent="命令已复制到剪贴板。\\n\\n"+generatedTrimCliCommand;}
-  catch{out.textContent="请长按选择并复制命令：\\n\\n"+generatedTrimCliCommand;}
-  area.remove();
- }
-});
-document.querySelector("#trim-cli-test").addEventListener("click",async()=>{
- const button=document.querySelector("#trim-cli-test"),result=document.querySelector("#trim-cli-test-result");
- button.disabled=true;result.textContent="正在执行只读连接探测…";
- try{
-  const r=await api("/api/agent/trim-cli/test",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});
-  const body=await r.json();
-  if(!r.ok){
-   result.textContent=(body.error||"连接探测失败")+(body.nextAction?" 下一步："+body.nextAction:"");
-   return;
-  }
-  result.textContent="连接成功（"+formatDateTime(body.checkedAt)+"）。官方 CLI 已完成只读系统信息查询，OAuth 授权与 API 连通性已验证。";
- }catch(error){result.textContent=error.message||"连接探测失败";}
- finally{await refreshAgentStatus();button.disabled=false;}
-});
-async function refreshAgentStatus(){
- try{
-  const r=await api("/api/agent/status");const x=await r.json();if(!r.ok)throw Error(x.error||"状态读取失败");
-  const cli=x.trimCli||{};
-  const statuses={
-   not_ready:"未就绪",not_tested:"尚未测试",stale:"检测结果已过期",connected:"连接正常",
-   auth_required:"需要重新登录",scope_missing:"授权范围不足",tls_error:"HTTPS 证书错误",
-   timeout:"请求超时",network_error:"网络不可达",rate_limited:"请求过于频繁",
-   profile_unavailable:"Profile 配置不可用",failed:"连接失败"
-  };
-  const statusLabel=statuses[cli.connectionStatus]||"状态未知";
-  const install=cli.available?"CLI 已安装且可执行":cli.configured?"CLI 路径已配置但不可执行":"官方 CLI 尚未安装";
-  document.querySelector("#agent-status").textContent="规则优先；模型："+(x.model.enabled?"已启用（"+(x.model.providerName||x.model.model)+" / "+x.model.model+"）":"未配置")+"；可用工具："+x.availableTools+"；官方 CLI："+install+"；连接状态："+statusLabel+"；任意命令执行：关闭。";
-  const detail=document.querySelector("#trim-cli-connection-detail");
-  const parts=[cli.message||cli.note||"尚无连接状态信息。"];
-  if(cli.checkedAt)parts.push("上次检测："+formatDateTime(cli.checkedAt));
-  if(cli.errorCategory)parts.push("错误类别："+cli.errorCategory);
-  if(cli.nextAction)parts.push("建议："+cli.nextAction);
-  detail.textContent=parts.join(" ");
-  const testButton=document.querySelector("#trim-cli-test");if(testButton)testButton.disabled=!cli.available;
- }catch(e){
-  document.querySelector("#agent-status").textContent="Agent 状态暂不可用";
-  document.querySelector("#trim-cli-connection-detail").textContent="无法获取连接状态；请刷新页面后重试。";
- }
-}
-let conversationContext = [];
-function refreshConversationContextStatus(){
- const label=document.querySelector("#agent-context-status");
- if(label)label.textContent="对话上下文："+conversationContext.length+" 条消息（最多 8 条），仅在当前页面内存中保留；不会写入 NAS 任务历史。";
-}
-document.querySelector("#agent-clear-context").addEventListener("click",()=>{
- conversationContext=[];
- refreshConversationContextStatus();
-});
-function renderAgentTurn(label, body){
- const host=document.querySelector("#agent-history");const card=document.createElement("div");card.className="card";
- const title=document.createElement("strong");title.textContent=label;card.append(title);
- const content=document.createElement("pre");content.textContent=body;card.append(content);host.append(card);
-}
-let taskRefreshTimer=null,taskHistoryOffset=0;
- const taskHistoryPageSize=10;
- async function refreshRecentTasks(){
- const stats=document.querySelector("#task-stats");
- try{const sr=await api("/api/tasks/status"),sd=await sr.json();if(!sr.ok)throw Error();stats.textContent="运行中 "+sd.running+" · 排队 "+sd.queued+" · 保留历史 "+sd.retained+" · 并发上限 "+sd.concurrency;}catch{stats.textContent="队列状态暂不可用";}
- const host=document.querySelector("#agent-recent-tasks");
- try{
-  const params=new URLSearchParams({limit:String(taskHistoryPageSize),offset:String(taskHistoryOffset)});
-  const status=document.querySelector("#task-history-status").value;if(status)params.set("status",status);
-  const search=document.querySelector("#task-history-search").value.trim();if(search)params.set("q",search);
-  const r=await api("/api/tasks?"+params.toString()),data=await r.json();if(!r.ok)throw Error(data.error||"读取失败");
-  document.querySelector("#task-history-count").textContent="匹配 "+data.total+" 个 · 显示 "+(data.total?data.offset+1:0)+"–"+Math.min(data.offset+data.tasks.length,data.total);
-  document.querySelector("#task-history-prev").disabled=data.offset<=0;
-  document.querySelector("#task-history-next").disabled=data.offset+data.tasks.length>=data.total;
-  host.replaceChildren();
-  if(!data.tasks.length){const p=document.createElement("p");p.className="muted";p.textContent="暂无符合条件的任务记录。";host.append(p);if(taskRefreshTimer){clearTimeout(taskRefreshTimer);taskRefreshTimer=null;}return;}
-  let hasActive=false;
-  for(const task of data.tasks){
-   const card=document.createElement("div");card.className="card";
-   const title=document.createElement("strong");title.textContent=task.taskId+" · "+task.status;card.append(title);
-   const info=document.createElement("p");info.className="muted";info.textContent="创建："+formatDateTime(task.createdAt)+(task.completedAt?"；完成："+formatDateTime(task.completedAt):"");card.append(info);
-   if(task.status==="queued"||task.status==="running"){
-    hasActive=true;
-    const stage=document.createElement("p");stage.className="muted";stage.textContent=(task.stage||(task.status==="queued"?"排队中":"执行中"))+" · "+Math.max(0,Math.min(100,Number(task.progress)||0))+"%";card.append(stage);
-    const bar=document.createElement("progress");bar.max=100;bar.value=Math.max(0,Math.min(100,Number(task.progress)||0));bar.setAttribute("aria-label","任务进度");bar.style.width="100%";bar.style.height="12px";card.append(bar);
-   }else if(task.status==="completed"){
-    const stage=document.createElement("p");stage.className="muted";stage.textContent=(task.stage||"已完成")+" · 100%";card.append(stage);
-   }
-   if(task.result?.message){const message=document.createElement("p");message.textContent=task.result.message;card.append(message);}
-   if(task.result?.truncated){const note=document.createElement("p");note.className="muted";note.textContent="任务结果过大，已在服务端限制保留内容。";card.append(note);}
-   if(Array.isArray(task.result?.results)&&task.result.results.length){
-    const details=document.createElement("details");const summary=document.createElement("summary");summary.textContent="查看执行结果（"+task.result.results.length+" 项）";details.append(summary);
-    const pre=document.createElement("pre");let serialized="";
-    try{serialized=formatOutputJson(task.result.results.slice(0,10));}catch{serialized="结果无法显示";}
-    pre.textContent=serialized.length>12000?serialized.slice(0,12000)+"\n…（结果已截断）":serialized;
-    pre.style.maxHeight="320px";pre.style.overflow="auto";details.append(pre);
-    if(task.result.results.length>10){const note=document.createElement("p");note.className="muted";note.textContent="仅显示前 10 项。";details.append(note);}
-    card.append(details);
-   }
-   if(task.status==="queued"||task.status==="running"){
-    const cancel=document.createElement("button");cancel.type="button";
-    cancel.textContent=task.status==="queued"?"取消排队任务":task.cancelRequested?"等待当前工具结束…":"请求停止";
-    cancel.disabled=task.status==="running"&&task.cancelRequested;
-    cancel.addEventListener("click",async()=>{
-     cancel.disabled=true;
-     try{
-      const cr=await api("/api/tasks/"+encodeURIComponent(task.taskId)+"/cancel",{method:"POST"});const cb=await cr.json();if(!cr.ok)throw Error(cb.error||"取消失败");
-      if(cb.cancelRequested)document.querySelector("#agent-error").textContent="已请求停止；当前工具会先完成，不会启动后续工具。";
-      await refreshRecentTasks();
-     }catch(error){cancel.disabled=false;alert(error.message||"取消失败");}
-    });
-    card.append(cancel);
-   }
-   if(task.error){const error=document.createElement("p");error.className="error";error.textContent=task.error;card.append(error);}
-   host.append(card);
-  }
-  if(hasActive){if(taskRefreshTimer)clearTimeout(taskRefreshTimer);taskRefreshTimer=setTimeout(refreshRecentTasks,1200);}
-  else if(taskRefreshTimer){clearTimeout(taskRefreshTimer);taskRefreshTimer=null;}
- }catch{host.textContent="任务历史暂不可用。";}
-}
-async function refreshPendingActions(){
- const host=document.querySelector("#pending-actions");if(!host)return;host.replaceChildren();
- try{
-  const r=await api("/api/actions/pending"),data=await r.json();if(!r.ok)throw Error(data.error||"读取待确认操作失败");
-  if(!data.actions.length){const p=document.createElement("p");p.className="muted";p.textContent="没有待确认操作。";host.append(p);return;}
-  for(const action of data.actions){
-   const card=document.createElement("div");card.className="card warning";
-   const title=document.createElement("strong");title.textContent=action.title+" · 需要确认";card.append(title);
-   const target=document.createElement("p");target.textContent="目标："+(action.target||formatOutputJson(action.args));card.append(target);
-   const desc=document.createElement("p");desc.textContent=action.description+"；确认截止："+formatDateTime(action.expiresAt);card.append(desc);
-   const args=document.createElement("pre");args.textContent=formatOutputJson(action.args);card.append(args);
-   const confirmButton=document.createElement("button");confirmButton.type="button";confirmButton.textContent="确认执行此操作";
-   confirmButton.addEventListener("click",async()=>{if(!confirm("请再次确认：执行“"+action.title+"”，目标为“"+(action.target||formatOutputJson(action.args))+"”。此操作可能造成数据丢失。"))return;confirmButton.disabled=true;try{const cr=await api("/api/actions/"+encodeURIComponent(action.id)+"/confirm",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});const result=await cr.json();if(!cr.ok)throw Error(result.error||"确认执行失败");const out=document.querySelector("#tool-result");out.textContent="已执行确认操作：\\n"+formatOutputJson(result.result);await refreshFiles(currentFilePath);await refreshPendingActions();}catch(error){alert(error.message||"确认执行失败");confirmButton.disabled=false;}});
-   const denyButton=document.createElement("button");denyButton.type="button";denyButton.textContent="拒绝";
-   denyButton.addEventListener("click",async()=>{denyButton.disabled=true;try{const dr=await api("/api/actions/"+encodeURIComponent(action.id)+"/deny",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});const result=await dr.json();if(!dr.ok)throw Error(result.error||"拒绝失败");await refreshPendingActions();}catch(error){alert(error.message||"拒绝失败");denyButton.disabled=false;}});
-   card.append(confirmButton,denyButton);host.append(card);
-  }
- }catch(error){const p=document.createElement("p");p.className="error";p.textContent=error.message||"待确认操作读取失败";host.append(p);}
-}
-document.querySelector("#refresh-pending-actions").addEventListener("click",refreshPendingActions);
-document.querySelector("#task-history-status").addEventListener("change",()=>{taskHistoryOffset=0;refreshRecentTasks();});
-document.querySelector("#task-history-search").addEventListener("change",()=>{taskHistoryOffset=0;refreshRecentTasks();});
-document.querySelector("#task-history-prev").addEventListener("click",()=>{taskHistoryOffset=Math.max(0,taskHistoryOffset-taskHistoryPageSize);refreshRecentTasks();});
-document.querySelector("#task-history-next").addEventListener("click",()=>{taskHistoryOffset+=taskHistoryPageSize;refreshRecentTasks();});
-document.querySelector("#agent-refresh-tasks").addEventListener("click",refreshRecentTasks);
-document.querySelector("#task-history-clear").addEventListener("click",async()=>{
- if(!confirm("清理已完成、失败和已取消的任务记录？排队中和运行中的任务会保留，不会被取消。"))return;
- const button=document.querySelector("#task-history-clear");button.disabled=true;
- try{
-  const response=await api("/api/tasks/clear-history",{method:"POST"});const result=await response.json();
-  if(!response.ok)throw Error(result.error||"清理任务历史失败");
-  document.querySelector("#agent-error").textContent="已清理 "+result.removed+" 条已结束任务；保留 "+result.retained+" 条任务。";
-  taskHistoryOffset=0;await refreshRecentTasks();
- }catch(error){document.querySelector("#agent-error").textContent=error.message||"清理任务历史失败";}
- finally{button.disabled=false;}
-});
-
-document.querySelector("#agent-form").addEventListener("submit",async e=>{
- e.preventDefault();const field=document.querySelector("#agent-input"),send=document.querySelector("#agent-send"),err=document.querySelector("#agent-error");
- const text=field.value.trim();if(!text)return;err.textContent="";renderAgentTurn("你",text);field.value="";send.disabled=true;send.textContent="已提交…";
- try{
-  const r=await api("/api/agent/message",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text,history:conversationContext})});
-  const accepted=await r.json();if(!r.ok)throw Error(accepted.error||"请求失败");
-  const taskId=accepted.task.taskId;
-  let task=accepted.task;
-  for(let i=0;i<120;i++){
-   if(task.status==="completed"||task.status==="failed"||task.status==="cancelled")break;
-   await new Promise(resolve=>setTimeout(resolve,750));
-   const poll=await api("/api/tasks/"+encodeURIComponent(taskId));const body=await poll.json();
-   if(!poll.ok)throw Error(body.error||"任务状态读取失败");task=body.task;
-  }
-  if(task.status==="completed"&&task.result){
-   const result=task.result,details=[result.message,"任务："+taskId+"；模式："+result.mode+"；状态："+result.status];
-   for(const item of result.results||[])details.push("工具 "+item.tool+"：\n"+formatOutputJson(item.result));
-   renderAgentTurn("NAS Agent",details.join("\n\n"));
-   if(result.status==="completed"){
-    const contextParts=[result.message||"已完成请求。"];
-    for(const item of result.results||[])contextParts.push("工具 "+item.tool+"："+JSON.stringify(item.result).slice(0,320));
-    conversationContext=[...conversationContext,{role:"user",content:text},{role:"assistant",content:contextParts.join("\n").slice(0,1200)}].slice(-8);
-    refreshConversationContextStatus();
-   }
-  }else if(task.status==="failed")renderAgentTurn("NAS Agent","任务失败："+(task.error||"未知错误")+"\n任务 ID："+taskId);
-  else if(task.status==="cancelled")renderAgentTurn("NAS Agent","任务已取消。任务 ID："+taskId);
-  else renderAgentTurn("NAS Agent","任务仍在执行。任务 ID："+taskId+"。可在“最近任务”中刷新查看。");
-  await refreshRecentTasks();await refreshPendingActions();
- }catch(error){err.textContent=error.message||"请求失败";}
- finally{send.disabled=false;send.textContent="发送";field.focus();}
-});
-let currentFilePath="",currentFileOffset=0;
-async function refreshFiles(pathValue=currentFilePath,pageOffset=0){
- const host=document.querySelector("#file-list"),roots=document.querySelector("#file-roots"),err=document.querySelector("#file-error"),parent=document.querySelector("#file-parent"),field=document.querySelector("#file-path");
- err.textContent="";host.replaceChildren();roots.replaceChildren();
- try{
-  const params=new URLSearchParams({limit:"100",offset:String(pageOffset),sort:document.querySelector("#file-sort").value,type:document.querySelector("#file-type-filter").value,q:document.querySelector("#file-search").value.trim()});if(pathValue)params.set("path",pathValue);
-  const r=await api("/api/files?"+params.toString()),data=await r.json();if(!r.ok)throw Error(data.error||"目录读取失败");
-  currentFilePath=data.path||"";currentFileOffset=data.offset||0;field.value=currentFilePath;parent.disabled=!data.parentPath;
-  document.querySelector("#file-page-info").textContent="匹配 "+(data.totalEntries||0)+" 项 / 目录共 "+(data.totalDirectoryEntries||0)+" 项 · 显示 "+(data.totalEntries?currentFileOffset+1:0)+"–"+Math.min(currentFileOffset+(data.entries||[]).length,data.totalEntries||0);
-  document.querySelector("#file-page-prev").disabled=currentFileOffset<=0;
-  document.querySelector("#file-page-next").disabled=currentFileOffset+(data.entries||[]).length>=(data.totalEntries||0);
-  parent.onclick=()=>{if(data.parentPath)refreshFiles(data.parentPath);};
-  for(const root of data.roots||[]){const btn=document.createElement("button");btn.type="button";btn.textContent=root.name;btn.addEventListener("click",()=>refreshFiles(root.path));roots.append(btn);}
-  const breadcrumbs=document.querySelector("#file-breadcrumbs");breadcrumbs.replaceChildren();
-  const matchingRoot=(data.roots||[]).filter(root=>currentFilePath===root.path||currentFilePath.startsWith(root.path.replace(/\/+$/,"")+"/")).sort((a,b)=>b.path.length-a.path.length)[0];
-  if(matchingRoot){
-   const parts=[{name:matchingRoot.name,path:matchingRoot.path}];let accumulated=matchingRoot.path.replace(/\/+$/,"");
-   const relative=currentFilePath.slice(matchingRoot.path.length).split("/").filter(Boolean);
-   for(const part of relative){accumulated+="/"+part;parts.push({name:part,path:accumulated});}
-   for(let index=0;index<parts.length;index++){if(index){const sep=document.createElement("span");sep.textContent=" / ";sep.setAttribute("aria-hidden","true");breadcrumbs.append(sep);}const crumb=parts[index];if(index===parts.length-1){const current=document.createElement("strong");current.textContent=crumb.name;current.setAttribute("aria-current","location");breadcrumbs.append(current);}else{const button=document.createElement("button");button.type="button";button.textContent=crumb.name;button.addEventListener("click",()=>refreshFiles(crumb.path));breadcrumbs.append(button);}}
-  }
-  const searchTerm=document.querySelector("#file-search").value.trim().toLocaleLowerCase();
-  const typeFilter=document.querySelector("#file-type-filter").value;
-  const sortMode=document.querySelector("#file-sort").value;
-  const visibleEntries=data.entries.filter(item=>(typeFilter==="all"||item.type===typeFilter)&&(!searchTerm||item.name.toLocaleLowerCase().includes(searchTerm)));
-  visibleEntries.sort((a,b)=>{
-   if(sortMode==="size-desc")return (b.sizeBytes??-1)-(a.sizeBytes??-1)||a.name.localeCompare(b.name);
-   if(sortMode==="modified-desc")return String(b.modifiedAt||"").localeCompare(String(a.modifiedAt||""))||a.name.localeCompare(b.name);
-   return sortMode==="name-desc"?b.name.localeCompare(a.name):a.name.localeCompare(b.name);
-  });
-  if(!visibleEntries.length){const p=document.createElement("p");p.className="muted";p.textContent=data.entries.length?"没有符合筛选条件的项目。":(data.roots?.length?"此目录为空。":"未发现存储卷。请检查 fnOS 卷路径，或通过 AGENT_FILE_ROOTS 配置允许的绝对路径。");host.append(p);}
-  for(const item of visibleEntries){
-   const row=document.createElement("div");row.className="card";
-   if(item.type==="directory"){const btn=document.createElement("button");btn.type="button";btn.textContent="📁 "+item.name;btn.addEventListener("click",()=>refreshFiles(item.path));row.append(btn);}
-   else{const name=document.createElement("strong");name.textContent="📄 "+item.name;row.append(name);}
-   const meta=document.createElement("p");meta.className="muted";meta.textContent=(item.type==="directory"?"文件夹":"文件")+" · "+(item.sizeBytes===null?"—":formatBytes(item.sizeBytes))+" · "+item.modifiedAt;row.append(meta);
-   const actions=document.createElement("div");actions.className="file-row-actions";
-   const actionButton=(label,fn)=>{const b=document.createElement("button");b.type="button";b.textContent=label;b.addEventListener("click",fn);actions.append(b);};
-   if(item.type==="file"){
-    actionButton("预览",async()=>{try{const r=await api("/api/files/preview?path="+encodeURIComponent(item.path));const data=await r.json();if(!r.ok)throw Error(data.error||"预览失败");const pre=document.querySelector("#file-preview");pre.classList.remove("hidden");pre.textContent="文件："+data.name+"（"+formatBytes(data.sizeBytes)+"）\\n\\n"+data.content;}catch(e){err.textContent=e.message||"预览失败";}});
-    actionButton("下载",()=>{const a=document.createElement("a");a.href="/api/files/download?path="+encodeURIComponent(item.path);a.download=item.name;document.body.append(a);a.click();a.remove();});
-    actionButton("计算 SHA-256",async()=>{
-     err.textContent="";
-     try{
-      const response=await api("/api/files/checksum?path="+encodeURIComponent(item.path)),result=await response.json();
-      if(!response.ok)throw Error(result.error||"SHA-256 计算失败");
-      const pre=document.querySelector("#file-preview");pre.classList.remove("hidden");
-      pre.textContent="文件："+result.name+"（"+formatBytes(result.sizeBytes)+"）\\n算法："+result.algorithm+"\\nSHA-256："+result.sha256+"\\n\\n"+(result.note||"按流式分块读取，未将文件整体载入内存。");
-     }catch(error){err.textContent=error.message||"SHA-256 计算失败";}
-    });
-   }
-   actionButton("重命名",async()=>{const name=prompt("输入新的名称",item.name);if(name&&name!==item.name)try{await runFileOperation({action:"rename",path:item.path,name});}catch{}});
-   actionButton("移动",async()=>{const destination=prompt("输入目标文件夹的完整路径",currentFilePath);if(destination)try{await runFileOperation({action:"move",path:item.path,destination});}catch{}});
-   actionButton("删除",async()=>{if(confirm("确定删除“"+item.name+"”？文件夹仅能删除空目录。删除还需要在「待确认的危险操作」中再次确认。"))try{await runFileOperation({action:"delete",path:item.path});}catch{}});
-   row.append(actions);host.append(row);
-  }
-
- }catch(e){err.textContent=e.message||"目录读取失败";host.textContent="无法读取此目录。";}
-}
-document.querySelector("#file-form").addEventListener("submit",e=>{e.preventDefault();refreshFiles(document.querySelector("#file-path").value.trim());});
-let fileSearchTimer=null;
-document.querySelector("#file-search").addEventListener("input",()=>{clearTimeout(fileSearchTimer);fileSearchTimer=setTimeout(()=>refreshFiles(currentFilePath),180);});
-for(const id of ["#file-type-filter","#file-sort"])document.querySelector(id).addEventListener("change",()=>refreshFiles(currentFilePath));
-document.querySelector("#file-page-prev").addEventListener("click",()=>refreshFiles(currentFilePath,Math.max(0,currentFileOffset-100)));
-document.querySelector("#file-page-next").addEventListener("click",()=>refreshFiles(currentFilePath,currentFileOffset+100));
-async function runFileOperation(payload){const err=document.querySelector("#file-error"),status=document.querySelector("#file-operation-status");err.textContent="";status.textContent="";try{const r=await api("/api/files/operation",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const data=await r.json();if(r.status===202&&data.approvalRequired){status.textContent=data.message||"该操作需要确认，已加入「待确认的危险操作」。";await refreshPendingActions().catch(()=>{});return data;}if(!r.ok)throw Error(data.error||"文件操作失败");document.querySelector("#file-preview").classList.add("hidden");await refreshFiles(currentFilePath);return data;}catch(e){err.textContent=e.message||"文件操作失败";throw e;}}
-document.querySelector("#file-mkdir").addEventListener("click",async()=>{const name=prompt("新文件夹名称");if(name)try{await runFileOperation({action:"mkdir",path:currentFilePath,name});}catch{}});
-let activeUploadXhr=null;
-function uploadFileWithProgress(url,file,onProgress,onXhr){
- return new Promise((resolve,reject)=>{
-  const xhr=new XMLHttpRequest();onXhr(xhr);xhr.open("POST",url);xhr.withCredentials=true;xhr.setRequestHeader("content-type","application/octet-stream");
-  xhr.upload.addEventListener("progress",event=>{if(event.lengthComputable)onProgress(Math.max(0,Math.min(100,Math.round(event.loaded/event.total*100))));});
-  xhr.addEventListener("load",()=>{let data={};try{data=JSON.parse(xhr.responseText||"{}");}catch{}if(xhr.status>=200&&xhr.status<300)resolve(data);else reject(Error(data.error||"上传失败（HTTP "+xhr.status+"）"));});
-  xhr.addEventListener("error",()=>reject(Error("网络中断，上传结果尚未确认。")));
-  xhr.addEventListener("abort",()=>reject(Error("上传已中止。")));
-  xhr.send(file);
- });
-}
-document.querySelector("#file-upload-cancel").addEventListener("click",()=>{if(activeUploadXhr)activeUploadXhr.abort();});
-document.querySelector("#file-upload-button").addEventListener("click",async()=>{
- const field=document.querySelector("#file-upload"),files=Array.from(field.files||[]),err=document.querySelector("#file-error");
- const button=document.querySelector("#file-upload-button"),cancel=document.querySelector("#file-upload-cancel"),progress=document.querySelector("#file-upload-progress"),status=document.querySelector("#file-upload-status");
- err.textContent="";status.textContent="";
- if(!files.length){err.textContent="请先选择文件";return;}
- if(files.length>20){err.textContent="每批最多上传 20 个文件，请分批选择";return;}
- const oversized=files.find(file=>file.size>25*1024*1024);if(oversized){err.textContent="文件“"+oversized.name+"”超过 25 MiB，未开始上传";return;}
- button.disabled=true;cancel.disabled=false;progress.classList.remove("hidden");progress.value=0;let completed=0;
- try{
-  for(let index=0;index<files.length;index++){
-   const file=files[index],url="/api/files/upload?path="+encodeURIComponent(currentFilePath)+"&name="+encodeURIComponent(file.name);
-   status.textContent="正在上传第 "+(index+1)+" / "+files.length+" 个文件："+file.name+"（0%）";
-   await uploadFileWithProgress(url,file,percent=>{progress.value=Math.round(((index+percent/100)/files.length)*100);status.textContent="正在上传第 "+(index+1)+" / "+files.length+" 个文件："+file.name+"（"+percent+"%）";},xhr=>{activeUploadXhr=xhr;});
-   completed++;progress.value=Math.round(completed/files.length*100);
-  }
-  field.value="";status.textContent="上传完成，正在刷新目录…";await refreshFiles(currentFilePath);status.textContent="已成功上传 "+completed+" 个文件。";
- }catch(error){
-  err.textContent=(error.message||"上传失败")+(completed?"；此前已成功上传 "+completed+" 个文件。":"");
-  if(error.message==="上传已中止。"){status.textContent="已发送取消请求，正在刷新目录确认文件状态…";await refreshFiles(currentFilePath);status.textContent="上传请求已中止；请检查目录确认文件是否存在。已完成 "+completed+" / "+files.length+" 个。";}
-  else status.textContent="上传停止：已完成 "+completed+" / "+files.length+" 个；请确认目录状态后再重试。";
-  if(completed)await refreshFiles(currentFilePath);
- }finally{activeUploadXhr=null;button.disabled=false;cancel.disabled=true;}
-});
-
-async function refreshTools(){
- const host=document.querySelector("#tool-list");host.replaceChildren();
- try{
-  const r=await api("/api/tools");const data=await r.json();if(!r.ok)throw Error(data.error||"工具清单读取失败");
-  for(const item of data.tools){
-   const row=document.createElement("div");row.className="card";
-   const title=document.createElement("strong");title.textContent=item.title+" · "+item.id+" · "+(item.risk==="write"?"常规写入":item.risk==="destructive"?"需要确认":"只读");row.append(title);
-   const description=document.createElement("p");description.className="muted";description.textContent=item.description;row.append(description);
-   const schema=item.inputSchema||{},properties=schema.properties||{};
-   const form=document.createElement("form");form.className="tool-args";
-   for(const [name,rule] of Object.entries(properties)){
-    const label=document.createElement("label");label.textContent=name+(rule.type==="integer"?"（整数）":"");label.htmlFor="tool-"+item.id.replace(/[^a-zA-Z0-9_-]/g,"-")+"-"+name;
-    const input=document.createElement("input");input.id=label.htmlFor;input.name=name;input.type=rule.type==="integer"?"number":"text";input.autocomplete="off";
-    if(rule.minLength!==undefined)input.minLength=rule.minLength;
-    if(rule.maxLength!==undefined)input.maxLength=rule.maxLength;
-    if(rule.minimum!==undefined)input.min=String(rule.minimum);
-    if(rule.maximum!==undefined)input.max=String(rule.maximum);
-    if(rule.type==="integer")input.step="1";
-    input.required=(schema.required||[]).includes(name);
-    input.placeholder=input.required?"必填":"可选";
-    label.append(input);form.append(label);
-   }
-   const btn=document.createElement("button");btn.type="submit";btn.textContent=item.risk==="write"?"执行文件操作":item.risk==="destructive"?"请通过助手请求确认":"运行只读查询";if(item.risk==="destructive")btn.disabled=true;if(item.providerAvailable===false){btn.disabled=true;btn.textContent="先安装官方 CLI";const availability=document.createElement("p");availability.className="muted";availability.textContent="此工具需要已审核、已安装并启用的官方 fnOS CLI；其他本地只读工具仍可使用。";row.append(availability);}form.append(btn);
-   form.addEventListener("submit",async event=>{
-    event.preventDefault();if(!form.reportValidity())return;
-    const args={};
-    for(const [name,rule] of Object.entries(properties)){
-     const field=form.elements.namedItem(name);if(field.value==="")continue;
-     args[name]=rule.type==="integer"?Number(field.value):field.value;
-    }
-    const out=document.querySelector("#tool-result");out.textContent="正在读取 "+item.id+"…";btn.disabled=true;
-    try{const result=await api("/api/tools/"+encodeURIComponent(item.id)+"/run",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(args)});const payload=await result.json();if(!result.ok){out.textContent=(payload.error||"工具调用失败")+(payload.nextAction?"\\n\\n建议："+payload.nextAction:"");return;}out.textContent=formatOutputJson(payload.result);}
-    catch(error){out.textContent=error.message||"工具调用失败";}
-    finally{btn.disabled=false;if(item.id.startsWith("fnos."))await refreshAgentStatus();}
-   });
-   row.append(form);host.append(row);
-  }
-  if(!data.tools.length){const p=document.createElement("p");p.className="muted";p.textContent="没有可用工具";host.append(p);}
- }catch(error){const p=document.createElement("p");p.className="error";p.textContent=error.message||"工具清单读取失败";host.append(p);}
-}
-let skillPageOffset=0;
-const selectedSkillIds=new Set();
-function updateSkillSelectionUi(){document.querySelector("#skill-selected-count").textContent="已选择 "+selectedSkillIds.size+" 个";document.querySelector("#skill-batch-apply").disabled=selectedSkillIds.size===0;}
-async function refreshSkills(){
- const host=document.querySelector("#skill-list");host.replaceChildren();
- try{
-  const params=new URLSearchParams({limit:"50",offset:String(skillPageOffset)});
-  const q=document.querySelector("#skill-search").value.trim(),state=document.querySelector("#skill-state-filter").value;
-  if(q)params.set("q",q);if(state)params.set("state",state);
-  const r=await api("/api/skills?"+params.toString());if(!r.ok)throw Error("Skill 列表读取失败（HTTP "+r.status+"）");
-  const data=await r.json();
-  document.querySelector("#skill-count").textContent="匹配 "+data.total+" 个；显示第 "+(data.total?skillPageOffset+1:0)+"–"+Math.min(skillPageOffset+data.skills.length,data.total)+" 个";
-  document.querySelector("#skill-page-prev").disabled=skillPageOffset<=0;
-  document.querySelector("#skill-page-next").disabled=skillPageOffset+data.limit>=data.total;
-  if(!data.skills.length){const p=document.createElement("p");p.className="muted";p.textContent="没有匹配的 Skill 记录";host.append(p);return;}
-  for(const item of data.skills){
-   const card=document.createElement("div");card.className="card";
-   const pickLabel=document.createElement("label");const pick=document.createElement("input");pick.type="checkbox";pick.checked=selectedSkillIds.has(item.id);pick.dataset.skillId=item.id;pick.setAttribute("aria-label","选择 "+item.name);pick.addEventListener("change",()=>{if(pick.checked)selectedSkillIds.add(item.id);else selectedSkillIds.delete(item.id);updateSkillSelectionUi();});pickLabel.append(pick,document.createTextNode(" 选择此 Skill"));card.append(pickLabel);
-   const title=document.createElement("strong");title.textContent=item.name+" · "+item.state;card.append(title);
-   const meta=document.createElement("p");meta.className="muted";meta.textContent="版本："+(item.version||"未填写")+"；SHA-256："+item.archiveSha256+(item.quarantineFile?"；隔离归档："+formatBytes(item.archiveSizeBytes)+" / "+item.archiveEntryCount+" 个条目":"；仅登记元数据");card.append(meta);
-   if(item.manifestReview){const review=document.createElement("p");review.className=item.manifestReview.findings?.length?"warning":"muted";review.textContent="静态清单："+(item.manifestReview.name||"未识别名称")+"；"+(item.manifestReview.description||"无描述")+"；源码扫描 "+(item.manifestReview.sourceFilesScanned||0)+" 个 / "+formatBytes(item.manifestReview.sourceBytesScanned||0)+(item.manifestReview.sourceReviewIncomplete?"（部分源码未扫描）":"")+"；发现："+((item.manifestReview.findings||[]).join("、")||"未发现规则提示")+"。此结果仅供人工审核，不代表安全认证。";card.append(review);}
-   if(item.reviewNote){const note=document.createElement("p");note.textContent="审核备注："+item.reviewNote;card.append(note);}
-   if(item.quarantineFile){
-    const sourceDetails=document.createElement("details");
-    const sourceSummary=document.createElement("summary");sourceSummary.textContent="只读查看隔离源码";sourceDetails.append(sourceSummary);
-    const sourceNote=document.createElement("p");sourceNote.className="muted";sourceNote.textContent="以纯文本预览归档内的受支持文件，单文件上限 64 KiB；不会解压到磁盘或执行。预览内容仅显示在当前页面。";sourceDetails.append(sourceNote);
-    const sourceLoad=document.createElement("button");sourceLoad.type="button";sourceLoad.textContent="加载文件清单";sourceDetails.append(sourceLoad);
-    const sourceSelectLabel=document.createElement("label");sourceSelectLabel.textContent="选择要预览的归档文件";
-    const sourceSelect=document.createElement("select");sourceSelect.disabled=true;sourceSelectLabel.append(sourceSelect);sourceDetails.append(sourceSelectLabel);
-    const sourcePreviewButton=document.createElement("button");sourcePreviewButton.type="button";sourcePreviewButton.textContent="预览选中文件";sourcePreviewButton.disabled=true;sourceDetails.append(sourcePreviewButton);
-    const sourceStatus=document.createElement("p");sourceStatus.className="muted";sourceStatus.setAttribute("role","status");sourceStatus.textContent="文件清单尚未加载。";sourceDetails.append(sourceStatus);
-    const sourceMeta=document.createElement("p");sourceMeta.className="muted";sourceDetails.append(sourceMeta);
-    const sourceOutput=document.createElement("pre");sourceOutput.className="skill-source-preview";sourceOutput.style.whiteSpace="pre-wrap";sourceOutput.style.overflowWrap="anywhere";sourceOutput.style.maxHeight="28rem";sourceOutput.style.overflow="auto";sourceOutput.textContent="";sourceDetails.append(sourceOutput);
-    sourceLoad.addEventListener("click",async()=>{
-     sourceLoad.disabled=true;sourceStatus.textContent="正在检查隔离归档…";sourceOutput.textContent="";sourceMeta.textContent="";
-     try{
-      const response=await api("/api/skills/"+encodeURIComponent(item.id)+"/source-files?limit=100"),data=await response.json();
-      if(!response.ok)throw Error(data.error||"读取源文件清单失败");
-      sourceSelect.replaceChildren();
-      for(const file of data.files||[]){
-       const option=document.createElement("option");option.value=file.path;option.textContent=file.path+" · "+formatBytes(file.sizeBytes)+(file.previewable?"":" · 超出预览上限");option.disabled=!file.previewable;sourceSelect.append(option);
-      }
-      const available=(data.files||[]).some(file=>file.previewable);
-      sourceSelect.disabled=!available;sourcePreviewButton.disabled=!available;
-      sourceStatus.textContent="找到 "+data.total+" 个可识别的文本/源码文件；单文件预览上限 "+formatBytes(data.maxPreviewBytes)+"。"+(data.total>data.files.length?" 当前显示 "+data.files.length+" 项。":"");
-      if(!available)sourceStatus.textContent+=" 没有可预览的文件。";
-     }catch(error){sourceStatus.className="error";sourceStatus.textContent=error.message||"读取源文件清单失败";}
-     finally{sourceLoad.disabled=false;}
-    });
-    sourcePreviewButton.addEventListener("click",async()=>{
-     const path=sourceSelect.value;if(!path)return;
-     sourcePreviewButton.disabled=true;sourceStatus.className="muted";sourceStatus.textContent="正在读取选中文件…";sourceOutput.textContent="";sourceMeta.textContent="";
-     try{
-      const response=await api("/api/skills/"+encodeURIComponent(item.id)+"/source-preview?path="+encodeURIComponent(path)),data=await response.json();
-      if(!response.ok)throw Error(data.error||"源码预览失败");
-      sourceMeta.textContent=data.path+" · "+formatBytes(data.bytes);
-      sourceOutput.textContent=data.content;
-      sourceStatus.textContent=data.note||"已读取隔离归档文本。";
-     }catch(error){sourceStatus.className="error";sourceStatus.textContent=error.message||"源码预览失败";}
-     finally{sourcePreviewButton.disabled=false;}
-    });
-    card.append(sourceDetails);
-   }
-   if(item.name?.toLowerCase()==="fnos"&&item.quarantineFile&&item.manifestReview?.name?.toLowerCase()==="fnos"&&["approved","enabled"].includes(item.state)){
-    const install=document.createElement("button");install.type="button";install.textContent="安装官方 CLI（当前平台）";
-    install.addEventListener("click",async()=>{if(!confirm("仅提取官方 Skill 包中与当前 Linux 架构匹配的 trim-cli 二进制；不会解压其他文件，也不会执行 Skill 指令。继续安装？"))return;install.disabled=true;try{const ir=await api("/api/skills/"+item.id+"/install-cli",{method:"POST"});const result=await ir.json();if(!ir.ok)throw Error(result.error||"CLI 安装失败");alert("CLI 已安装："+result.installation.platform+"，"+formatBytes(result.installation.sizeBytes)+"。请启用 Skill 后再使用官方只读工具。");await refreshSkills();}catch(error){document.querySelector("#skill-error").textContent=error.message||"CLI 安装失败";}finally{install.disabled=false;}});
-    card.append(install);
-   }
-   const choices={pending_review:[["approved","批准"],["rejected","拒绝"]],approved:[["enabled","启用"],["disabled","停用"],["rejected","拒绝"]],enabled:[["disabled","停用"]],disabled:[["approved","重新批准"],["rejected","拒绝"]],rejected:[]};
-   for(const [state,label] of (choices[item.state]||[])){
-    const btn=document.createElement("button");btn.type="button";btn.textContent=label;
-    btn.addEventListener("click",async()=>{const note=prompt("填写审核备注（可留空）")||"";try{const tr=await api("/api/skills/"+item.id+"/transition",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({state,note})});const result=await tr.json();if(!tr.ok)throw Error(result.error||"状态更新失败");await refreshSkills();}catch(e){document.querySelector("#skill-error").textContent=e.message||"状态更新失败";}});
-    card.append(btn);
-   }
-   if(item.state==="rejected"){
-    const remove=document.createElement("button");remove.type="button";remove.textContent="彻底移除";
-    remove.addEventListener("click",async()=>{if(!confirm("确定移除已拒绝的 Skill 记录及其隔离 ZIP（如果没有其他记录引用）？此操作不可撤销。"))return;remove.disabled=true;try{const rr=await api("/api/skills/"+item.id,{method:"DELETE"});const result=await rr.json();if(!rr.ok)throw Error(result.error||"移除失败");await refreshSkills();document.querySelector("#skill-error").textContent=result.archiveRemoved?"Skill 记录和隔离归档已移除。":"Skill 记录已移除。";}catch(e){remove.disabled=false;document.querySelector("#skill-error").textContent=e.message||"移除失败";}});
-    card.append(remove);
-   }
-   host.append(card);
-  }
- }catch(e){const p=document.createElement("p");p.className="error";p.textContent=e.message||"Skill 列表读取失败";host.append(p);}
-}
-document.querySelector("#skill-select-visible").addEventListener("change",event=>{
- for(const checkbox of document.querySelectorAll("#skill-list input[type=checkbox][data-skill-id]")){if(event.target.checked)selectedSkillIds.add(checkbox.dataset.skillId);else selectedSkillIds.delete(checkbox.dataset.skillId);}
- updateSkillSelectionUi();
-});
-document.querySelector("#skill-batch-apply").addEventListener("click",async()=>{
- const ids=[...selectedSkillIds];if(!ids.length)return;
- const state=document.querySelector("#skill-batch-state").value;
- if(state==="rejected"&&!confirm("批量拒绝所选 Skill？拒绝后的记录不能重新启用。"))return;
- const button=document.querySelector("#skill-batch-apply");button.disabled=true;button.textContent="处理中…";
- try{
-  const response=await api("/api/skills/transitions/batch",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({items:ids.map(id=>({id,state,note:document.querySelector("#skill-batch-note").value}))})});
-  const payload=await response.json();if(!response.ok)throw Error(payload.error||"批量审核失败");
-  for(const result of payload.results||[])if(result.ok)selectedSkillIds.delete(result.id);
-  document.querySelector("#skill-error").textContent="批量处理完成：成功 "+payload.succeeded+" 个，失败 "+payload.failed+" 个。失败项仍保留选择，可调整状态后重试。";
-  await refreshSkills();
- }catch(error){document.querySelector("#skill-error").textContent=error.message||"批量审核失败";}
- finally{button.textContent="执行批量变更";updateSkillSelectionUi();}
-});
-document.querySelector("#skill-filter-apply").addEventListener("click",()=>{skillPageOffset=0;refreshSkills();});
-document.querySelector("#skill-search").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();skillPageOffset=0;refreshSkills();}});
-document.querySelector("#skill-state-filter").addEventListener("change",()=>{skillPageOffset=0;refreshSkills();});
-document.querySelector("#skill-page-prev").addEventListener("click",()=>{skillPageOffset=Math.max(0,skillPageOffset-50);refreshSkills();});
-document.querySelector("#skill-page-next").addEventListener("click",()=>{skillPageOffset+=50;refreshSkills();});
-let activeSkillUploadXhr=null;
-function uploadSkillArchive(url,file,headers,onProgress,onXhr){
- return new Promise((resolve,reject)=>{
-  const xhr=new XMLHttpRequest();onXhr(xhr);xhr.open("POST",url,true);xhr.withCredentials=true;
-  for(const [name,value] of Object.entries(headers))xhr.setRequestHeader(name,value);
-  xhr.upload.addEventListener("progress",event=>{if(event.lengthComputable)onProgress(Math.max(0,Math.min(100,Math.round(event.loaded/event.total*100))));});
-  xhr.addEventListener("load",()=>{let payload={};try{payload=JSON.parse(xhr.responseText||"{}");}catch{}if(xhr.status>=200&&xhr.status<300)resolve(payload);else reject(new Error(payload.error||"导入失败（HTTP "+xhr.status+"）"));});
-  xhr.addEventListener("error",()=>reject(new Error("上传连接失败，请检查网络后重试。")));
-  xhr.addEventListener("abort",()=>reject(new Error("已取消 Skill ZIP 上传。")));
-  xhr.send(file);
- });
-}
-document.querySelector("#skill-import-form").addEventListener("submit",async e=>{
- e.preventDefault();const err=document.querySelector("#skill-error"),button=document.querySelector("#skill-import-submit"),progress=document.querySelector("#skill-import-progress"),status=document.querySelector("#skill-import-status"),cancel=document.querySelector("#skill-import-cancel");err.textContent="";
- const files=Array.from(document.querySelector("#skill-archive").files||[]);if(!files.length){err.textContent="请选择一个或多个 ZIP 文件";return;}
- const oversized=files.find(file=>file.size>25*1024*1024);if(oversized){err.textContent="文件“"+oversized.name+"”超过 25 MiB，未开始上传";return;}
- const baseName=document.querySelector("#import-skill-name").value.trim();
- const version=document.querySelector("#import-skill-version").value;
- const source=document.querySelector("#import-skill-source").value;
- const results=[];let completed=0;
- button.disabled=true;cancel.disabled=false;progress.classList.remove("hidden");progress.value=0;
- try{
-  for(let index=0;index<files.length;index++){
-   const file=files[index],suffix=file.name.replace(/\.zip$/i,"").slice(0,70);
-   const skillName=files.length===1?baseName:(baseName+" - "+suffix).slice(0,100);
-   const headers={"content-type":"application/zip","x-skill-name":skillName,"x-skill-version":version,"x-skill-source":source};
-   status.textContent="正在上传第 "+(index+1)+" / "+files.length+" 个 Skill ZIP： "+file.name+"（0%）";
-   const result=await uploadSkillArchive("/api/skills/import",file,headers,percent=>{progress.value=Math.round(((index+percent/100)/files.length)*100);status.textContent="正在上传第 "+(index+1)+" / "+files.length+" 个 Skill ZIP： "+file.name+"（"+percent+"%）";},xhr=>{activeSkillUploadXhr=xhr;});
-   results.push(result.skill);completed++;progress.value=Math.round(completed/files.length*100);
-  }
-  e.target.reset();await refreshSkills();status.textContent="已隔离 "+completed+" 个归档；尚未解压或执行。";
-  alert("已隔离 "+completed+" 个 Skill ZIP；尚未解压或执行。");
- }catch(error){
-  err.textContent=(error.message||"导入失败")+(completed?"；此前已成功隔离 "+completed+" 个归档，请刷新列表核对。":"");
-  status.textContent="处理停止：已完成 "+completed+" / "+files.length+" 个。";
-  if(completed)await refreshSkills();
- }finally{activeSkillUploadXhr=null;button.disabled=false;cancel.disabled=true;}
-});
-document.querySelector("#skill-remote-import-form").addEventListener("submit",async e=>{
- e.preventDefault();
- const button=document.querySelector("#skill-remote-import-submit"),status=document.querySelector("#skill-remote-import-status");
- button.disabled=true;status.className="muted";status.textContent="正在解析 GitHub 仓库并下载 ZIP…";
- try{
-  const body={url:document.querySelector("#skill-remote-url").value.trim(),name:document.querySelector("#skill-remote-name").value.trim(),version:document.querySelector("#skill-remote-version").value.trim()};
-  const response=await api("/api/skills/import-remote",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
-  const result=await response.json();if(!response.ok)throw Error(result.error||"GitHub Skill 导入失败");
-  e.target.reset();await refreshSkills();
-  status.textContent="已隔离 "+result.repository+(result.branch?" · "+(result.refType==="tags"?"标签 ":"分支 ")+result.branch:"")+"（"+formatBytes(result.archiveBytes)+"）"+(result.commitSha?" · commit "+result.commitSha.slice(0,12):"")+"；尚未解压或执行，请在列表中审核。";
- }catch(error){status.className="error";status.textContent=error.message||"GitHub Skill 导入失败";}
- finally{button.disabled=false;}
-});
-document.querySelector("#skill-remote-batch-form").addEventListener("submit",async e=>{
- e.preventDefault();
- const button=document.querySelector("#skill-remote-batch-submit"),status=document.querySelector("#skill-remote-batch-status");
- const urls=document.querySelector("#skill-remote-batch-urls").value.split(/\r?\n/).map(value=>value.trim()).filter(Boolean);
- if(!urls.length||urls.length>5){status.className="error";status.textContent="请填写 1 到 5 个 GitHub 地址，每行一个。";return;}
- button.disabled=true;status.className="muted";status.textContent="正在按顺序解析、固定 commit 并下载；总大小不超过 25 MiB…";
- try{
-  const version=document.querySelector("#skill-remote-batch-version").value.trim();
-  const response=await api("/api/skills/import-remote-batch",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({items:urls.map(url=>({url,version}))})});
-  const result=await response.json();if(!response.ok)throw Error(result.error||"批量 Skill 导入失败");
-  await refreshSkills();
-  const lines=(result.results||[]).map(item=>item.index+". "+(item.ok?"成功：":"失败：")+(item.skill?.name||item.repository||"此项目")+" — "+(item.ok?("commit "+(item.commitSha||"未知").slice(0,12)+"，"+formatBytes(item.archiveBytes)+"，状态 "+item.skill.state):item.error));
-  status.textContent="批量结束：成功 "+result.importedCount+" / "+result.total+"，失败或跳过 "+result.failedCount+"；累计下载 "+formatBytes(result.downloadedBytes)+"。\n"+lines.join("\n");
-  if(result.importedCount>0)e.target.reset();
- }catch(error){status.className="error";status.textContent=error.message||"批量 Skill 导入失败";}
- finally{button.disabled=false;}
-});
-document.querySelector("#skill-import-cancel").addEventListener("click",()=>{if(activeSkillUploadXhr){document.querySelector("#skill-import-cancel").disabled=true;activeSkillUploadXhr.abort();}});
-
-document.querySelector("#skill-form").addEventListener("submit",async e=>{
- e.preventDefault();const err=document.querySelector("#skill-error");err.textContent="";
- try{
-  const body={name:document.querySelector("#skill-name").value,version:document.querySelector("#skill-version").value,archiveSha256:document.querySelector("#skill-hash").value,sourceLabel:document.querySelector("#skill-source").value};
-  const r=await api("/api/skills",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});const result=await r.json();if(!r.ok)throw Error(result.error||"登记失败");
-  e.target.reset();await refreshSkills();
- }catch(error){err.textContent=error.message||"登记失败";}
-});
-document.querySelector("#refresh").addEventListener("click",refresh);let auditOffset=0;
-document.querySelector("#execution-mode-apply").addEventListener("click",async()=>{const el=document.querySelector("#execution-mode"),st=document.querySelector("#execution-mode-status");if(!el||!st)return;st.textContent="正在切换…";try{const r=await api("/api/execution-mode",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({mode:el.value})});const x=await r.json();if(!r.ok)throw Error(x.error||"切换失败");st.textContent="已切换执行模式。";await refresh();}catch(e){st.textContent=e.message||"切换失败";}});
-async function refreshAudit(){
- const out=document.querySelector("#audit-output");out.classList.remove("hidden");out.textContent="正在读取操作记录…";
- try{
-  const params=new URLSearchParams({limit:"20",offset:String(auditOffset)});
-  const outcome=document.querySelector("#audit-outcome").value,route=document.querySelector("#audit-route").value.trim();
-  if(outcome)params.set("outcome",outcome);if(route)params.set("route",route);
-  const r=await api("/api/audit?"+params.toString());const data=await r.json();if(!r.ok)throw Error(data.error||"读取失败");
-  document.querySelector("#audit-count").textContent="匹配 "+data.total+" 条 · 显示 "+(data.total?data.offset+1:0)+"–"+Math.min(data.offset+data.events.length,data.total);
-  document.querySelector("#audit-prev").disabled=data.offset<=0;
-  document.querySelector("#audit-next").disabled=data.offset+data.events.length>=data.total;
-  out.textContent=data.events.length?data.events.map(e=>formatDateTime(e.at)+" · "+e.method+" "+e.route+" · "+e.statusCode+" · "+e.outcome).join("\n"):"暂无符合条件的操作记录";
- }catch(e){out.textContent=e.message||"读取操作记录失败";}
-}
-document.querySelector("#show-audit").addEventListener("click",refreshAudit);
-document.querySelector("#audit-apply").addEventListener("click",()=>{auditOffset=0;refreshAudit();});
-document.querySelector("#audit-outcome").addEventListener("change",()=>{auditOffset=0;refreshAudit();});
-document.querySelector("#audit-prev").addEventListener("click",()=>{auditOffset=Math.max(0,auditOffset-20);refreshAudit();});
-document.querySelector("#audit-next").addEventListener("click",()=>{auditOffset+=20;refreshAudit();});
-document.querySelector("#audit-route").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();auditOffset=0;refreshAudit();}});
-
-document.querySelector("#logout").addEventListener("click",async()=>{await api("/api/logout",{method:"POST"});showAuth();tokenEl.focus();});
-
-function buildWorkspaceLayout(){
- const main=document.querySelector("main"),status=document.querySelector("#status-card");
- if(!main||!status||document.querySelector("#page-panel"))return;
- const pagePanel=document.createElement("div");pagePanel.id="page-panel";pagePanel.className="page-panel";
- for(const id of ["status-card","models-card","files-card","tools-card","agent-card","skills-card","security-note"]){const el=document.getElementById(id);if(el)pagePanel.appendChild(el);}
- const audit=document.createElement("section");audit.id="audit-card";audit.className="card hidden";
- const title=document.createElement("h2");title.textContent="操作审计";
- const intro=document.createElement("p");intro.className="muted";intro.textContent="查看近期请求结果与安全拒绝记录。筛选和分页只影响显示，不会改变审计日志。";
- audit.append(title,intro);
- const statusPanel=document.querySelector("#status-card");
- const get=id=>document.getElementById(id);
- // The layout initializer also runs before authentication; tolerate incomplete/legacy markup.
- const outcomeLabel=statusPanel?.querySelector('label[for="audit-outcome"]')||null;
- const routeLabel=statusPanel?.querySelector('label[for="audit-route"]')||null;
- if(get("show-audit")){get("show-audit").textContent="刷新操作记录";audit.appendChild(get("show-audit"));}
- if(outcomeLabel)audit.appendChild(outcomeLabel);
- if(get("audit-outcome"))audit.appendChild(get("audit-outcome"));
- if(routeLabel)audit.appendChild(routeLabel);
- if(get("audit-route"))audit.appendChild(get("audit-route"));
- for(const id of ["audit-apply","audit-count","audit-prev","audit-next","audit-output"])if(get(id))audit.appendChild(get(id));
- pagePanel.appendChild(audit);
- const header=document.createElement("header");header.className="app-topbar";
- const context=document.createElement("div");context.className="topbar-context";
- const eyebrow=document.createElement("span");eyebrow.className="topbar-eyebrow";eyebrow.textContent="FNOS NAS AGENT";
- const heading=document.createElement("strong");heading.id="page-heading";heading.textContent="运行概览";
- context.append(eyebrow,heading);
- const actions=document.createElement("div");actions.className="topbar-actions";
- const session=document.createElement("span");session.className="session-indicator";session.innerHTML='<span class="online-dot"></span>已验证会话';actions.appendChild(session);
- const logout=get("logout");if(logout)actions.appendChild(logout);
- header.append(context,actions);
- main.insertBefore(header,main.querySelector("#setup-card"));main.appendChild(pagePanel);main.classList.add("workspace-root");
-}
-const workspacePages=[["status-card","运行概览"],["files-card","文件管理"],["agent-card","智能助手"],["tools-card","NAS 工具"],["models-card","模型服务"],["skills-card","Skill 管理"],["audit-card","操作审计"],["security-note","安全说明"]];
-function setWorkspacePage(requestedId,updateHistory=true){
- const id=workspacePages.some(([p])=>p===requestedId)?requestedId:"status-card";
- for(const [pageId,label] of workspacePages){
-  const el=document.getElementById(pageId);if(el){el.classList.toggle("hidden",pageId!==id);el.classList.toggle("active-page",pageId===id);}
-  const link=document.querySelector('.workspace-nav a[data-page="'+pageId+'"]');
-  if(link){if(pageId===id)link.setAttribute("aria-current","page");else link.removeAttribute("aria-current");}
-  if(pageId===id){const heading=document.querySelector("#page-heading");if(heading)heading.textContent=label;}
- }
- if(updateHistory&&location.hash!=="#"+id)history.pushState(null,"","#"+id);
- if(id==="audit-card")refreshAudit();
-}
-function showWorkspace(requestedId){
- document.body.classList.add("authenticated");document.body.classList.remove("auth-screen");
- const login=document.querySelector("#login-card"),setup=document.querySelector("#setup-card");
- if(login)login.classList.add("hidden");if(setup)setup.classList.add("hidden");
- buildWorkspaceLayout();
- // Keep the legacy reveal contract for authenticated feature cards; the page router below hides inactive pages.
- document.querySelector("#status-card").classList.remove("hidden");
- document.querySelector("#models-card").classList.remove("hidden");
- document.querySelector("#files-card").classList.remove("hidden");
- document.querySelector("#tools-card").classList.remove("hidden");
- document.querySelector("#agent-card").classList.remove("hidden");
- document.querySelector("#skills-card").classList.remove("hidden");
- let target=requestedId; if(!target){try{target=decodeURIComponent(location.hash.slice(1));}catch{target="status-card";}}
- setWorkspacePage(target||"status-card",false);
-}
-function showAuth(){
- document.body.classList.remove("authenticated");document.body.classList.add("auth-screen");
- for(const id of ["status-card","models-card","files-card","tools-card","agent-card","skills-card","audit-card","security-note"]){const el=document.getElementById(id);if(el)el.classList.add("hidden");}
- const login=document.querySelector("#login-card"),setup=document.querySelector("#setup-card");if(login)login.classList.remove("hidden");if(setup)setup.classList.add("hidden");
- history.replaceState(null,"",location.pathname+location.search);
-}
-document.querySelectorAll(".workspace-nav a[data-page]").forEach(link=>link.addEventListener("click",event=>{event.preventDefault();setWorkspacePage(link.getAttribute("data-page"),true);}));
-window.addEventListener("popstate",()=>{if(document.body.classList.contains("authenticated")){let target="status-card";try{target=decodeURIComponent(location.hash.slice(1))||target;}catch{}setWorkspacePage(target,false);}});
-
-buildWorkspaceLayout();
-init();
-</script></main></body></html>
+<script src="/ui/core.js"></script>
+<script src="/ui/pages.js"></script>
+</body>
+</html>

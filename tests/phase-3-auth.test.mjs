@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { once } from "node:events";
 import { createServer } from "node:net";
+import { makeZip, quarantineArchive, READ_ONLY_MANIFEST } from "./helpers/skill-archive.mjs";
 
 const entry = resolve("apps/fnos-nas-agent/app/server.mjs");
 let child;
@@ -246,7 +247,10 @@ test("first-run setup stores only a salted password hash and protects session en
     method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/zip", "x-skill-name": "invalid-zip" }, body: Buffer.from("not a zip")
   });
   assert.equal(invalidArchiveImport.status, 400);
-  const skillHash = "a".repeat(64);
+  // Phase 136: the server reads the quarantined archive itself and derives
+  // the review verdict from those bytes, so the archive has to be in the
+  // quarantine directory before the Skill can be registered.
+  const skillHash = await quarantineArchive(dataDir, makeZip([{ name: "SKILL.md", data: READ_ONLY_MANIFEST }]));
   const importMetadata = await fetch(baseUrl + "/api/skills", {
     method: "POST", headers: { origin: baseUrl, cookie, "content-type": "application/json" },
     body: JSON.stringify({ name: "fnos-official", version: "1.0", sourceLabel: "official skill archive", archiveSha256: skillHash, declaredCapabilities: ["read-only"] })

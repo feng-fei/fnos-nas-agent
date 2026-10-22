@@ -40,6 +40,14 @@ export function createSkillInstaller({ dataDir, platform = process.platform, arc
     const target = SUPPORTED[`${platform}:${arch}`];
     if (!target) fail(400, "Official CLI installation supports Linux x64 and Linux ARM64 only");
     if (!record || !/^[a-f0-9]{24}$/.test(record.id || "")) fail(400, "Invalid Skill record");
+    // Phase 136: the CLI is only installed for a Skill the server itself
+    // reviewed, and only for the very archive that was reviewed. A record
+    // whose review was declared by a client, or that points at another
+    // archive, is refused.
+    if (record.manifestReview?.reviewedBy !== "server" ||
+        record.manifestReview?.archiveSha256 !== record.archiveSha256) {
+      fail(403, "The Skill was not reviewed by the server; re-import the archive before installing its CLI");
+    }
     if (!["approved", "enabled"].includes(record.state)) fail(409, "Review and approve the Skill before installing its CLI");
     if (typeof record.name !== "string" || record.name.toLowerCase() !== "fnos" ||
         record.manifestReview?.name?.toLowerCase() !== "fnos" ||
@@ -74,6 +82,10 @@ export function createSkillInstaller({ dataDir, platform = process.platform, arc
       fail(400, "Package manifest does not declare the expected official fnOS CLI binary");
     }
 
+    // Phase 136: the archive must actually carry the CLI entry that the
+    // package manifest declares; the entry is then validated as an ELF.
+    if (!inspected.entries.some(item => item.name === target.entry))
+      fail(400, "Official fnOS CLI binary entry is missing from the archive");
     const binary = extractZipEntry(archive, target.entry, MAX_CLI_BYTES);
     validateElf(binary, target.machine);
 
@@ -103,7 +115,9 @@ export function createSkillInstaller({ dataDir, platform = process.platform, arc
       version: manifest.version,
       platform: target.key,
       sizeBytes: binary.length,
-      binarySha256: sha256(binary)
+      binarySha256: sha256(binary),
+      reviewedBy: "server",
+      archiveSha256: record.archiveSha256
     });
   }
 

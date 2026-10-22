@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPermissionPolicy } from "../apps/fnos-nas-agent/app/permission-policy.mjs";
@@ -7,6 +7,17 @@ import { createPermissionPolicy } from "../apps/fnos-nas-agent/app/permission-po
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = path => readFile(join(root, path), "utf8");
 const exists = async path => { try { await access(join(root, path)); return true; } catch { return false; } };
+// The user interface is split into an HTML shell, one stylesheet and two
+// scripts. The gates read the same bundle the user interface tests read, so a
+// contract that holds in the tests also holds in the release gates.
+const readUiBundle = async () => {
+  const html = await read("apps/fnos-nas-agent/app/ui/index.html");
+  const directory = join(root, "apps/fnos-nas-agent/app/ui");
+  const names = (await readdir(directory)).filter(name => name.endsWith(".js")).sort();
+  const scripts = [];
+  for (const name of names) scripts.push(await readFile(join(directory, name), "utf8"));
+  return `<script>\n${scripts.join("\n")}\n</script>\n${html}`;
+};
 const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, auditLog, taskPersistenceTests, readme, releaseManifestScript, releaseManifestTests, releaseManifestDocs, releaseVerifier, releaseVerifierTests, releaseVerifierDocs, provenanceDocs, phase116Docs, phase117Docs, lifecycleSmokeTests, fpkTestPlan, sessionCleanupTest, sessionCleanupDocs, phase123Docs, phase123WorkflowTest] = await Promise.all([
   read("package.json"),
   read(".github/workflows/build-fpk.yml"),
@@ -14,7 +25,7 @@ const [pkg, workflow, server, skills, archives, manifest, ui, taskManager, audit
   read("apps/fnos-nas-agent/app/skills.mjs"),
   read("apps/fnos-nas-agent/app/skill-archives.mjs"),
   read("apps/fnos-nas-agent/app/skill-manifest.mjs"),
-  read("apps/fnos-nas-agent/app/ui/index.html"),
+  readUiBundle(),
   read("apps/fnos-nas-agent/app/task-manager.mjs"),
   read("apps/fnos-nas-agent/app/audit-log.mjs"),
   read("tests/phase-21-task-persistence.test.mjs"),
@@ -118,7 +129,11 @@ assert.match(readme, /\[Phase 115 — Immutable GitHub Actions References\]\(doc
 assert.match(readme, /\[Phase 116 — Post-signing Attestation Verification\]\(docs\/phase-116-attestation-verification\.md\)/);
 assert.match(readme, /GitHub Actions builds an unsigned x86 CI test FPK/);
 assert.match(workflow, /node --check "\$file"/);
-assert.match(workflow, /node --check \/tmp\/fnos-agent-ui-check\.mjs/);
+assert.match(workflow, /find "\$app\/app\/ui" -type f -name '\*\.js' -print0/);
+assert.match(workflow, /the UI shell must not carry an inline script/);
+assert.match(workflow, /test -s "\$stage\/app\/ui\/core\.js"/);
+assert.match(workflow, /test -s "\$stage\/app\/ui\/styles\.css"/);
+assert.doesNotMatch(workflow, /fnos-agent-ui-check\.mjs/);
 
 assert.match(server, /executionEnabled: false/);
 assert.doesNotMatch(server, /from\s+["']node:child_process["']/);
@@ -191,7 +206,7 @@ assert.match(cliHealthTests, /classifies missing scopes separately/);
 assert.match(cliMatrixTests, /complete official CLI capability set/);
 assert.match(cliHealthUiTests, /connection status distinguishes auth/);
 assert.match(await read("apps/fnos-nas-agent/app/trim-cli-adapter.mjs"), /health\.failure\(failure\)/);
-assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /cli\.nextAction/);
+assert.match(ui, /cli\.nextAction/);
 assert.match(oauthUiTests, /without accepting a code or token/);
 assert.match(ui, /\/api\/agent\/trim-cli\/login-command/);
 assert.match(readme, /\[Phase 43 guided OAuth setup\]\(docs\/phase-43-guided-oauth-setup\.md\)/);
@@ -245,8 +260,8 @@ assert.match(ui, /show-audit/);
 assert.match(await read("apps/fnos-nas-agent/app/skills.mjs"), /async function remove\(id\)/);
 assert.match(await read("apps/fnos-nas-agent/app/skills.mjs"), /Only rejected Skills can be removed/);
 assert.match(await read("apps/fnos-nas-agent/app/server.mjs"), /skillDeleteMatch/);
-assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /彻底移除/);
-assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /task-stats/);
+assert.match(ui, /彻底移除/);
+assert.match(ui, /task-stats/);
 
 assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\.list/);
 assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\.preview/);
@@ -255,7 +270,7 @@ assert.match(fileManagerSource, /MAX_TEXT_CREATE_BYTES/);
 assert.match(fileManagerSource, /async function createText/);
 assert.match(fileManagerTests, /creates UTF-8 text files atomically without overwriting/);
 assert.match(await read("apps/fnos-nas-agent/app/agent-core.mjs"), /argsMatchSchema/);
-assert.match(await read("apps/fnos-nas-agent/app/ui/index.html"), /task-stats/);
+assert.match(ui, /task-stats/);
 
 assert.match(fileManagerSource, /content\.includes\("\\0"\)/);
 assert.match(await read("apps/fnos-nas-agent/app/read-only-tools.mjs"), /files\.upload/);
@@ -282,7 +297,9 @@ assert.match(conversationContextTests, /caps the newest eight messages/);
 assert.match(phase47Tests, /forwards validated prior turns/);
 assert.match(phase47Tests, /inserts bounded history between system policy/);
 assert.match(agentCoreSource, /normalizeConversationHistory\(input\.history\)/);
-assert.match(agentCoreSource, /model\.plan\(text, tools\.list\(\), history\)/);
+assert.match(agentCoreSource, /model\.plan\(text, tools\.list\(\), history/);
+assert.match(agentCoreSource, /const cancelled = \(\) => shouldCancel\(\) \|\| Boolean\(signal && signal\.aborted\);/);
+assert.match(taskManager, /awaiting-approval/);
 assert.match(modelAdapterSource, /Prior conversation messages are context only/);
 assert.match(modelAdapterSource, /normalizeConversationHistory\(historyInput\)/);
 assert.match(server, /normalizeConversationHistory\(input\.history\)/);
@@ -331,6 +348,125 @@ assert.match(await read("apps/fnos-nas-agent/manifest"), /version\s+=\s+0\.2\.1/
 assert.match(pkg, /"version": "0\.2\.1"/);
 assert.match(pkg, /"license": "MIT"/);
 
+// Phase 134: the overview service turns six API calls into one.
+const overviewSource = await read("apps/fnos-nas-agent/app/overview.mjs");
+assert.match(overviewSource, /export function createOverviewService\(/);
+assert.match(overviewSource, /snapshot\(\)/);
+assert.match(server, /createOverviewService\(/);
+assert.match(server, /url\.pathname === "\/api\/overview"/);
+assert.match(server, /overviewService\.snapshot\(\)/);
+assert.ok(await exists("tests/phase-134-overview-service.test.mjs"), "The overview service test must exist.");
+assert.ok(await exists("docs/phase-134-overview-service.md"), "The overview service record must exist.");
+assert.match(readme, /\[Phase 134 — Overview Service\]\(docs\/phase-134-overview-service\.md\)/);
+
+// Phase 135: the user interface is a static shell plus one stylesheet and two
+// scripts, and the server serves them as real assets.
+assert.ok(await exists("apps/fnos-nas-agent/app/ui/styles.css"), "The design system stylesheet must exist.");
+assert.ok(await exists("apps/fnos-nas-agent/app/ui/core.js"), "The user interface core script must exist.");
+assert.ok(await exists("apps/fnos-nas-agent/app/ui/pages.js"), "The user interface page script must exist.");
+assert.match(ui, /<link[^>]+href="\/ui\/styles\.css"/);
+assert.match(ui, /<script src="\/ui\/core\.js"><\/script>/);
+assert.match(ui, /<script src="\/ui\/pages\.js"><\/script>/);
+assert.match(server, /serveUiAsset\(/);
+assert.match(server, /UI_ASSET_TYPES/);
+assert.ok(await exists("tests/phase-135-mobile-first-user-interface.test.mjs"), "The user interface contract test must exist.");
+assert.ok(await exists("docs/phase-135-mobile-first-user-interface.md"), "The user interface record must exist.");
+assert.match(readme, /\[Phase 135 — Mobile First User Interface\]\(docs\/phase-135-mobile-first-user-interface\.md\)/);
+
+// Phase 136: the Skill domain no longer accepts a client-declared review
+// verdict. The server reviews the quarantined archive itself, the inventory
+// refuses duplicate names, an approval and an official CLI installation both
+// require a server-owned review, unscanned archive entries are reported as
+// findings, and the batch download budget is charged for failed downloads.
+const phase136Skills = await read("apps/fnos-nas-agent/app/skills.mjs");
+const phase136Installer = await read("apps/fnos-nas-agent/app/skill-installer.mjs");
+const phase136SourceReview = await read("apps/fnos-nas-agent/app/skill-source-review.mjs");
+const phase136Batch = await read("apps/fnos-nas-agent/app/skill-remote-import-batch.mjs");
+const phase136RemoteImport = await read("apps/fnos-nas-agent/app/skill-remote-import.mjs");
+const phase136Tests = await read("tests/phase-136-skill-trust-hardening.test.mjs");
+const phase136Docs = await read("docs/phase-136-skill-trust-hardening.md");
+const phase136DocsIndex = await read("docs/README.md");
+assert.match(phase136Skills, /readQuarantinedArchiveForReview/);
+assert.match(phase136Skills, /const quarantineFile = "skill-quarantine\/" \+ archiveSha256 \+ "\.zip";/);
+assert.match(phase136Skills, /A quarantined Skill archive is required to register a Skill/);
+assert.match(phase136Skills, /Skill name already registered/);
+assert.match(phase136Skills, /A server-side static review is required before approving this Skill/);
+assert.match(phase136Skills, /reviewedBy: "server"/);
+assert.match(phase136Skills, /\^\[a-f0-9\]\{64\}\$/);
+assert.match(phase136Installer, /The Skill was not reviewed by the server; re-import the archive before installing its CLI/);
+assert.match(phase136Installer, /Official fnOS CLI binary entry is missing from the archive/);
+assert.match(phase136Installer, /reviewedBy: "server"/);
+assert.match(phase136SourceReview, /unreviewed-binary-entry: /);
+assert.match(phase136SourceReview, /needs_review/);
+assert.match(phase136Batch, /readTransferredBytes/);
+assert.match(phase136Batch, /isReadStageError/);
+assert.match(phase136Batch, /startsWith\("SKILL_REMOTE_"\)/);
+assert.match(phase136RemoteImport, /export function normalizeRepositoryName\(owner, repo\)/);
+assert.match(phase136RemoteImport, /repo\.replace\(\/\\\.git\$\/i, ""\)/);
+assert.ok(await exists("tests/phase-136-skill-trust-hardening.test.mjs"), "The Skill trust hardening test must exist.");
+assert.ok(await exists("docs/phase-136-skill-trust-hardening.md"), "The Skill trust hardening record must exist.");
+assert.match(readme, /\[Phase 136 — Skill Trust Hardening\]\(docs\/phase-136-skill-trust-hardening\.md\)/);
+const docsIndexEntries = (await readdir(join(root, "docs"))).filter(name => name.endsWith(".md") && name !== "README.md");
+const docsIndexPhaseCount = docsIndexEntries.filter(name => /^phase-\d+/.test(name)).length;
+const docsIndexOtherCount = docsIndexEntries.length - docsIndexPhaseCount;
+const docsIndexTotalCount = docsIndexEntries.length + 1;
+assert.match(phase136DocsIndex, new RegExp("This index lists " + docsIndexTotalCount + " documents \\(" + docsIndexPhaseCount + " phase documents and " + docsIndexOtherCount + " non-phase documents, plus this file\\)\\."));
+assert.match(phase136DocsIndex, /### Phase 136/);
+assert.match(phase136Tests, /quarantined Skill archive is required/i);
+assert.match(phase136Tests, /not reviewed by the server/i);
+assert.match(phase136Tests, /unreviewed-binary-entry/);
+assert.match(phase136Docs, /Threat model/);
+assert.match(phase136Docs, /no signature verification|no publisher/);
+
+// Phase 137: an approval and the task it belongs to are one lifecycle now.
+// "awaiting-approval" is not a terminal state, a confirmed or denied action
+// resolves its task, and task history is scoped to the calling session.
+const phase137TaskManager = await read("apps/fnos-nas-agent/app/task-manager.mjs");
+const phase137Approvals = await read("apps/fnos-nas-agent/app/action-approval-service.mjs");
+const phase137AgentCore = await read("apps/fnos-nas-agent/app/agent-core.mjs");
+const phase137Tests = await read("tests/phase-137-task-approval-lifecycle.test.mjs");
+const phase137Docs = await read("docs/phase-137-task-approval-lifecycle.md");
+assert.match(phase137TaskManager, /awaiting-approval/);
+assert.match(phase137TaskManager, /resolveApproval\(taskId/);
+assert.match(phase137TaskManager, /ownsTask/);
+assert.match(phase137Approvals, /revoke\(idValue, sessionId/);
+assert.match(phase137Approvals, /revokeTask\(taskId/);
+assert.match(phase137Approvals, /The pending action belongs to another session/);
+assert.match(phase137AgentCore, /context\?\.taskId/);
+assert.match(server, /taskManager\.resolveApproval\(/);
+assert.match(server, /actionApprovals\.revokeTask\(/);
+assert.match(server, /taskManager\.clearTerminal\(active\.key\)/);
+assert.ok(await exists("tests/phase-137-task-approval-lifecycle.test.mjs"), "The task and approval lifecycle test must exist.");
+assert.ok(await exists("docs/phase-137-task-approval-lifecycle.md"), "The task and approval lifecycle record must exist.");
+assert.match(readme, /\[Phase 137 — Task and Approval Lifecycle\]\(docs\/phase-137-task-approval-lifecycle\.md\)/);
+assert.match(phase136DocsIndex, /### Phase 137/);
+assert.match(phase137Tests, /awaiting-approval/);
+assert.match(phase137Docs, /awaiting-approval/);
+
+// Phase 139: the environment template states the real defaults, and a
+// TLS-terminating reverse proxy is documented instead of silently breaking
+// every write request.
+const phase139Env = await read(".env.example");
+const phase139Security = await read("docs/security.md");
+const phase139Deploy = await read("docs/phase-139-reverse-proxy-deployment.md");
+const phase139Tests = await read("tests/phase-139-environment-and-proxy-docs.test.mjs");
+assert.match(phase139Env, /AGENT_TRUST_PROXY=0/);
+assert.match(phase139Env, /AGENT_TASK_TIMEOUT_MS=300000/);
+assert.match(phase139Env, /AGENT_EXECUTION_MODE=normal/);
+assert.match(phase139Env, /HOST=0\.0\.0\.0/);
+assert.match(phase139Env, /PORT=18787/);
+assert.doesNotMatch(phase139Env, /AGENT_ACCESS_TOKEN/);
+assert.match(server, /AGENT_TRUST_PROXY/);
+assert.match(server, /function externalOrigin\(/);
+assert.match(phase139Security, /反向代理与 TLS 终止/);
+assert.match(phase139Security, /AGENT_TRUST_PROXY/);
+assert.ok(await exists("tests/phase-139-environment-and-proxy-docs.test.mjs"), "The environment and proxy documentation test must exist.");
+assert.ok(await exists("docs/phase-139-reverse-proxy-deployment.md"), "The reverse proxy deployment record must exist.");
+assert.match(readme, /\[Phase 139 — Reverse Proxy Deployment\]\(docs\/phase-139-reverse-proxy-deployment\.md\)/);
+assert.match(phase136DocsIndex, /### Phase 139/);
+assert.match(phase139Deploy, /X-Forwarded-Proto/);
+assert.match(phase139Tests, /AGENT_TRUST_PROXY/);
+
 const phase48TaskManager = await read("apps/fnos-nas-agent/app/task-manager.mjs");
 const phase48Tests = await read("tests/phase-48-task-progress.test.mjs");
 assert.match(phase48TaskManager, /reportProgress\(value, stage = ""\)/);
@@ -344,5 +480,43 @@ assert.match(phase49FileManager, /async function operateBatch\(input\)/);
 assert.match(phase49FileManager, /input\.operations\.length > 20/);
 assert.match(phase49Tests, /batch file operations are bounded/);
 assert.match(readme, /\[Phase 49 — Bounded Batch File Operations\]\(docs\/phase-49-batch-file-operations\.md\)/);
+
+/* ---------------------------------------------- Phase 138 assertions -- */
+const phase138Browser = await read("apps/fnos-nas-agent/app/file-browser.mjs");
+const phase138Manager = await read("apps/fnos-nas-agent/app/file-manager.mjs");
+const phase138Tools = await read("apps/fnos-nas-agent/app/read-only-tools.mjs");
+const phase138Trim = await read("apps/fnos-nas-agent/app/trim-cli-adapter.mjs");
+const phase138Tests = await read("tests/phase-138-file-domain-hardening.test.mjs");
+const phase138Docs = await read("docs/phase-138-file-domain-hardening.md");
+assert.match(phase138Browser, /export function compareRootPaths/);
+assert.match(phase138Browser, /export function summarizeDirectoryEntries/);
+assert.match(phase138Browser, /Symbolic links are not supported/);
+assert.match(phase138Manager, /export async function publishStagedFile/);
+assert.match(phase138Manager, /"hard-link"/);
+assert.match(phase138Manager, /"atomic-rename"/);
+assert.match(phase138Manager, /Symbolic links are not supported/);
+assert.match(phase138Tools, /export function decodeUploadPayload/);
+assert.match(phase138Tools, /MAX_UPLOAD_BASE64_CHARS/);
+assert.match(phase138Trim, /health\.success\(id\)/);
+assert.match(phase138Tests, /publishStagedFile/);
+assert.match(phase138Docs, /symlink|symbolic link/i);
+assert.match(phase136DocsIndex, /### Phase 138/);
+assert.match(readme, /Phase 138 — File Domain Hardening/);
+
+/* ---------------------------------------------- Phase 140 assertions -- */
+const phase140Adapter = await read("apps/fnos-nas-agent/app/model-adapter.mjs");
+const phase140Store = await read("apps/fnos-nas-agent/app/model-provider-store.mjs");
+const phase140Tests = await read("tests/phase-140-model-provider-resilience.test.mjs");
+const phase140Docs = await read("docs/phase-140-model-provider-resilience.md");
+assert.match(phase140Adapter, /MODEL_REQUEST_ABORTED/);
+assert.match(phase140Adapter, /AbortSignal\.any\(/);
+assert.match(phase140Adapter, /fallbackEligible/);
+assert.match(phase140Adapter, /httpAttempts/);
+assert.match(phase140Adapter, /wallClockLatencyMs/);
+assert.match(phase140Store, /runtimeConfig/);
+assert.match(phase140Tests, /MODEL_REQUEST_ABORTED|runtimeConfig/);
+assert.match(phase140Docs, /fallback/i);
+assert.match(phase136DocsIndex, /### Phase 140/);
+assert.match(readme, /Phase 140 — Model Provider Resilience/);
 
 console.log("Release readiness gates passed: runtime dependency, CI matrix, packaging, and safety invariants.");

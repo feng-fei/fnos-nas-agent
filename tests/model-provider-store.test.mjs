@@ -78,7 +78,8 @@ test("update preserves a blank API key, supports replacement/clear and automatic
   const cleared = await store.update(item.id, { name: "Renamed", endpoint: item.endpoint, model: "new-model", clearApiKey: true, enabled: true });
   assert.equal(cleared.hasApiKey, false);
   assert.equal(cleared.enabled, false);
-  assert.equal(store.runtimeConfig().enabled, false);
+  // Phase 140：没有合格的 active provider 时 runtimeConfig() 返回 null，调用方回落到环境变量配置。
+  assert.equal(store.runtimeConfig(), null);
   assert.equal(store.list().activeProviderId, null);
 });
 
@@ -137,12 +138,13 @@ test("disabling or deleting a default provider clears the default or selects an 
   const second = await store.add(input("Second"));
   await store.setDefault(first.id);
   await store.update(first.id, { name: "First", endpoint: first.endpoint, model: first.model, enabled: false });
-  assert.equal(store.list().activeProviderId, null);
+  // Phase 140：禁用 active provider 后，服务端按 remove() 的规则把主位交给另一个 enabled 且有 key 的 provider。
+  assert.equal(store.list().activeProviderId, second.id);
   await assert.rejects(store.setDefault(first.id), { statusCode: 409 });
   await store.setDefault(second.id);
   await store.remove(second.id);
   assert.equal(store.list().activeProviderId, null);
-  assert.equal(store.runtimeConfig().enabled, false);
+  assert.equal(store.runtimeConfig(), null);
 });
 
 test("removal rejects malformed and unknown IDs", async t => {

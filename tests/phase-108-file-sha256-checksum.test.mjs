@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { readFile as readText } from "node:fs/promises";
 import { createFileManager, MAX_CHECKSUM_BYTES } from "../apps/fnos-nas-agent/app/file-manager.mjs";
+import { readUiSource } from "./helpers/ui-source.mjs";
 
 test("checksum returns the expected SHA-256 using the bounded streaming file API", async t => {
   const root = await mkdtemp(join(tmpdir(), "fnos-checksum-"));
@@ -79,7 +80,7 @@ test("checksum rejects a file that changes during the calculation", async t => {
 
 test("checksum API requires authentication, rate-limits per session, and the mobile UI displays only returned digest text", async () => {
   const server = await readText(new URL("../apps/fnos-nas-agent/app/server.mjs", import.meta.url), "utf8");
-  const html = await readText(new URL("../apps/fnos-nas-agent/app/ui/index.html", import.meta.url), "utf8");
+  const html = await readUiSource();
   const start = server.indexOf('if (url.pathname === "/api/files/checksum")');
   const end = server.indexOf('if (url.pathname === "/api/files/preview")', start);
   assert.ok(start >= 0 && end > start, "checksum route must be registered before preview/download routes");

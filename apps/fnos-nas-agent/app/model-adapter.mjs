@@ -5,6 +5,9 @@ const MAX_PLAN_BYTES = 16 * 1024;
 const DEFAULT_MAX_ATTEMPTS = 2;
 const DEFAULT_RETRY_DELAYS_MS = Object.freeze([150, 400]);
 const MAX_METRIC_PROVIDERS = 21;
+// The store hands out at most three backup providers. The adapter accepts a few
+// more so an injected candidate list is not truncated twice.
+const MAX_FALLBACK_CANDIDATES = 8;
 
 function modelError(code, message, options = {}) {
   return Object.assign(new Error(message), { code, ...options });
@@ -51,6 +54,51 @@ export function modelConfiguration(env = process.env) {
     providerName: "环境变量配置"
   });
 }
+// A provider can serve a request only when it is enabled and carries a complete
+// endpoint, key and model. The same rule decides the primary candidate, the
+// backup candidates and the status report, so the three can never disagree.
+function isUsableConfig(config) {
+  return Boolean(config && typeof config === "object" &&
+    config.enabled === true &&
+    typeof config.endpoint === "string" && config.endpoint.length > 0 &&
+    typeof config.apiKey === "string" && config.apiKey.length > 0 &&
+    typeof config.model === "string" && config.model.length > 0);
+}
+// One deduplication rule for the primary and for every backup candidate. A
+// provider is identified by its provider id and by the endpoint and model it
+// serves, so a backup that repeats either of them is the same provider.
+function candidateTokens(config) {
+  const tokens = [];
+  if (typeof config?.providerId === "string" && config.providerId) tokens.push("id:" + config.providerId);
+  if (typeof config?.endpoint === "string" && config.endpoint) {
+    tokens.push("endpoint:" + config.endpoint + "\n" + String(config?.model || ""));
+  }
+  return tokens;
+}
+function abortedError() {
+  return modelError("MODEL_REQUEST_ABORTED", "Model request was cancelled.", {
+    category: "CANCELLED", retryable: false, fallbackEligible: false
+  });
+}
+// A provider that answered but did not return a usable body is worth one more
+// try and worth asking the backup provider.
+function invalidResponseError(message) {
+  return modelError("MODEL_INVALID_RESPONSE", message, {
+    category: "INVALID_RESPONSE", retryable: true, fallbackEligible: true
+  });
+}
+function responseTooLargeError() {
+  return modelError("MODEL_RESPONSE_TOO_LARGE", "Model response exceeded limit.", {
+    category: "RESPONSE_TOO_LARGE", retryable: true, fallbackEligible: true
+  });
+}
+// A structured plan that does not match the contract is a hard failure: another
+// provider would answer the same way, so no retry and no fallback.
+function invalidPlanError(message) {
+  return modelError("MODEL_INVALID_PLAN", message, {
+    category: "INVALID_PLAN", retryable: false, fallbackEligible: false
+  });
+}
 async function readBoundedText(response, limit) {
   if (!response.body) return "";
   const reader = response.body.getReader();
@@ -63,7 +111,7 @@ async function readBoundedText(response, limit) {
       size += value.byteLength;
       if (size > limit) {
         await reader.cancel().catch(() => {});
-        throw modelError("MODEL_RESPONSE_TOO_LARGE", "Model response exceeded limit.");
+        throw responseTooLargeError();
       }
       chunks.push(Buffer.from(value));
     }
@@ -75,14 +123,14 @@ async function readBoundedText(response, limit) {
 function buildPlan(envelope, tools) {
   const content = envelope?.choices?.[0]?.message?.content;
   if (typeof content !== "string" || Buffer.byteLength(content, "utf8") > MAX_PLAN_BYTES)
-    throw modelError("MODEL_INVALID_RESPONSE", "Provider response did not contain a bounded plan.");
+    throw invalidResponseError("Provider response did not contain a bounded plan.");
   let plan;
   try { plan = JSON.parse(content); }
-  catch { throw modelError("MODEL_INVALID_RESPONSE", "Provider response did not contain valid plan JSON."); }
+  catch { throw invalidResponseError("Provider response did not contain valid plan JSON."); }
   if (!plan || typeof plan !== "object" || Array.isArray(plan) ||
       typeof plan.message !== "string" || plan.message.length > 2000 ||
       !Array.isArray(plan.toolCalls) || plan.toolCalls.length > 3) {
-    throw modelError("MODEL_INVALID_PLAN", "Provider returned an invalid plan.");
+    throw invalidPlanError("Provider returned an invalid plan.");
   }
   return {
     message: plan.message,
@@ -92,7 +140,7 @@ function buildPlan(envelope, tools) {
           !call.args || typeof call.args !== "object" || Array.isArray(call.args) ||
           !tools.some(tool => tool.id === call.id) ||
           !matchesSchema(call.args, tools.find(tool => tool.id === call.id)?.inputSchema)) {
-        throw modelError("MODEL_INVALID_PLAN", "Provider requested an invalid or unregistered tool.");
+        throw invalidPlanError("Provider requested an invalid or unregistered tool.");
       }
       return { id: call.id, args: call.args };
     })
@@ -109,7 +157,11 @@ function createMetric(config) {
     requests: 0, attempts: 0, retries: 0, successes: 0, failures: 0,
     inputTokens: 0, outputTokens: 0, totalTokens: 0, totalLatencyMs: 0,
     lastLatencyMs: null, lastSuccessAt: null, lastFailureAt: null,
-    lastErrorCategory: null, lastStatusCode: null, touchedAt: 0
+    lastErrorCategory: null, lastStatusCode: null, touchedAt: 0,
+    // The HTTP view of the same work: how many requests really left the
+    // process, how many HTTP attempts one request needed at most and how long
+    // the provider actually took (the backoff sleep is not provider time).
+    httpAttempts: 0, maxHttpAttempts: 0, wallClockLatencyMs: 0, lastWallClockLatencyMs: null
   };
 }
 function publicMetrics(metric) {
@@ -131,7 +183,14 @@ function publicMetrics(metric) {
     lastSuccessAt: metric.lastSuccessAt,
     lastFailureAt: metric.lastFailureAt,
     lastErrorCategory: metric.lastErrorCategory,
-    lastStatusCode: metric.lastStatusCode
+    lastStatusCode: metric.lastStatusCode,
+    httpAttempts: metric.httpAttempts,
+    maxHttpAttempts: metric.maxHttpAttempts,
+    wallClockLatencyMs: metric.wallClockLatencyMs,
+    lastWallClockLatencyMs: metric.lastWallClockLatencyMs,
+    // The accumulated latency of every attempt of this provider, including the
+    // backoff sleep the adapter asked for.
+    totalAttemptLatencyMs: metric.totalLatencyMs
   };
 }
 function tokenUsage(usage = {}) {
@@ -164,6 +223,13 @@ function networkFailure(error) {
     timeout ? "Model provider request timed out." : "Model provider network request failed.",
     { category: timeout ? "TIMEOUT" : "NETWORK_ERROR", retryable: true, fallbackEligible: true });
 }
+// The caller cancelled the request. This is neither a provider problem nor a
+// reason to ask the next provider, so it ends the whole call.
+function classifyFailure(error, signal) {
+  if (signal?.aborted) return abortedError();
+  if (error?.code?.startsWith("MODEL_")) return error;
+  return networkFailure(error);
+}
 
 export function createModelAdapter({
   config = modelConfiguration(),
@@ -188,14 +254,38 @@ export function createModelAdapter({
     const selected = configProvider ? configProvider() : config;
     return selected && typeof selected === "object" ? selected : modelConfiguration({});
   };
+  // The candidate list is built the same way for the status report and for the
+  // request. A primary provider that cannot serve the request does not end the
+  // call: the first usable backup provider takes over as the primary.
+  function buildCandidates() {
+    const primary = currentConfig();
+    const candidates = [];
+    const seen = new Set();
+    if (isUsableConfig(primary)) {
+      candidates.push(primary);
+      for (const token of candidateTokens(primary)) seen.add(token);
+    }
+    let backups = [];
+    try { backups = fallbackConfigProvider ? (fallbackConfigProvider() || []) : []; }
+    catch { backups = []; }
+    for (const item of Array.isArray(backups) ? backups : []) {
+      if (!isUsableConfig(item)) continue;
+      const tokens = candidateTokens(item);
+      if (tokens.some(token => seen.has(token))) continue;
+      for (const token of tokens) seen.add(token);
+      candidates.push(item);
+      if (candidates.length > MAX_FALLBACK_CANDIDATES) break;
+    }
+    return candidates;
+  }
   function metricFor(selected) {
     const key = metricKey(selected);
     let metric = metricsByProvider.get(key);
     if (!metric) {
       if (metricsByProvider.size >= MAX_METRIC_PROVIDERS) {
         let oldestKey = null, oldestTouch = Infinity;
-        for (const [candidateKey, candidate] of metricsByProvider) {
-          if (candidate.touchedAt < oldestTouch) { oldestKey = candidateKey; oldestTouch = candidate.touchedAt; }
+        for (const [candidateKeyValue, candidate] of metricsByProvider) {
+          if (candidate.touchedAt < oldestTouch) { oldestKey = candidateKeyValue; oldestTouch = candidate.touchedAt; }
         }
         if (oldestKey !== null) metricsByProvider.delete(oldestKey);
       }
@@ -222,16 +312,27 @@ export function createModelAdapter({
     }
     if (delay > 0) await sleepImpl(delay);
   }
-  async function requestOne(selected, userText, tools, toolSummary, system, history) {
+  async function requestOne(selected, userText, tools, toolSummary, system, history, signal) {
     const metric = metricFor(selected);
     const startedAt = now();
     metric.requests = saturatingAdd(metric.requests, 1);
+    let backoffMs = 0;
+    let httpAttempts = 0;
     let lastFailure = null;
+    const timeoutMs = Number.isInteger(selected.timeoutMs) && selected.timeoutMs >= 500 && selected.timeoutMs <= 120_000
+      ? selected.timeoutMs : 15_000;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       metric.attempts = saturatingAdd(metric.attempts, 1);
       try {
+        if (signal?.aborted) throw abortedError();
+        httpAttempts++;
+        metric.httpAttempts = saturatingAdd(metric.httpAttempts, 1);
         let response;
         try {
+          const timeoutSignal = AbortSignal.timeout(timeoutMs);
+          // The caller can cancel the request; the provider timeout still applies
+          // on its own.
+          const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
           response = await fetchImpl(selected.endpoint, {
             method: "POST",
             headers: { "content-type": "application/json", authorization: "Bearer " + selected.apiKey },
@@ -246,14 +347,15 @@ export function createModelAdapter({
                 { role: "user", content: JSON.stringify({ request: userText, allowedTools: toolSummary }) }
               ]
             }),
-            signal: AbortSignal.timeout(Number.isInteger(selected.timeoutMs) && selected.timeoutMs >= 500 && selected.timeoutMs <= 120_000
-              ? selected.timeoutMs : 15_000)
+            signal: requestSignal
           });
         } catch (error) {
-          lastFailure = networkFailure(error);
-          if (attempt < maxAttempts) {
+          lastFailure = classifyFailure(error, signal);
+          if (lastFailure.retryable && attempt < maxAttempts) {
             metric.retries = saturatingAdd(metric.retries, 1);
+            const sleepStartedAt = now();
             await sleepBeforeRetry(attempt);
+            backoffMs += Math.max(0, now() - sleepStartedAt);
             continue;
           }
           throw lastFailure;
@@ -264,7 +366,9 @@ export function createModelAdapter({
           lastFailure = providerFailure(status);
           if (lastFailure.retryable && attempt < maxAttempts) {
             metric.retries = saturatingAdd(metric.retries, 1);
+            const sleepStartedAt = now();
             await sleepBeforeRetry(attempt, response);
+            backoffMs += Math.max(0, now() - sleepStartedAt);
             continue;
           }
           throw lastFailure;
@@ -272,41 +376,53 @@ export function createModelAdapter({
         const raw = await readBoundedText(response, MAX_RESPONSE_BYTES);
         let envelope;
         try { envelope = JSON.parse(raw); }
-        catch { throw modelError("MODEL_INVALID_RESPONSE", "Invalid model provider response.", { category: "INVALID_RESPONSE" }); }
-        const plan = buildPlan(envelope, tools);
-        const endedAt = now(), duration = Math.max(0, endedAt - startedAt);
+        catch { throw invalidResponseError("Invalid model provider response."); }
+        // The provider answered and charged for the tokens, so they are counted
+        // even when the plan turns out to be unusable.
         const usage = tokenUsage(envelope?.usage);
-        metric.successes = saturatingAdd(metric.successes, 1);
-        metric.lastLatencyMs = duration;
-        metric.totalLatencyMs = saturatingAdd(metric.totalLatencyMs, duration);
         metric.inputTokens = saturatingAdd(metric.inputTokens, usage.input);
         metric.outputTokens = saturatingAdd(metric.outputTokens, usage.output);
         metric.totalTokens = saturatingAdd(metric.totalTokens, usage.total);
+        const plan = buildPlan(envelope, tools);
+        const endedAt = now(), duration = Math.max(0, endedAt - startedAt);
+        const wallClock = Math.max(0, duration - backoffMs);
+        metric.successes = saturatingAdd(metric.successes, 1);
+        metric.lastLatencyMs = duration;
+        metric.totalLatencyMs = saturatingAdd(metric.totalLatencyMs, duration);
+        metric.lastWallClockLatencyMs = wallClock;
+        metric.wallClockLatencyMs = saturatingAdd(metric.wallClockLatencyMs, wallClock);
+        metric.maxHttpAttempts = Math.max(metric.maxHttpAttempts, httpAttempts);
         metric.lastSuccessAt = new Date(endedAt).toISOString();
         metric.lastErrorCategory = null;
         metric.lastStatusCode = response.status;
         return plan;
       } catch (error) {
-        if (error?.code?.startsWith("MODEL_")) lastFailure = error;
-        else lastFailure = networkFailure(error);
+        lastFailure = classifyFailure(error, signal);
         if (lastFailure.retryable && attempt < maxAttempts) {
           metric.retries = saturatingAdd(metric.retries, 1);
+          const sleepStartedAt = now();
           await sleepBeforeRetry(attempt);
+          backoffMs += Math.max(0, now() - sleepStartedAt);
           continue;
         }
         break;
       }
     }
     const endedAt = now(), duration = Math.max(0, endedAt - startedAt);
+    const wallClock = Math.max(0, duration - backoffMs);
     metric.failures = saturatingAdd(metric.failures, 1);
     metric.lastLatencyMs = duration;
     metric.totalLatencyMs = saturatingAdd(metric.totalLatencyMs, duration);
+    metric.lastWallClockLatencyMs = wallClock;
+    metric.wallClockLatencyMs = saturatingAdd(metric.wallClockLatencyMs, wallClock);
+    metric.maxHttpAttempts = Math.max(metric.maxHttpAttempts, httpAttempts);
     metric.lastFailureAt = new Date(endedAt).toISOString();
     metric.lastErrorCategory = lastFailure?.category || lastFailure?.code || "UNKNOWN";
     metric.lastStatusCode = Number.isInteger(lastFailure?.statusCode) ? lastFailure.statusCode : null;
     throw modelError(lastFailure?.code || "MODEL_PROVIDER_ERROR", lastFailure?.message || "Model request failed.",
       {
         category: metric.lastErrorCategory,
+        retryable: lastFailure?.retryable === true,
         fallbackEligible: lastFailure?.fallbackEligible === true,
         ...(Number.isInteger(lastFailure?.statusCode) ? { statusCode: lastFailure.statusCode } : {})
       });
@@ -315,21 +431,21 @@ export function createModelAdapter({
   return Object.freeze({
     status() {
       const selected = currentConfig();
-      const enabled = selected.enabled === true && Boolean(selected.endpoint && selected.apiKey && selected.model);
-      let availableFallbacks = [];
-      try {
-        availableFallbacks = (fallbackConfigProvider?.() || []).filter(item =>
-          item && item.enabled === true && item.endpoint && item.apiKey && item.model &&
-          item.providerId !== selected.providerId).slice(0, 3);
-      } catch { /* Status reporting must not leak or crash on fallback provider errors. */ }
+      const candidates = buildCandidates();
+      const effective = candidates[0] || null;
       return {
-        enabled: enabled,
+        enabled: Boolean(effective),
         providerConfigured: Boolean(selected.endpoint && selected.apiKey && selected.model),
-        model: selected.enabled && selected.model ? selected.model : null,
-        providerId: selected.enabled ? selected.providerId || null : null,
-        providerName: selected.enabled ? selected.providerName || null : null,
-        fallbackProviders: availableFallbacks.length,
-        retryAttempts: maxAttempts
+        model: effective ? effective.model : null,
+        providerId: effective ? effective.providerId || null : null,
+        providerName: effective ? effective.providerName || null : null,
+        fallbackProviders: Math.max(0, candidates.length - 1),
+        retryAttempts: maxAttempts,
+        // The ceiling of one HTTP attempt for a single candidate, and the
+        // ceiling of one user request across every candidate it may use.
+        maxHttpAttemptsPerRequest: maxAttempts,
+        maxHttpAttemptsPerUserRequest: candidates.length * maxAttempts,
+        maxHttpAttemptsPerUserRequestCap: (MAX_FALLBACK_CANDIDATES + 1) * maxAttempts
       };
     },
     metrics() {
@@ -341,12 +457,29 @@ export function createModelAdapter({
           sum[key] = saturatingAdd(sum[key], item[key]);
         return sum;
       }, { requests: 0, attempts: 0, retries: 0, successes: 0, failures: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0 });
-      return { scope: "process-lifetime-memory-only", totals, providers };
+      // The HTTP view is reported next to the legacy totals instead of inside
+      // them, so the existing counters keep their exact meaning.
+      const http = providers.reduce((sum, item) => {
+        sum.httpAttempts = saturatingAdd(sum.httpAttempts, item.httpAttempts);
+        sum.maxHttpAttempts = Math.max(sum.maxHttpAttempts, item.maxHttpAttempts);
+        sum.wallClockLatencyMs = saturatingAdd(sum.wallClockLatencyMs, item.wallClockLatencyMs);
+        sum.totalAttemptLatencyMs = saturatingAdd(sum.totalAttemptLatencyMs, item.totalAttemptLatencyMs);
+        return sum;
+      }, { httpAttempts: 0, maxHttpAttempts: 0, wallClockLatencyMs: 0, totalAttemptLatencyMs: 0 });
+      return {
+        scope: "process-lifetime-memory-only",
+        totals,
+        http: { ...http, maxHttpAttemptsPerRequest: maxAttempts },
+        providers
+      };
     },
-    async plan(userText, tools, historyInput = []) {
+    async plan(userText, tools, historyInput = [], options = {}) {
       const history = normalizeConversationHistory(historyInput);
-      const primary = currentConfig();
-      if (!primary.enabled || !primary.endpoint || !primary.apiKey || !primary.model) return null;
+      // The old three argument call stays valid: the options are optional.
+      const signal = options && typeof options === "object" && options.signal && typeof options.signal.aborted === "boolean"
+        ? options.signal : null;
+      const candidates = buildCandidates();
+      if (!candidates.length) return null;
       const toolSummary = tools.map(tool => ({ id: tool.id, title: tool.title, description: tool.description, inputSchema: tool.inputSchema }));
       const system = [
         "You are the planning component of a safety-first Feiniu OS NAS assistant.",
@@ -358,32 +491,41 @@ export function createModelAdapter({
         "Return exactly one JSON object with keys message and toolCalls. message is a short Chinese user-facing explanation. toolCalls is an array of at most 3 objects, each with id and args. Provide every required argument and only arguments allowed by that tool inputSchema; use {} only when no arguments are required. If no tool is needed, return an empty array.",
         "Do not include markdown fences or any text outside the JSON object."
       ].join("\n");
-      const candidates = [primary];
-      if (fallbackConfigProvider) {
-        let backups = [];
-        try { backups = fallbackConfigProvider() || []; } catch { backups = []; }
-        const seen = new Set([primary.providerId || "primary"]);
-        for (const item of backups) {
-          if (!item || item.enabled !== true || !item.endpoint || !item.apiKey || !item.model) continue;
-          const key = item.providerId || item.endpoint + "\n" + item.model;
-          if (seen.has(key)) continue;
-          seen.add(key); candidates.push(item);
-          if (candidates.length >= 4) break;
-        }
-      }
-      let lastFailure = null;
+      const failures = [];
       for (let index = 0; index < candidates.length; index++) {
-        try { return await requestOne(candidates[index], userText, tools, toolSummary, system, history); }
+        const candidate = candidates[index];
+        try { return await requestOne(candidate, userText, tools, toolSummary, system, history, signal); }
         catch (error) {
-          lastFailure = error;
+          failures.push({
+            providerId: typeof candidate.providerId === "string" ? candidate.providerId : null,
+            providerName: typeof candidate.providerName === "string" ? candidate.providerName.slice(0, 80) : null,
+            code: error?.code || "MODEL_PROVIDER_ERROR",
+            category: error?.category || null,
+            statusCode: Number.isInteger(error?.statusCode) ? error.statusCode : null,
+            message: error?.message || "Model request failed."
+          });
+          // A cancelled request ends the call; the next provider is not asked.
+          if (error?.code === "MODEL_REQUEST_ABORTED") break;
           if (error?.fallbackEligible !== true || index === candidates.length - 1) break;
         }
       }
-      throw modelError(lastFailure?.code || "MODEL_PROVIDER_ERROR",
-        lastFailure?.message || "Model request failed without running any tools.",
+      // The primary failure is the one the operator has to see; the other
+      // candidate failures travel with it as a list.
+      const primaryFailure = failures[0] || null;
+      throw modelError(primaryFailure?.code || "MODEL_PROVIDER_ERROR",
+        primaryFailure?.message || "Model request failed without running any tools.",
         {
-          category: lastFailure?.category || "UNKNOWN",
-          ...(Number.isInteger(lastFailure?.statusCode) ? { statusCode: lastFailure.statusCode } : {})
+          category: primaryFailure?.category || "UNKNOWN",
+          retryable: false,
+          fallbackEligible: false,
+          ...(Number.isInteger(primaryFailure?.statusCode) ? { statusCode: primaryFailure.statusCode } : {}),
+          failures: failures.map(item => ({
+            providerId: item.providerId,
+            providerName: item.providerName,
+            code: item.code,
+            category: item.category,
+            statusCode: item.statusCode
+          }))
         });
     }
   });

@@ -13,7 +13,9 @@ test("task history cleanup is POST-only, authenticated, same-origin and audited"
   assert.match(route, /req\.method !== "POST"/);
   assert.match(route, /sessionFor\(req\)/);
   assert.match(route, /sameOrigin\(req\)/);
-  assert.match(route, /taskManager\.clearTerminal\(\)/);
+  // The cleanup is scoped to the calling session so that one browser cannot
+  // wipe another browser's task history.
+  assert.match(route, /taskManager\.clearTerminal\(active\.key\)/);
   assert.match(server, /pathname === "\/api\/tasks\/clear-history"\) return "tasks\.clear"/);
   assert.match(audit, /"tasks\.clear"/);
 });

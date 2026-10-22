@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readUiSource } from "./helpers/ui-source.mjs";
 
 test("Skill ZIP upload exposes progress and abort controls without changing quarantine semantics", async () => {
-  const html = await readFile(new URL("../apps/fnos-nas-agent/app/ui/index.html", import.meta.url), "utf8");
+  const html = await readUiSource();
   assert.match(html, /id="skill-import-progress"[^>]*max="100"/);
   assert.match(html, /id="skill-import-status"/);
   assert.match(html, /id="skill-import-cancel"[^>]*disabled/);
