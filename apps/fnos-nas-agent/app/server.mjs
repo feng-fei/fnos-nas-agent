@@ -44,6 +44,9 @@ import { buildDiagnosticReport } from "./diagnostics.mjs";
 import { runSecurityInspection, buildToolPermissionTable, summarizeAuditEntries } from "./security-audit.mjs";
 import { createUsageMeter, applyPrivacyMode, describeModelCapabilities } from "./model-usage.mjs";
 import { createSystemCollector, buildUsageEntry } from "./agent-insights.mjs";
+import { createRunbookStore } from "./runbook-store.mjs";
+import { buildEvidenceBundle, collectDiagnosticEvidence } from "./diagnostic-evidence.mjs";
+import { createWorkflowEngine } from "./workflow-engine.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -94,6 +97,13 @@ function reply(res, status, body, type = "application/json; charset=utf-8", head
     "referrer-policy": "no-referrer", "cross-origin-resource-policy": "same-origin", ...headers
   });
   res.end(type.startsWith("application/json") ? JSON.stringify(body) : body);
+}
+// Reads a numeric query parameter. A value that is not a number falls back to
+// the default, and the value is clamped into the allowed range.
+function numberParam(value, fallback, max) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return Math.min(parsed, max);
 }
 function cookies(header = "") {
   const result = Object.create(null);
@@ -351,6 +361,9 @@ const modelChatAdapter = modelProviderStore ? createModelChatAdapter({ providerS
 // counters and the model names only: neither the prompt nor the answer of the
 // operator is ever stored.
 const usageMeter = createUsageMeter({ maxEntries: 500 });
+// The runbook store keeps the operating knowledge of the operator: the
+// procedures that the agent may reuse. It is a plain store, it never acts.
+const runbookStore = createRunbookStore(dataDir ? { dataDir } : {});
 // Privacy mode is a read-only report flag: it says how many cloud calls the
 // meter saw. It is not a gate, the gate would have to live in the adapter.
 const privacyModeEnabled = /^(1|true|on|yes)$/i.test(String(process.env.AGENT_PRIVACY_MODE || ""));
@@ -443,6 +456,38 @@ const toolRegistry = createToolRegistry({
   observer: toolObserver
 });
 const actionApprovals = createActionApprovalService({ tools: toolRegistry });
+// The workflow engine runs a prepared plan of read-only tools. It never
+// approves anything itself: the approval and the tool execution are injected
+// from the outside, and the built-in plans only use read-only tools.
+const workflowEngine = createWorkflowEngine({});
+registerBuiltInWorkflows(workflowEngine);
+
+// The plans that ship with the service. Every step uses a read-only tool: a
+// workflow may look at the machine, it never changes it.
+function registerBuiltInWorkflows(engine) {
+  const plans = [
+    {
+      id: "storage-health",
+      name: "存储与网络体检",
+      steps: [
+        { id: "storage", tool: "storage.summary", args: {} },
+        { id: "processes", tool: "system.process-summary", args: {}, dependsOn: ["storage"] },
+        { id: "network", tool: "network.interfaces", args: {}, dependsOn: ["storage"], notify: true }
+      ]
+    },
+    {
+      id: "file-hygiene",
+      name: "文件与文档卫生检查",
+      steps: [
+        { id: "inspect", tool: "files.inspect", args: {} },
+        { id: "documents", tool: "documents.index-status", args: {}, dependsOn: ["inspect"], notify: true }
+      ]
+    }
+  ];
+  for (const plan of plans) {
+    try { engine.registerWorkflow(plan); } catch { /* a duplicate plan is not fatal */ }
+  }
+}
 // The system snapshot is collected from the official CLI and from the local
 // process. The collector never decides what is healthy, it only reports what
 // it could measure.
@@ -573,8 +618,14 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/mcp/status") return "mcp.status";
   if (pathname === "/api/system/snapshot") return "system.snapshot";
   if (pathname === "/api/diagnostics/report") return "diagnostics.report";
+  if (pathname === "/api/diagnostics/evidence") return "diagnostics.evidence";
   if (pathname === "/api/security/inspection") return "security.inspection";
   if (pathname === "/api/models/usage") return "models.usage";
+  if (pathname === "/api/workflows") return method === "GET" ? "workflows.list" : "workflows.run";
+  if (pathname.startsWith("/api/workflows/")) return "workflows.events";
+  if (pathname === "/api/runbooks") return method === "GET" ? "runbooks.list" : method === "POST" ? "runbooks.write" : "other_api";
+  if (pathname === "/api/runbooks/stats") return "runbooks.stats";
+  if (pathname.startsWith("/api/runbooks/")) return method === "DELETE" ? "runbooks.delete" : "runbooks.read";
   if (pathname === "/api/tasks/clear-history") return "tasks.clear";
   if (pathname === "/api/health-checks") return method === "GET" ? "health-checks.list" : method === "POST" ? "health-checks.create" : "other_api";
   if (/^\/api\/health-checks\/[a-f0-9-]{36}\/run$/i.test(pathname)) return "health-checks.run";
@@ -1356,11 +1407,49 @@ const server = createServer(async (req, res) => {
         return reply(res, 415, { error: "Expected application/json" });
       const input = await jsonBody(req);
       const symptom = typeof input?.symptom === "string" ? input.symptom.slice(0, 2000) : "";
-      const evidence = Array.isArray(input?.evidence) ? input.evidence.slice(0, 50) : [];
+      // The operator may bring evidence of their own. The evidence the server
+      // collects is added to it: the audit log, the tool trace, the health
+      // checks. The collector only reads whitelisted fields, so no prompt, no
+      // credential and no stack trace reaches the report.
+      const supplied = Array.isArray(input?.evidence) ? input.evidence.slice(0, 50) : [];
+      const bundle = buildEvidenceBundle({
+        auditEntries: auditLogger ? await auditLogger.read({ limit: 500 }) : [],
+        traceEntries: toolTracer.list(),
+        healthChecks: scheduledHealthChecks ? scheduledHealthChecks.list() : [],
+        snapshots: [],
+        symptom
+      });
+      const evidence = [
+        ...supplied.map(item => ({ source: "operator", detail: typeof item?.detail === "string" ? item.detail : "" })).filter(item => item.detail),
+        ...bundle.evidence
+      ].slice(0, 200);
       // The report is a read-only diagnosis: it names the most likely causes
       // and the checks that would confirm them. It never performs a change.
       const report = buildDiagnosticReport({ symptom, evidence, causes: [], now: new Date().toISOString() });
-      return reply(res, 200, report);
+      return reply(res, 200, {
+        ...report,
+        evidenceSummary: bundle.stats,
+        evidenceTruncated: bundle.truncated
+      });
+    }
+    if (url.pathname === "/api/diagnostics/evidence") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const symptom = url.searchParams.get("symptom") || "";
+      // The snapshot is measured only when it is asked for: the collection
+      // costs commands on the machine.
+      const snapshots = url.searchParams.get("snapshot") === "1"
+        ? await buildSystemSnapshot({ collect: (sectionId) => systemCollector.collect(sectionId) })
+        : [];
+      const evidence = collectDiagnosticEvidence({
+        auditEntries: auditLogger ? await auditLogger.read({ limit: 500 }) : [],
+        traceEntries: toolTracer.list(),
+        healthChecks: scheduledHealthChecks ? scheduledHealthChecks.list() : [],
+        snapshots,
+        now: new Date().toISOString()
+      });
+      return reply(res, 200, { evidence, count: evidence.length });
     }
     if (url.pathname === "/api/security/inspection") {
       const active = sessionFor(req);
@@ -1399,6 +1488,86 @@ const server = createServer(async (req, res) => {
         },
         capabilities: modelProviderStore ? describeModelCapabilities(modelProviderStore.runtimeConfig?.() || {}) : null
       });
+    }
+    if (url.pathname === "/api/workflows") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method === "GET") return reply(res, 200, { workflows: workflowEngine.listWorkflows() });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const workflowId = typeof input?.workflowId === "string" ? input.workflowId : "";
+      if (!workflowId) return reply(res, 400, { error: "A workflow id is required" });
+      // The engine asks for a tool: the server owns the catalogue and the
+      // policy. The engine itself cannot execute anything.
+      const result = await workflowEngine.runWorkflow(workflowId, {
+        sessionId: active.key,
+        invokeTool: async ({ tool, args }) => { await toolRegistry.invoke(tool, args || {}); },
+        requestApproval: async () => ({ approved: false, reason: "工作流不自行批准任何步骤" }),
+        notify: () => {}
+      });
+      if (!result.started) return reply(res, result.reason === "locked" ? 409 : 404, { error: result.reason === "locked" ? "The workflow is already running" : "Unknown workflow", reason: result.reason });
+      return reply(res, 200, result);
+    }
+    if (url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/events")) {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const workflowId = decodeURIComponent(url.pathname.slice("/api/workflows/".length, -"/events".length));
+      if (!workflowEngine.getWorkflow(workflowId)) return reply(res, 404, { error: "Unknown workflow" });
+      return reply(res, 200, { workflowId, events: workflowEngine.workflowEvents(workflowId) });
+    }
+    if (url.pathname === "/api/runbooks/stats") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, runbookStore.stats());
+    }
+    if (url.pathname === "/api/runbooks") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method === "GET") {
+        const query = url.searchParams.get("q") || "";
+        if (query) return reply(res, 200, runbookStore.search(query, { limit: numberParam(url.searchParams.get("limit"), 20, 100) }));
+        return reply(res, 200, runbookStore.list({
+          tag: url.searchParams.get("tag") || "",
+          limit: numberParam(url.searchParams.get("limit"), 50, 200),
+          offset: numberParam(url.searchParams.get("offset"), 0, 100000)
+        }));
+      }
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      // The store redacts the entry before it is written: a credential that
+      // slipped into the text is replaced, the original text is never stored.
+      const result = await runbookStore.put(input || {});
+      if (!result.written) {
+        const conflict = result.code === "duplicate-entry";
+        return reply(res, conflict ? 409 : 400, { error: result.reason || "Rejected", code: result.code || "rejected" });
+      }
+      return reply(res, 201, { entry: result.entry, redactedFields: result.redactedFields || [] });
+    }
+    if (url.pathname.startsWith("/api/runbooks/")) {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      const runbookId = decodeURIComponent(url.pathname.slice("/api/runbooks/".length));
+      if (req.method === "GET") {
+        const entry = runbookStore.get(runbookId);
+        if (!entry) return reply(res, 404, { error: "Not found" });
+        return reply(res, 200, entry);
+      }
+      if (req.method !== "DELETE") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, DELETE" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      const result = await runbookStore.remove(runbookId);
+      if (!result.removed) {
+        const missing = result.code === "not-found";
+        return reply(res, missing ? 404 : 400, { error: result.reason || "Rejected", code: result.code || "rejected" });
+      }
+      return reply(res, 200, { removed: true, id: result.id });
     }
     if (url.pathname === "/api/health-checks") {
       const active = sessionFor(req);

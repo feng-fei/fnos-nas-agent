@@ -71,7 +71,7 @@ Data honesty rule: a section whose collector returns nothing is reported as
 | Item | State | Where | Gap |
 | --- | --- | --- | --- |
 | D01 Fault intake | Partly | Phase 162 `buildDiagnosticReport` | The symptom is supplied by the caller |
-| D02 Log correlation | Open | — | Log sources are not connected yet |
+| D02 Log correlation | Partly | `app/diagnostic-evidence.mjs` collects the audit log and the tool trace | Log files and SMART are still not connected |
 | D03 Fault classification | Implemented | Phase 162 `classifyEvidence` | — |
 | D04 Root-cause candidates | Implemented | Phase 162 `rankCauses` | — |
 | D05 Confidence statement | Implemented | Phase 162 `confirmed` / `likely` / `suspected` | — |
@@ -217,13 +217,13 @@ require an explicit confirmation with a server-issued capability.
 | W01 Create a task from natural language | Partly | `health-checks.*` API | No natural-language creation yet |
 | W02 Cron and calendar scheduling | Partly | Health-check plans | Calendar rules are missing |
 | W03 Event triggering | Open | — | — |
-| W04 Multi-step orchestration | Partly | `app/agent-core.mjs` plans | Plans are not persisted as workflows |
-| W05 Conditional branches | Open | — | — |
-| W06 Failure handling | Partly | Failure records are kept | No retry or skip policy |
+| W04 Multi-step orchestration | Partly | `app/agent-core.mjs` plans, `app/workflow-engine.mjs` | Workflow plans exist but cannot be authored in the UI |
+| W05 Conditional branches | Partly | `app/workflow-engine.mjs` skip rules | Branches are skip-on-failure, not user-defined conditions |
+| W06 Failure handling | Partly | Failure records are kept, workflow skip policy | No retry policy yet |
 | W07 Idempotency control | Open | — | — |
-| W08 Task lock | Open | — | — |
+| W08 Task lock | Partly | `app/workflow-engine.mjs` per-workflow lock | Only workflow runs are locked, tasks are not |
 | W09 Execution record | Implemented | Health-check history, task history | — |
-| W10 Notification system | Open | — | No delivery targets yet |
+| W10 Notification system | Partly | `app/workflow-engine.mjs` notify hook | No delivery target yet, the hook is in-process only |
 | W11 Task templates | Open | — | — |
 | W12 Workflow versioning | Open | — | — |
 | W13 Pause and resume | Partly | Health-check pause and resume | — |
@@ -274,8 +274,8 @@ Missing capabilities are reported as unknown, never as a working feature.
 
 | Item | State | Where | Gap |
 | --- | --- | --- | --- |
-| K01 Operations knowledge base | Partly | Documents under `docs/`, document index | No editable runbook store |
-| K02 Historical fault library | Open | — | — |
+| K01 Operations knowledge base | Partly | Documents under `docs/`, document index, `app/runbook-store.mjs` | No runbook authoring in the UI yet |
+| K02 Historical fault library | Partly | `app/runbook-store.mjs` search | Fault records are still written by hand |
 | K03 Device profile | Open | — | — |
 | K04 Application profile | Open | — | — |
 | K05 User preferences | Open | — | — |
@@ -372,15 +372,21 @@ Ordered by the checklist's own priority and by how much the gap blocks the
 operating loop:
 
 1. **Diagnosis source connection (D02, S06, S10, S13).** The diagnosis engine
-   ranks causes from evidence, but no log, SMART or service-event source feeds
-   it yet. This is the largest remaining gap in the loop.
+   now ranks causes from evidence, and the audit log, the tool trace, the
+   health checks and the system snapshot feed it (Phase 167). Log files,
+   SMART and service events are still missing.
 2. **Verified write paths (C07–C10, APP09, D08–D11).** Every mutation is
    still absent. They must arrive one at a time, each with a preview, a
    capability-issued approval and a verification step.
-3. **Workflow engine (W02–W08, W10).** Health-check plans are the seed, but
-   there is no dependency graph, no lock and no notification target.
-4. **Knowledge and history (K01–K10, D13, D14).** The repository has the
-   documents, not the runbook store.
+3. **Workflow engine (W02–W08, W10).** The engine now holds a dependency
+   graph, a cycle check, a per-workflow lock and a notification hook
+   (Phase 168), and the plans are reachable over HTTP (Phase 170). What is
+   missing is the authoring surface, the calendar rules and a real
+   notification target.
+4. **Knowledge and history (K01–K10, D13, D14).** The runbook store now holds
+   reusable procedures with a redacted write path (Phase 169), and the
+   diagnosis engine can cite them (Phase 170). History capture, staleness
+   rules and correction prompts are still missing.
 5. **Web information (B01–B10).** Blocked on an explicit network policy and
    SSRF protection, and on B10 being re-verified when the first web tool
    lands.

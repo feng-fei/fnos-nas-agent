@@ -151,6 +151,10 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 164 — MCP Server](docs/phase-164-mcp-server.md)
 - [Phase 165 — Model Usage](docs/phase-165-model-usage.md)
 - [Phase 166 — Agent Insights](docs/phase-166-agent-insights.md)
+- [Phase 167 — Diagnostic Evidence](docs/phase-167-diagnostic-evidence.md)
+- [Phase 168 — Workflow Engine](docs/phase-168-workflow-engine.md)
+- [Phase 169 — Runbook Store](docs/phase-169-runbook-store.md)
+- [Phase 170 — Observation Routes](docs/phase-170-observation-routes.md)
 
 - [Phase 94 — Model Catalog HTTP Integration](docs/phase-94-model-catalog-http.md)
 - [Phase 95 — Searchable Model Catalog Picker](docs/phase-95-model-catalog-search.md)

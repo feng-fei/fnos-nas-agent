@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 170 documents (155 phase documents and 14 non-phase documents, plus this file).
+This index lists 174 documents (159 phase documents and 14 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -632,6 +632,22 @@ This index lists 170 documents (155 phase documents and 14 non-phase documents, 
 ### Phase 166
 
 - [Phase 166 — Agent insights](phase-166-agent-insights.md) — The observation modules of Phase 160–165 existed but had no common exit. This phase exposes the system snapshot, the security inspection, the model usage and the diagnostic report over authenticated read-only routes, adds the MCP stdio entry point, and proves the whole chain with a test that starts a real server.
+
+### Phase 167
+
+- [Phase 167 — Diagnostic evidence](phase-167-diagnostic-evidence.md) — The diagnosis engine ranked causes from evidence that nobody collected. This phase gathers the evidence from the audit log, the tool trace, the health checks and the system snapshot, reads only whitelisted fields, and caps every source and the total.
+
+### Phase 168
+
+- [Phase 168 — Workflow engine](phase-168-workflow-engine.md) — A health check plan was the only seed of automation. This phase adds a dependency graph, a cycle check, a per-workflow lock, an approval step that never approves itself, and a notification that carries no arguments.
+
+### Phase 169
+
+- [Phase 169 — Runbook store](phase-169-runbook-store.md) — The repository held documents but no reusable procedure. This phase adds a runbook store with stable search, a redacted write path and an atomic persistence, and refuses to overwrite an entry.
+
+### Phase 170
+
+- [Phase 170 — Observation routes](phase-170-observation-routes.md) — The evidence, workflow and runbook modules of Phase 167–169 existed but had no exit. This phase wires them into authenticated read-only routes, ships two read-only workflow plans, and proves the chain with a real HTTP test.
 
 ## This index
 
