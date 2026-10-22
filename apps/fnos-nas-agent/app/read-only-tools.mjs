@@ -75,6 +75,10 @@ const definitions = [
     inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, query: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["query"], additionalProperties: false }
   },
   {
+    id: "files.inspect", title: "文件卫生巡检", description: "只读检查授权目录中的大文件、久未修改的大文件、临时/备份文件名及疑似敏感文件名；只读取文件系统元数据，不读取正文，不修改文件。", risk: "read-only",
+    inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, days: { type: "integer", minimum: 1, maximum: 3650 }, minBytes: { type: "integer", minimum: 0, maximum: 1000000000 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, additionalProperties: false }
+  },
+  {
     id: "files.create-folder", title: "创建文件夹", description: "在允许的存储卷内创建一个新文件夹；不覆盖已有内容。", risk: "write",
     inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, name: { type: "string", minLength: 1, maxLength: 255 } }, required: ["path", "name"], additionalProperties: false }
   },
@@ -160,6 +164,10 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     if (id === "files.search-content") {
       if (!fileBrowser || typeof fileBrowser.searchContent !== "function") throw Object.assign(new Error("File content search is unavailable"), { statusCode: 503 });
       return fileBrowser.searchContent(args.path || "", args.query, args.limit ?? 30);
+    }
+    if (id === "files.inspect") {
+      if (!fileBrowser || typeof fileBrowser.inspect !== "function") throw Object.assign(new Error("File inspection is unavailable"), { statusCode: 503 });
+      return fileBrowser.inspect(args.path || "", args.days ?? 90, args.minBytes ?? 1024 * 1024, args.limit ?? 10);
     }
     if (id === "files.create-folder") {
       if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
