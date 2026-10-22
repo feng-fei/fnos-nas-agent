@@ -13,4 +13,4 @@ This hardening narrows accepted input only. It adds no commands, permissions, or
 
 ## Acceptance
 
-Node.js 24/26 tests, release gates, syntax checks, and FPK packaging must pass.
+Node.js 26.x tests, release gates, syntax checks, and FPK packaging must pass.

@@ -17,5 +17,5 @@ The log is bounded by maxBytes (default 1 MiB) and keeps at most one rotated fil
 ## Acceptance
 
 - Unit tests prove field allowlisting, sensitive-value exclusion, file permissions, rotation bounds, and rejection of unrecognized routes.
-- Node.js 24 and 26 test matrix and Node.js 26 FPK build pass.
+- The Node.js 26.x test suite and Node.js 26 FPK build pass.
 - Existing task history regression test proves historyLimit is a retention bound, not an admission limit; queueLimit remains the queue admission control.

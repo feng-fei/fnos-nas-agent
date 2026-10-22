@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, lstat, realpath, open, link, unlin
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createFileManager } from "../apps/fnos-nas-agent/app/file-manager.mjs";
+import { DELETE_CAPABILITY } from "../apps/fnos-nas-agent/app/execution-capability.mjs";
 
 const baseFs = { mkdtemp, mkdir, writeFile, readFile, lstat, realpath, open, link, unlink, rename, rmdir, readdir };
 
@@ -56,7 +57,7 @@ async function perform(manager, directory, action) {
     case "createText": return manager.createText(directory, "new-text.txt", "created text");
     case "mkdir": return manager.operate({ action: "mkdir", path: directory, name: "new-folder" });
     case "rename": return manager.operate({ action: "rename", path: join(directory, "source.txt"), name: "renamed.txt" });
-    case "delete": return manager.operate({ action: "delete", path: join(directory, "source.txt"), confirm: true });
+    case "delete": return manager.operate({ action: "delete", path: join(directory, "source.txt"), capability: DELETE_CAPABILITY });
     default: throw new Error("Unknown test action");
   }
 }

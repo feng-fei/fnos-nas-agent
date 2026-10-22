@@ -71,19 +71,26 @@ test("file manager batch HTTP operations stay inside an isolated configured root
     method: "POST",
     body: JSON.stringify({ operations: [
       { action: "mkdir", path: volumeRoot, name: "folderA" },
-      { action: "mkdir", path: volumeRoot, name: "folderA" },
-      { action: "delete", path: volumeRoot, confirm: true }
+      { action: "mkdir", path: volumeRoot, name: "folderA" }
     ] })
   });
   assert.equal(batch.status, 200, await batch.clone().text());
   const result = await batch.json();
-  assert.equal(result.total, 3);
+  assert.equal(result.total, 2);
   assert.equal(result.succeeded, 1);
-  assert.equal(result.failed, 2);
+  assert.equal(result.failed, 1);
   assert.equal(result.results[0].ok, true);
   assert.equal(result.results[1].ok, false);
-  assert.equal(result.results[2].ok, false);
   assert.equal(JSON.stringify(result.results.slice(1)).includes(volumeRoot), false);
+
+  // Destructive entries must be approved one at a time through /api/files/operation.
+  const destructiveBatch = await request("/api/files/operations/batch", {
+    method: "POST",
+    body: JSON.stringify({ operations: [{ action: "delete", path: volumeRoot, confirm: true }] })
+  });
+  assert.equal(destructiveBatch.status, 409, await destructiveBatch.clone().text());
+  const destructiveBody = await destructiveBatch.json();
+  assert.equal(destructiveBody.approvalRequired, undefined);
 
   const listing = await request("/api/files?path=" + encodeURIComponent(volumeRoot));
   assert.equal(listing.status, 200);

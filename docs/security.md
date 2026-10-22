@@ -70,3 +70,12 @@ Record timestamp, user/session identifier, Skill ID/version, tool name, risk tie
 ## Incident controls
 
 Provide a global read-only mode and a kill switch that blocks all mutating tool calls. A Skill can be disabled without stopping the core web UI. Errors fail closed: unknown tool, malformed arguments, expired approval, missing auth, or policy uncertainty means no execution.
+
+Implemented in [Phase 126 — Execution Policy](phase-126-execution-policy.md), [Phase 127 — Destructive Capability](phase-127-destructive-capability.md), and [Phase 131 — Server hardening](phase-131-server-hardening.md):
+
+- The execution policy has three modes: `normal`, `read-only` and `halted`. The mode comes from `<AGENT_DATA_DIR>/execution-mode.json` first, from `AGENT_EXECUTION_MODE` second, and from the default last.
+- `read-only` refuses every write and destructive tool call; `halted` refuses every tool call and answers `503`.
+- An operator flips the mode from the mobile console or through `GET`/`POST /api/execution-mode`. The endpoint is deliberately not gated by the policy, so the kill switch can always be lifted again.
+- A destructive tool call is never executed directly. The server returns `202` with an approval record, and the grant is bound to the session that requested it; another session cannot confirm or deny it.
+- The delete capability is a module-private symbol that never reaches the browser, so a client cannot forge the explicit confirmation.
+- First-run setup requires an installation code for any caller that is not on the appliance itself.

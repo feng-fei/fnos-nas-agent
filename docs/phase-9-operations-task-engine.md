@@ -27,4 +27,4 @@ All task endpoints require authentication. Submission is same-origin and JSON-on
 
 ## Validation
 
-CI runs the full Node.js test suite on Node.js 24 and 26 and builds/inspects the FPK on Node.js 26.
+CI runs the full Node.js test suite on Node.js 26.x and builds/inspects the FPK on Node.js 26.

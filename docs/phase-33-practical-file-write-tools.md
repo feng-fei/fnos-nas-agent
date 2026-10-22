@@ -20,4 +20,4 @@ The API reports `routineWriteExecutionEnabled` separately from arbitrary `execut
 
 ## Validation
 
-The new tests cover tool risk/schema declarations, folder creation, rename/move, no-overwrite behavior, storage-root containment, and rules-first routing without a model call. CI must pass on Node.js 26 and Node.js 24. This does not replace testing on an actual fnOS NAS.
+The new tests cover tool risk/schema declarations, folder creation, rename/move, no-overwrite behavior, storage-root containment, and rules-first routing without a model call. CI must pass on Node.js 26.x. This does not replace testing on an actual fnOS NAS.

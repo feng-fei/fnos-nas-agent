@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join, isAbsolute } from "node:path";
 
 const MAX_PROVIDERS = 20;
@@ -9,6 +9,32 @@ const DEFAULT_TIMEOUT_MS = 12_000;
 
 function fail(statusCode, message, code) {
   throw Object.assign(new Error(message), { statusCode, code });
+}
+
+async function syncFile(path) {
+  // Flush the bytes to disk before the atomic rename publishes the new file.
+  let handle = null;
+  try {
+    handle = await open(path, "r+");
+    await handle.sync();
+  } catch {
+    // best effort only: the rename is still atomic
+  } finally {
+    if (handle) await handle.close().catch(() => {});
+  }
+}
+
+async function syncDirectory(directory) {
+  // Directory fsync is not available on every platform; the rename is still atomic.
+  let handle = null;
+  try {
+    handle = await open(directory, "r");
+    await handle.sync();
+  } catch {
+    // best effort only
+  } finally {
+    if (handle) await handle.close().catch(() => {});
+  }
 }
 function text(value, field, max, optional = false) {
   if (typeof value !== "string") {
@@ -106,7 +132,9 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
     const temp = path + "." + randomBytes(8).toString("hex") + ".tmp";
     try {
       await writeFile(temp, data, { encoding: "utf8", mode: 0o600, flag: "wx" });
+      await syncFile(temp);
       await chmod(temp, 0o600); await rename(temp, path); await chmod(path, 0o600);
+      await syncDirectory(dataDir);
     } catch (error) {
       await rm(temp, { force: true }).catch(() => {}); throw error;
     }
@@ -333,7 +361,7 @@ export function createModelProviderStore({ dataDir, fetchImpl = fetch, now = () 
       return { provider: publicProvider(updated, activeProviderId), test: { ...result, durationMs } };
     });
   }
-  return Object.freeze({ load, list, runtimeConfig, runtimeFallbackConfigs, add, update, remove, setDefault, test, discoverModels, status() {
+  return Object.freeze({ load, list, runtimeConfig, runtimeFallbackConfigs, add, update, remove, setDefault, test, discoverModels, degraded: () => unavailable === true, status() {
     return { configured: loaded && !unavailable, providerCount: providers.length, activeProviderId };
   } });
 }

@@ -33,4 +33,4 @@ The service still uses HTTP; keep it on a trusted LAN and do not port-forward it
 
 ## Release gate
 
-Run the complete Node.js 26.x test suite and Node.js 24.x regression suite, then build both FPK artifacts. Verify authentication, persistence, invalid transitions, UI behavior, and that the tool registry remains empty before merging. No production NAS changes were made by this PR.
+Run the complete Node.js 26.x test suite, then build the FPK artifact. Verify authentication, persistence, invalid transitions, UI behavior, and that the tool registry remains empty before merging. No production NAS changes were made by this PR.

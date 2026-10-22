@@ -9,7 +9,7 @@ Provide a standalone, dependency-free verifier for a downloaded FPK, its sha256s
 Keep the three files together and run:
 
 ```sh
-node scripts/verify-release-artifact.mjs fnos-nas-agent-test.fpk fnos-nas-agent-test.fpk.sha256 release-manifest.json
+node scripts/verify-release-artifact.mjs fnos-nas-agent-test-node-26.fpk fnos-nas-agent-test-node-26.fpk.sha256 release-manifest.json
 ```
 
 The verifier checks the artifact is a non-empty regular file, the checksum file has one well-formed SHA-256 line naming the same artifact, the computed digest matches that line, and the manifest schema, basename, byte size, digest, algorithm, and unsigned status all agree.

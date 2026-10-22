@@ -16,4 +16,4 @@ Expand the rules-first mobile Agent so common read-only fnOS and file-management
 - All added fnOS CLI operations remain read-only.
 
 ## Validation
-Unit tests cover every new route, exact tool IDs and arguments, no-model behavior, and text preview path routing. The existing Node.js 24/26 CI matrix and FPK build remain required. No production NAS is accessed.
+Unit tests cover every new route, exact tool IDs and arguments, no-model behavior, and text preview path routing. The existing Node.js 26.x CI job and FPK build remain required. No production NAS is accessed.

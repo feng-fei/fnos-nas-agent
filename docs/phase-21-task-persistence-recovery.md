@@ -22,4 +22,4 @@ This is best-effort local state, not a distributed queue or a guarantee against 
 - Queued/running tasks become failed/interrupted and are not re-executed.
 - Prompts, result values, and raw exception details are absent from persisted state.
 - Corrupt state is surfaced instead of silently reset.
-- Node.js 24 and 26 tests and Node.js 26 FPK build pass.
+- The Node.js 26.x tests and Node.js 26 FPK build pass.

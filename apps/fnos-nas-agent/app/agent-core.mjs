@@ -61,11 +61,28 @@ function safeMessage(value, fallback) {
   return text ? text.slice(0, 2000) : fallback;
 }
 
+// The user never sees an upstream message. The text only says what the operator has
+// to check, so an endpoint, a key or a provider detail can never leak into the UI.
+function modelFailureMessage(error) {
+  const status = Number.isInteger(error?.statusCode) ? error.statusCode : null;
+  if (status === 401 || status === 403)
+    return "模型服务拒绝了本次请求（鉴权失败）。为安全起见没有执行任何工具；请检查服务端模型 API Key 与模型名称。";
+  if (status === 404)
+    return "模型服务没有找到所配置的模型。为安全起见没有执行任何工具；请检查服务端模型名称。";
+  if (status === 429)
+    return "模型服务当前限流。为安全起见没有执行任何工具；请稍后再试，或配置一个备用模型。";
+  if (status !== null && status >= 500)
+    return "模型服务暂时不可用。为安全起见没有执行任何工具；请稍后再试。";
+  if (error?.code === "MODEL_INVALID_RESPONSE")
+    return "模型返回的内容不符合约定的格式。为安全起见没有执行任何工具；请检查模型配置是否支持 JSON 输出。";
+  return "模型请求失败或返回格式不符合要求。为安全起见，没有执行任何工具；请检查服务端模型配置与网络连通性。";
+}
+
 export function createAgentCore({ tools, model, requestApproval = null, now = () => new Date().toISOString(), id = randomUUID }) {
   if (!tools || typeof tools.list !== "function" || typeof tools.invoke !== "function") throw new TypeError("A tool registry is required");
   if (!model || typeof model.plan !== "function" || typeof model.status !== "function") throw new TypeError("A model adapter is required");
 
-  async function executePlan(plan, approvalTaskId = id(), reportProgress = () => {}, shouldCancel = () => false) {
+  async function executePlan(plan, approvalTaskId = id(), reportProgress = () => {}, shouldCancel = () => false, sessionId = "") {
     if (shouldCancel()) throw Object.assign(new Error("Task cancellation requested"), { code: "TASK_CANCELLED" });
     reportProgress(25, "校验工具计划");
     const catalogue = new Map(tools.list().map(tool => [tool.id, tool]));
@@ -82,7 +99,11 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
     if (destructive.length) {
       if (plan.toolCalls.length !== 1) throw Object.assign(new Error("Destructive actions must be requested alone so no earlier tool can partially execute"), { statusCode: 400 });
       if (typeof requestApproval !== "function") throw Object.assign(new Error("Confirmation service is unavailable"), { statusCode: 503 });
-      return { pendingApproval: await requestApproval({ toolId: destructive[0].id, args: destructive[0].args, taskId: approvalTaskId }) };
+      // The approval is bound to the session that asked for it, so another session
+      // can neither list nor confirm this action.
+      const approvalRequest = { toolId: destructive[0].id, args: destructive[0].args, taskId: approvalTaskId };
+      if (typeof sessionId === "string" && sessionId) approvalRequest.sessionId = sessionId;
+      return { pendingApproval: await requestApproval(approvalRequest) };
     }
     const results = [];
     reportProgress(55, "执行工具");
@@ -104,6 +125,7 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
     async run(input, context = {}) {
       const reportProgress = typeof context?.reportProgress === "function" ? context.reportProgress : () => {};
       const shouldCancel = typeof context?.shouldCancel === "function" ? context.shouldCancel : () => false;
+      const sessionId = typeof context?.sessionId === "string" ? context.sessionId : "";
       reportProgress(5, "解析请求");
       if (!input || typeof input !== "object" || Array.isArray(input) || typeof input.text !== "string")
         throw Object.assign(new Error("A text field is required"), { statusCode: 400 });
@@ -115,7 +137,7 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       const direct = DIRECT_INTENTS.map(item => ({ item, match: item.pattern.exec(text) })).find(entry => entry.match);
       if (direct) {
         reportProgress(15, "已识别请求");
-        const results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] }, taskId, reportProgress, shouldCancel);
+        const results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] }, taskId, reportProgress, shouldCancel, sessionId);
         if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "rules", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "rules", message: direct.item.message, results };
       }
@@ -131,14 +153,17 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       let plan;
       reportProgress(15, "准备模型计划");
       try { plan = await model.plan(text, tools.list(), history); }
-      catch {
+      catch (error) {
         if (shouldCancel()) throw Object.assign(new Error("Task cancellation requested"), { code: "TASK_CANCELLED" });
-        return { taskId, createdAt, completedAt: now(), status: "failed", mode: "model", message: "模型请求失败或返回格式不符合要求。为安全起见，没有执行任何工具；请检查服务端模型配置与网络连通性。", results: [] };
+        // Only the error code and the upstream status are logged. The message itself
+        // can carry an endpoint or a provider detail, so it never reaches the log.
+        console.error("Model request failed:", error?.code || "UNKNOWN", error?.statusCode || "");
+        return { taskId, createdAt, completedAt: now(), status: "failed", mode: "model", message: modelFailureMessage(error), results: [] };
       }
       if (!plan) return { taskId, createdAt, completedAt: now(), status: "failed", mode: "model", message: "模型未生成有效计划，未执行工具。", results: [] };
       reportProgress(45, "模型计划已生成");
       try {
-        const results = await executePlan(plan, taskId, reportProgress, shouldCancel);
+        const results = await executePlan(plan, taskId, reportProgress, shouldCancel, sessionId);
         if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "model", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "model", message: safeMessage(plan.message, "已完成请求。"), results };
       } catch (error) {

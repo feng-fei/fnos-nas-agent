@@ -151,7 +151,11 @@ function providerFailure(status) {
   return modelError("MODEL_PROVIDER_ERROR", "Model provider request failed.", {
     category, statusCode: status,
     retryable: retryableStatus(status),
-    fallbackEligible: retryableStatus(status)
+    // A provider that refuses the request is usually specific to that provider: the
+    // key may be wrong, the model name may not exist there, or that provider may be
+    // rate limiting. The next backup provider is worth a try. A malformed request
+    // (400/422) would fail everywhere, so it is not repeated against another provider.
+    fallbackEligible: status !== 400 && status !== 422
   });
 }
 function networkFailure(error) {
@@ -301,7 +305,11 @@ export function createModelAdapter({
     metric.lastErrorCategory = lastFailure?.category || lastFailure?.code || "UNKNOWN";
     metric.lastStatusCode = Number.isInteger(lastFailure?.statusCode) ? lastFailure.statusCode : null;
     throw modelError(lastFailure?.code || "MODEL_PROVIDER_ERROR", lastFailure?.message || "Model request failed.",
-      { category: metric.lastErrorCategory, fallbackEligible: lastFailure?.fallbackEligible === true });
+      {
+        category: metric.lastErrorCategory,
+        fallbackEligible: lastFailure?.fallbackEligible === true,
+        ...(Number.isInteger(lastFailure?.statusCode) ? { statusCode: lastFailure.statusCode } : {})
+      });
   }
 
   return Object.freeze({
@@ -373,7 +381,10 @@ export function createModelAdapter({
       }
       throw modelError(lastFailure?.code || "MODEL_PROVIDER_ERROR",
         lastFailure?.message || "Model request failed without running any tools.",
-        { category: lastFailure?.category || "UNKNOWN" });
+        {
+          category: lastFailure?.category || "UNKNOWN",
+          ...(Number.isInteger(lastFailure?.statusCode) ? { statusCode: lastFailure.statusCode } : {})
+        });
     }
   });
 }

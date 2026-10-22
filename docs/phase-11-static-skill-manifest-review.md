@@ -15,4 +15,4 @@ Static findings are advisory review signals, not proof that a Skill is safe or m
 
 ## Validation
 
-The phase adds unit tests for valid frontmatter, suspicious text, missing manifests, size bounds, and invalid ZIP data. CI must pass on Node.js 24 and 26 and produce the Node.js 26 FPK artifact before merge.
+The phase adds unit tests for valid frontmatter, suspicious text, missing manifests, size bounds, and invalid ZIP data. CI must pass on Node.js 26.x and produce the Node.js 26 FPK artifact before merge.

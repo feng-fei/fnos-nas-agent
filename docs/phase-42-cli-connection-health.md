@@ -15,4 +15,4 @@ This phase does not implement browser OAuth, collect authorization codes, reques
 
 ## Validation and limits
 
-Node.js 26 remains the only development CI runtime. FPK build, checksum and provenance jobs remain paused. CI is not a substitute for testing on a real fnOS NAS; this phase does not access or modify a NAS.
+Node.js 26.x remains the only development CI runtime. FPK build, checksum, and provenance jobs are active again (see docs/phase-112 and docs/phase-123). CI is not a substitute for testing on a real fnOS NAS; this phase does not access or modify a NAS.

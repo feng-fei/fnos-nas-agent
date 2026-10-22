@@ -11,43 +11,63 @@
 - No API key, OAuth token, password, cookie, or NAS-specific secret belongs in Git.
 - Prefer Node.js built-ins and keep the runtime dependency list small.
 
-## Planned milestones
+## Delivered milestones
 
-### M1 — specification
+All six milestones below are implemented in `main`. The code columns name the
+delivered artifacts; the only remaining acceptance work is the manual
+fnOS device gate described in [FPK test plan](fpk-test-plan.md).
+
+### M1 — specification — delivered
 - Architecture, security policy, Skill lifecycle, tool mapping, and acceptance criteria.
 - No runtime code or NAS operations.
 
-### M2 — core skeleton
+### M2 — core skeleton — delivered
 - Node.js HTTP server with explicit configuration.
 - Mobile-first static UI.
 - Health/version endpoint.
 - Authentication/session design and tests.
 - No NAS adapter enabled by default.
 
-### M3 — Skill manager
+### M3 — Skill manager — delivered
 - Import ZIP into quarantine.
 - Validate archive paths and size limits.
 - Inventory and hash files.
 - Review/approve/enable/disable states.
 - No imported code execution.
 
-### M4 — fnOS adapter
+### M4 — fnOS adapter — delivered
 - Verify official `trim-cli` platform and invocation requirements.
 - Implement a small allowlist of read-only commands first.
 - Use structured arguments, timeouts, bounded output, and redaction.
 - Keep write operations disabled until separately reviewed.
 
-### M5 — model adapter and task orchestration
+### M5 — model adapter and task orchestration — delivered
 - Rule-based direct path for deterministic requests.
 - Structured plans only; validate every proposed tool call.
 - Limit plan steps, retries, duration, and model context.
 - No model-controlled shell commands.
 
-### M6 — FPK packaging
+### M6 — FPK packaging — delivered in CI, device acceptance pending
 - Verify current official fnOS app packaging documentation and supported `fnpack` version.
 - Add manifest and lifecycle files only after confirming the official format.
 - Build in an isolated environment.
 - Test install, start, stop, upgrade, rollback, uninstall, and data retention on a test NAS.
+
+## Supported platform
+
+- **Architecture:** x86_64 only. The FPK `manifest` declares `platform = x86`,
+  CI builds and smoke-tests the x86 artifact, and the bundled runtime is a Linux
+  x86_64 Node.js 26.x build. Any other architecture needs its own tested
+  runtime and artifact.
+- **fnOS version:** the package targets the fnOS application-center third-party
+  FPK format produced by the pinned `fnpack` 1.2.3 toolchain, and the launcher
+  relies on the `TRIM_APPDEST`, `TRIM_PKGVAR`, and `TRIM_SERVICE_PORT`
+  environment contract. CI does not pin or certify a specific fnOS release:
+  the supported set is the fnOS versions that provide that contract and accept
+  the `fnpack` 1.2.3 package format. A disposable test NAS must record the exact
+  fnOS version, artifact SHA-256, test date, and pass/fail before a release is
+  treated as device-validated.
+- **Runtime:** Node.js 26.x, bundled inside the FPK as `app/bin/node`.
 
 ## Test strategy
 

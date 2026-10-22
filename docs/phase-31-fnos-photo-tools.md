@@ -18,6 +18,6 @@
 
 ## Acceptance
 
-- Node.js 24 and 26 test suites and FPK packaging pass.
+- The Node.js 26.x test suite and FPK packaging pass.
 - Photo search rejects blank/oversized keywords, unknown arguments, and limits outside 1–50 before spawning the CLI.
 - No real NAS was modified as part of CI validation.

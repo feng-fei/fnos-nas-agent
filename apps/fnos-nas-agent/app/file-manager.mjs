@@ -2,6 +2,7 @@ import { readdir, lstat, realpath, mkdir, open, link, unlink, rename, rmdir, rea
 import { constants } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { hasDeleteCapability } from "./execution-capability.mjs";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024, MAX_PREVIEW_BYTES = 1024 * 1024, MAX_TEXT_CREATE_BYTES = 1024 * 1024;
 export const MAX_CHECKSUM_BYTES = 256 * 1024 * 1024;
 const CHECKSUM_CHUNK_BYTES = 1024 * 1024;
@@ -238,7 +239,9 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
     }
   }
   if (action === "delete") {
-    if (input.confirm !== true) fail(400, "Explicit confirmation is required");
+    // A client supplied boolean (for example "confirm": true) is NOT an authorization.
+    // Only the module-private delete capability minted by the server counts.
+    if (!hasDeleteCapability(input.capability)) fail(403, "Explicit confirmation is required: destructive deletion must be authorized by the server");
     const source = await resolveExisting(input.path);
     if (source.path === source.root) fail(403, "Cannot delete a storage root");
     const sourceParent = await resolveExisting(dirname(source.path), "directory");
@@ -262,6 +265,12 @@ export function createFileManager({roots:suppliedRoots,env=process.env,fs={readd
       fail(400, "Batch operations must be an array");
     if (input.operations.length < 1 || input.operations.length > 20)
       fail(400, "Batch operation count must be between 1 and 20");
+    // A batch that contains a destructive entry must carry the server-side capability;
+    // otherwise the whole batch is refused instead of silently skipping the delete.
+    for (const operation of input.operations) {
+      if (operation && typeof operation === "object" && operation.action === "delete" && !hasDeleteCapability(operation.capability))
+        fail(403, "Explicit confirmation is required: destructive deletion must be authorized by the server");
+    }
     const results = [];
     let succeeded = 0, failed = 0;
     for (let index = 0; index < input.operations.length; index++) {

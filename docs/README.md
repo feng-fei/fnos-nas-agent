@@ -1,0 +1,508 @@
+# Documentation index
+
+Every design and delivery document in this repository. Phase numbers are
+historical iteration identifiers: they are **not guaranteed to be continuous or
+unique** — a few numbers were reused for parallel work, and some early
+iterations were never given a number. The filenames are the stable reference.
+
+This index lists 134 documents (122 phase documents and 11 non-phase documents, plus this file).
+
+## Non-phase documents
+
+- [Architecture](architecture.md) — Build a small, self-hosted fnOS NAS Agent distributed as an FPK. The first release prioritizes a mobile-friendly LAN web console, low-token task routing, and tightly controlled access to…
+- [Development and Validation](development.md) — All six milestones below are implemented in main. The code columns name the delivered artifacts; the only remaining acceptance work is the manual fnOS device gate described in FPK test plan.
+- [fnOS Official Skill Tool Mapping](fnos-tool-mapping.md) — The supplied official fnOS Skill ZIP is the reference for task instructions and trim-cli usage. This document is a design mapping, not a claim that each command has already been validated…
+- [FPK CI build](fpk-ci-build.md) — GitHub Actions builds an unsigned x86 CI test FPK from an isolated copy of apps/fnos-nas-agent/. On main, a separate job additionally produces a GitHub artifact attestation for the FPK…
+- [Native FPK validation plan](fpk-test-plan.md) — Official reference material:
+- [Official fnOS trim-cli read-only adapter](official-trim-cli-adapter.md) — The Agent integrates the official trim-cli as an optional capability provider. An explicit TRIM_CLI_PATH override takes precedence; otherwise the Agent uses the CLI installed from the…
+- [Practical file management](practical-file-management.md) — Extends the authenticated mobile file browser with bounded UTF-8 text preview, streaming downloads, binary uploads up to 25 MiB, folder creation, rename, move, and delete.
+- [Private remote access from a phone](private-remote-access.md) — The Agent is a self-hosted web service. For access away from home, use a private VPN overlay such as Tailscale or WireGuard rather than exposing port 18787 directly to the internet.
+- [Security Model](security.md) — Examples: show Agent version, show enabled Skills, display task history metadata. No NAS mutation.
+- [Skill and task management UX](skill-and-task-management-ux.md) — This change completes two practical UI gaps:
+- [Skill Lifecycle](skill-lifecycle.md) — The Skill manager supports importing and managing capability packages while keeping the Agent core independent. v0.1 treats Skills as declarative instruction/documentation packages. It does…
+
+## Phase documents
+
+
+### Phase 2
+
+- [Phase 2 — Minimal Node.js skeleton](phase-2.md) — Requires Node.js 20 or newer. Open http://127.0.0.1:8787.
+
+### Phase 3
+
+- [Phase 3 — Skill Manager Contract](phase-3-skill-manager.md) — This phase adds a reviewable Skill inventory and lifecycle. It does not execute imported Skill code, install dependencies, invoke shell scripts, or grant NAS privileges. Node.js 26.x is the…
+- [Web authentication foundation (Phase 3)](phase-3-web-auth.md) — The setup endpoint is exposed to the trusted LAN only because the first-run token does not exist yet. A device already on that LAN could race to complete setup. Therefore, only use this…
+
+### Phase 4
+
+- [Phase 4: Read-only NAS diagnostics](phase-4-read-only-diagnostics.md) — The authenticated GET /api/diagnostics endpoint reports a bounded snapshot using Node.js built-ins only:
+
+### Phase 5
+
+- [Phase 5: Skill inventory and review lifecycle](phase-5-skill-manager-api.md) — pending_review -> approved | rejected
+
+### Phase 6
+
+- [Phase 6: Safe Skill ZIP import and quarantine](phase-6-skill-archive-import.md) — The archive is stored as <app-data>/skill-quarantine/<sha256>.zip with restrictive directory/file permissions (0700/0600). Inventory records include the verified digest, relative quarantine…
+
+### Phase 7
+
+- [Phase 7: Read-only tool registry](phase-7-read-only-tool-registry.md) — Expose a small, explicit allowlist of built-in read-only tools for agent planning and mobile operation. This is a structured API layer, not a general command runner.
+
+### Phase 8
+
+- [Phase 8: Agent core and model routing](phase-8-agent-core-model-routing.md) — This phase connects the authenticated web endpoint to a rules-first agent core, a pluggable OpenAI-compatible model adapter, and the existing code-defined read-only tool registry. It is a…
+
+### Phase 9
+
+- [Phase 9: Operations task engine](phase-9-operations-task-engine.md) — All task endpoints require authentication. Submission is same-origin and JSON-only.
+
+### Phase 10
+
+- [Phase 10: permission policy foundation](phase-10-permission-policy-foundation.md) — This phase establishes a lightweight, confirm-first risk policy for a personal NAS assistant. The user has already completed the assistant's sign-in / official Skill authorization flow; do…
+
+### Phase 11
+
+- [Phase 11: Static Skill Manifest Review](phase-11-static-skill-manifest-review.md) — Static findings are advisory review signals, not proof that a Skill is safe or malicious. Imported content and its declared name/capabilities remain untrusted. The feature does not enable…
+
+### Phase 12
+
+- [Phase 12: One-time Approval Ledger](phase-12-one-time-approval-ledger.md) — This is a reusable ledger, not a UI or an execution endpoint. It does not authenticate callers, decide whether a human really approved, execute tools, or persist grants across process…
+
+### Phase 13
+
+- [Phase 13: Mobile Operations Workbench](phase-13-mobile-operations-workbench.md) — Cancellation never kills an in-flight operating-system operation and does not grant additional permissions. A running cancellation is cooperative: the active operation finishes, then the…
+
+### Phase 14
+
+- [Phase 14: Authentication and Resource-Boundary Hardening](phase-14-auth-security-hardening.md) — The service still recommends trusted-LAN-only use while HTTP is configured. A Secure cookie flag is applied only when TLS terminates directly at this server; deployments behind a reverse…
+
+### Phase 15
+
+- [Phase 15: Release Readiness Gates](phase-15-release-readiness-gates.md) — Create a deterministic pre-release gate that can run on Node.js 26.x without third-party dependencies. It verifies that the release workflow still tests the supported runtime line and…
+
+### Phase 16
+
+- [Phase 16: FPK Integration Smoke Tests](phase-16-integration-smoke-tests.md) — This phase does not deploy to a NAS, execute imported Skills, or enable arbitrary commands.
+
+### Phase 17
+
+- [Phase 17: HTTP Authentication Contract Tests](phase-17-http-auth-contract-tests.md) — Run the actual HTTP server as a child process against a temporary data directory and an ephemeral loopback port. Exercise first-run setup, rejection of state-changing requests without…
+
+### Phase 18
+
+- [Phase 18: FPK Artifact Integrity](phase-18-fpk-artifact-integrity.md) — The verifier only lists archive metadata; it does not extract or execute the package. CI continues to publish a checksum for the exact artifact. It is a structural gate, not a signature or…
+
+### Phase 19
+
+- [Phase 19: Model Adapter Contract Tests](phase-19-model-adapter-contract-tests.md) — Use a mocked fetch implementation to test the optional model adapter without network access or API credentials. Cover explicit opt-in and HTTPS endpoint validation, secret-safe status…
+
+### Phase 20
+
+- [Phase 20: Audit Trail and Operation Trace](phase-20-audit-trail.md) — Audit records are metadata, not a transcript. Health polling and the static UI are excluded to prevent high-volume noise. Route labels come from a fixed allowlist; dynamic IDs and query…
+
+### Phase 21
+
+- [Phase 21: Task Persistence and Crash Recovery](phase-21-task-persistence-recovery.md) — A missing state file means there is no prior history. Invalid JSON or an unsupported schema fails startup instead of silently deleting operational history. Persistence uses atomic rename to…
+
+### Phase 22
+
+- [Phase 22: Release Candidate Acceptance](phase-22-release-candidate-acceptance.md) — Make a release candidate reviewable as a single acceptance package after Phases 19–21. CI success proves repeatable software checks; it does not certify an installation on every fnOS…
+
+### Phase 24
+
+- [Phase 24: Release Hygiene and Smoke Checks](phase-24-release-hygiene-and-smoke-checks.md) — Keep release instructions, branch triggers, and automated safety gates aligned so a completed phase cannot silently disappear from the mainline or become hard to validate.
+
+### Phase 25
+
+- [Phase 25: Release Manifest and Build Provenance](phase-25-release-manifest-and-provenance.md) — Attach a machine-readable manifest to every CI-built FPK so a reviewer can verify the exact artifact checksum and identify the source commit and workflow run that produced it.
+
+### Phase 26
+
+- [Phase 26: Release Artifact Verification](phase-26-release-artifact-verification.md) — Provide a standalone, dependency-free verifier for a downloaded FPK, its sha256sum-compatible checksum file, and the Phase 25 JSON release manifest.
+
+### Phase 27
+
+- [Phase 27 — Build provenance attestation](phase-27-build-provenance-attestation.md) — Phase 112 enables CI builds of an unsigned x86 test FPK. Phase 114 adds a GitHub artifact attestation job for successful builds on main only:
+
+### Phase 28
+
+- [Phase 28 — Practical read-only file browser](phase-28-practical-file-browser.md) — Add a useful mobile-friendly file browser without enabling arbitrary file access or mutations. This is an initial practical NAS feature, not a full file manager.
+
+### Phase 29
+
+- [Phase 29 — Mobile fnOS Read-only Tool Usability](phase-29-mobile-fnos-tools.md) — Design and delivery record for this iteration.
+
+### Phase 30
+
+- [Phase 30 — fnOS CLI Path Traversal Guard](phase-30-trim-cli-path-traversal-guard.md) — This hardening narrows accepted input only. It adds no commands, permissions, or filesystem operations and does not replace verification against the official CLI on a test fnOS device.
+
+### Phase 31
+
+- [Phase 31 — Practical fnOS Photo Search and Capability Checks](phase-31-fnos-photo-tools.md) — Design and delivery record for this iteration.
+
+### Phase 32
+
+- [Phase 32 — Confirm-First Action Policy](phase-32-confirm-first-action-policy.md) — This is a personal fnOS NAS assistant, not a corporate permission workflow. The user completes sign-in / official Skill authorization once. Routine actions should remain convenient…
+
+### Phase 33
+
+- [Phase 33 — Practical routine file writes](phase-33-practical-file-write-tools.md) — This phase exposes three already-implemented file-manager operations through the Agent's server-controlled tool catalogue:
+
+### Phase 34
+
+- [Phase 34 — Explicit confirmation for destructive file actions](phase-34-confirmed-destructive-file-actions.md) — This phase wires the existing one-time approval ledger into a small action service and authenticated HTTP routes. It supports deleting one regular file or an empty directory, while the file…
+
+### Phase 35
+
+- [Phase 35 — Agent Text-File Creation](phase-35-agent-text-file-creation.md) — The tool is a normal write operation and does not require repeated confirmation. Its risk comes from the server-side registry, not the model. Deletion remains destructive and uses the…
+
+### Phase 36
+
+- [Phase 36 — Bounded Agent File Upload](phase-36-bounded-agent-file-upload.md) — Design and delivery record for this iteration.
+
+### Phase 37
+
+- [Phase 37 — Natural-Language Operations Coverage](phase-37-natural-language-operations.md) — Expand the rules-first mobile Agent so common read-only fnOS and file-management requests work without configuring a model API.
+
+### Phase 38
+
+- [Phase 38 — Core Integration and Fast Feedback](phase-38-core-integration-fast-feedback.md) — Design and delivery record for this iteration.
+
+### Phase 39
+
+- [Phase 39 — Official fnOS Skill Archive Compatibility](phase-39-official-skill-archive-compatibility.md) — The supplied official fnOS Skill ZIP is approximately 17.7 MB compressed and declares approximately 43.4 MB of uncompressed entries because it bundles CLI binaries for six…
+
+### Phase 40
+
+- [Phase 40 — Reviewed Official fnOS CLI Installation](phase-40-reviewed-cli-install.md) — Design and delivery record for this iteration.
+
+### Phase 41
+
+- [Phase 41 — Dynamic CLI Provider Integration Fix](phase-41-trim-cli-provider-fix.md) — The Phase 40 server passes binaryPathProvider to createTrimCliAdapter so an enabled, reviewed fnOS Skill can supply its managed CLI path. The adapter's options destructuring omitted that…
+
+### Phase 42
+
+- [Phase 42 — CLI connection health and guided verification](phase-42-cli-connection-health.md) — This phase does not implement browser OAuth, collect authorization codes, request passwords from the CLI, or persist tokens. The user must configure the official CLI profile through its…
+
+### Phase 43
+
+- [Phase 43 — Guided official CLI OAuth setup](phase-43-guided-oauth-setup.md) — Provide a practical first-login path for the official trim-cli integration without moving OAuth credentials or the one-time authorization code through the Agent web application.
+
+### Phase 44
+
+- [Phase 44 — Connection recovery and read-only CLI closure](phase-44-cli-health-and-readonly-closure.md) — The adapter now tracks the latest result from actual allowlisted CLI requests in process memory, without persisting profile contents, access tokens, refresh tokens, authorization codes, raw…
+
+### Phase 45
+
+- [Phase 45 — Model provider management](phase-45-model-provider-manager.md) — The mobile Agent UI can add, edit, enable/disable, test, select as default, and delete multiple OpenAI-compatible Chat Completions providers. Each provider stores a display name, full HTTPS…
+
+### Phase 46
+
+- [Phase 46 — Model provider reliability and quick setup](phase-46-model-reliability.md) — Failover is opt-in per provider: checking “备用模型” marks it eligible. A normal enabled provider that is not marked as a backup will never be used as an automatic fallback. Backups are tried…
+
+### Phase 47
+
+- [Phase 47 — Bounded conversation context](phase-47-conversation-context.md) — This phase adds practical multi-turn follow-up support to the mobile Agent without introducing a server-side transcript store.
+
+### Phase 48
+
+- [Phase 48 — Bounded task progress reporting](phase-48-task-progress.md) — This phase extends the existing task manager with a small progress contract for long-running operations.
+
+### Phase 49
+
+- [Phase 49 — Bounded batch file operations](phase-49-batch-file-operations.md) — The file manager now exposes operateBatch({ operations }) for grouped file actions. Batches accept 1–20 operations and execute sequentially, preserving a stable result order. A failure in…
+
+### Phase 50
+
+- [Phase 50 — Mobile Task Progress UI](phase-50-mobile-task-progress-ui.md) — The mobile workbench now renders task progress using the existing task API:
+
+### Phase 51
+
+- [Phase 51 — Authenticated Batch File Operations API](phase-51-batch-files-api.md) — Adds POST /api/files/operations/batch on top of the existing bounded file-manager batch contract.
+
+### Phase 53
+
+- [Phase 53 — Model catalog discovery](phase-53-model-catalog-discovery.md) — Allow the mobile model manager to discover model IDs from OpenAI-compatible provider catalogs instead of requiring users to guess model names.
+
+### Phase 54
+
+- [Phase 54 — Expanded model provider presets](phase-54-provider-presets-expansion.md) — Adds quick-start presets for:
+
+### Phase 55
+
+- [Phase 55 — Mobile Skill inventory search and filters](phase-55-skill-search-filters.md) — The UI is intended for mobile and desktop browsers. Automated Node.js 26 tests cover search matching, state filtering, and pagination; they do not constitute real-browser or fnOS NAS…
+
+### Phase 56
+
+- [Phase 56 — Local Ollama provider](phase-56-local-ollama-provider.md) — Adds a preset for Ollama's OpenAI-compatible Chat Completions endpoint on the same NAS host.
+
+### Phase 57
+
+- [Phase 57 — Mobile model catalog picker](phase-57-model-catalog-picker.md) — Replaces the browser prompt-based model selection with an inline, accessible picker in the model-provider card.
+
+### Phase 58
+
+- [Phase 58 — Filtered and paginated task history API](phase-58-task-history-filters.md) — Adds server-side status filtering and offset pagination to the authenticated GET /api/tasks endpoint.
+
+### Phase 59
+
+- [Phase 59 — Bulk Skill review transitions](phase-59-bulk-skill-review.md) — Adds authenticated POST /api/skills/transitions/batch for reviewing a selected group of Skill records in one request.
+
+### Phase 60
+
+- [Phase 60 — Mobile bulk Skill review](phase-60-bulk-skill-review-ui.md) — Adds selection checkboxes to Skill cards and a bulk target-state control.
+
+### Phase 61
+
+- [Phase 61 — Mobile task history controls](phase-61-task-history-mobile-ui.md) — Automated coverage is a UI contract test; no real browser or fnOS NAS is used.
+
+### Phase 62
+
+- [Phase 62 — Model adapter retry resilience](phase-62-model-adapter-error-resilience.md) — The OpenAI-compatible adapter now honors a provider's Retry-After response header when retrying retryable HTTP errors such as 429 and 5xx.
+
+### Phase 63
+
+- [Phase 63 — Skill archive review hardening](phase-63-skill-archive-review-hardening.md) — Static Skill manifest review now adds advisory findings for:
+
+### Phase 64
+
+- [Phase 64 — Clear terminal task history](phase-64-clear-terminal-task-history.md) — Adds an authenticated, same-origin POST /api/tasks/clear-history endpoint that removes only completed, failed and cancelled task records. Queued and running tasks are preserved and never…
+
+### Phase 65
+
+- [Phase 65 — Mobile audit history filters](phase-65-audit-history-mobile-ui.md) — Audit data remains bounded by the existing current/rotated log files. The UI renders audit entries as text, not HTML.
+
+### Phase 66
+
+- [Phase 66 — Task history cleanup control](phase-66-task-history-cleanup-ui.md) — Adds a mobile task-history action that asks for confirmation before clearing terminal records. The UI explicitly states that queued and running tasks are preserved and will not be…
+
+### Phase 67
+
+- [Phase 67 — Task result details](phase-67-task-result-details.md) — Completed task cards now provide an expandable result section for tool outputs, limited to the first 10 result items and 12,000 rendered characters. Results are assigned through…
+
+### Phase 68
+
+- [Phase 68 — Gemini and Groq presets](phase-68-gemini-groq-presets.md) — Adds quick-start presets for Google Gemini's OpenAI-compatible Chat Completions API and Groq's OpenAI-compatible endpoint.
+
+### Phase 69
+
+- [Phase 69 — Bounded retained task results](phase-69-bounded-task-results.md) — The task manager now projects completed results into a bounded, JSON-safe structure before retaining them in memory or returning them through task APIs.
+
+### Phase 76
+
+- [Phase 76 — Model action rate limiting](phase-76-model-action-rate-limit.md) — The authenticated model catalog discovery and connection-test actions share a per-session fixed-window limit of 10 attempts per minute. Requests over the limit receive HTTP 429 with…
+
+### Phase 77
+
+- [Phase 77 — Mobile upload progress](phase-77-mobile-upload-progress.md) — The mobile file manager now uses an upload-progress event to show percentage completion for file uploads.
+
+### Phase 78
+
+- [Phase 78 — Cancel mobile uploads](phase-78-cancel-file-upload.md) — Adds a cancel button while an upload is in progress. The browser aborts the active XMLHttpRequest and refreshes the current directory afterward because an abort near completion cannot…
+
+### Phase 79
+
+- [Phase 79 — Mobile file search and sorting](phase-79-mobile-file-search-sort.md) — The mobile file browser now filters the currently listed directory by case-insensitive filename, restricts the view to files or folders, and sorts the visible entries by name, size, or…
+
+### Phase 80
+
+- [Phase 80 — Cooperative running-task cancellation](phase-80-cooperative-task-cancel.md) — The mobile task history can now request cancellation for a running Agent task, not just remove a queued task.
+- [Phase 80 — Skill archive upload progress and cancellation](phase-80-skill-archive-upload-progress.md) — The mobile Skill ZIP import form now shows browser upload progress and provides a cancel button while the upload request is active.
+
+### Phase 81
+
+- [Phase 81 — Sequential multi-Skill ZIP import](phase-81-multi-skill-upload.md) — The mobile Skill manager accepts multiple ZIP files and imports them sequentially through the existing quarantine endpoint.
+
+### Phase 82
+
+- [Phase 82 — Mobile file navigation breadcrumbs](phase-82-file-breadcrumbs.md) — The file browser displays a breadcrumb trail for the current directory. Parent segments are clickable and the current segment is marked as the current location.
+- [Phase 82 — ZIP local-record overlap rejection](phase-82-zip-overlap-rejection.md) — The Skill ZIP inspector now rejects archives whose central-directory entries point to overlapping local file records or data ranges. This blocks ambiguous layouts where one entry is…
+
+### Phase 83
+
+- [Phase 83 — Sequential mobile multi-file upload](phase-83-mobile-multi-file-upload.md) — The mobile file browser can select multiple files and upload them sequentially to the current directory.
+
+### Phase 84
+
+- [Phase 84 — File browser pagination](phase-84-file-browser-pagination.md) — The file browser API now accepts a bounded offset in addition to the existing bounded page size. The mobile UI loads 100 entries at a time and shows total directory count plus previous/next…
+
+### Phase 85
+
+- [Phase 85 — File transfer HTTP integration](phase-85-file-transfer-http-integration.md) — Adds end-to-end coverage for authenticated file upload, bounded text preview, and download using a temporary configured storage root.
+
+### Phase 86
+
+- [Phase 86 — Skill archive import HTTP integration](phase-86-skill-import-http-integration.md) — Exercises the real HTTP route for quarantined Skill ZIP import in an isolated temporary data directory.
+
+### Phase 91
+
+- [Phase 91 — Bounded batch model connection testing](phase-91-model-batch-test.md) — Adds a mobile-friendly batch action to test configured model providers without firing an unbounded burst of requests.
+
+### Phase 92
+
+- [Phase 92 — Persist model connection-test latency](phase-92-model-test-latency.md) — The model provider store now persists the elapsed time and HTTP status code from the latest connection test alongside its existing safe summary.
+
+### Phase 93
+
+- [Phase 93 — Model connection diagnostics in the UI](phase-93-model-test-diagnostics-ui.md) — Model provider cards now show the latest connection-test duration and HTTP status code when available. The bounded batch tester also includes each provider's elapsed time in its result…
+
+### Phase 94
+
+- [Phase 94 — Model catalog HTTP integration](phase-94-model-catalog-http.md) — Exercises authenticated model catalog discovery against a local OpenAI-compatible mock server.
+
+### Phase 95
+
+- [Phase 95 — Searchable model catalog picker](phase-95-model-catalog-search.md) — Improves the mobile model-provider catalog picker for providers that return many model IDs.
+
+### Phase 96
+
+- [Phase 96 — Task history search](phase-96-task-history-search.md) — Adds keyword search to the existing authenticated task-history query and mobile UI.
+
+### Phase 97
+
+- [Phase 97 — GitHub Skill archive import](phase-97-github-skill-archive-import.md) — Adds a mobile-friendly option to import a Skill from a GitHub branch or tag ZIP URL without manually downloading and uploading the archive.
+
+### Phase 98
+
+- [Phase 98 — Direct natural-language fnOS queries](phase-98-fnos-query-intents.md) — Extends the rules-first Agent path to cover existing official fnOS CLI read-only operations that were already registered but lacked direct natural-language aliases.
+
+### Phase 99
+
+- [Phase 99 — GitHub repository URL shortcut](phase-99-github-repo-shortcut.md) — Improves remote Skill import convenience: users may paste the repository root URL as well as a branch/tag archive URL.
+
+### Phase 100
+
+- [Phase 100 — Skill source provenance](phase-100-skill-source-provenance.md) — Records the exact Git reference used during direct GitHub ZIP import so it is easier to distinguish Skills imported from different branches or release tags.
+
+### Phase 101
+
+- [Phase 101 — Expanded official fnOS read-only operations](phase-101-official-readonly-tools.md) — Expands the Agent's fixed allowlist from the documented official fnOS Skill command reference. These commands are read-only and use hard-coded argv arrays; user text and model output cannot…
+
+### Phase 102
+
+- [Phase 102 — Immutable GitHub Skill commit pinning](phase-102-pin-skill-commit.md) — Resolves each GitHub branch or tag to a commit SHA before downloading the archive. This makes the downloaded ZIP immutable for the duration of import and gives reviewers a stable source…
+
+### Phase 103
+
+- [Phase 103 — Bounded Skill source static review](phase-103-skill-source-static-review.md) — Extends the existing manifest-only review with an advisory scan of selected source and script files inside a validated Skill ZIP.
+
+### Phase 104
+
+- [Phase 104 — Batch GitHub Skill import](phase-104-batch-github-skill-import.md) — Adds a batch path to the existing pinned-commit GitHub ZIP importer.
+
+### Phase 105
+
+- [Phase 105 — Embedded credential and key scanning for Skills](phase-105-skill-secret-scanning.md) — Extends the bounded Phase 103 source scan to flag credential-like material in Skills before approval.
+
+### Phase 106
+
+- [Phase 106 — Honest API semantics for running-task cancellation](phase-106-running-task-cancel-api.md) — Aligns the task cancellation endpoint with the task manager's existing cooperative cancellation support.
+
+### Phase 107
+
+- [Phase 107 — Quarantined Skill source preview](phase-107-skill-quarantine-source-preview.md) — Adds a read-only file browser for imported Skill archives so a reviewer can inspect the actual source behind static-review findings.
+
+### Phase 108
+
+- [Phase 108 — File SHA-256 checksum](phase-108-file-sha256-checksum.md) — Adds an authenticated, read-only checksum operation to the mobile file browser.
+
+### Phase 110
+
+- [Phase 110 — Approval Queue Revocation Consistency](phase-110-approval-queue-consistency.md) — The approval ledger revokes grants by task ID. The action approval service previously removed only one queue item when denying an approval or pruning an expired grant, while revoking every…
+
+### Phase 111
+
+- [Phase 111 — Task Snapshot Persistence Retry](phase-111-task-persistence-retry.md) — The task manager serialized snapshot writes through a promise chain. If a filesystem error rejected one write, later writes chained directly from that rejected promise and never invoked the…
+
+### Phase 112
+
+- [Phase 112 — FPK CI Build and Artifact Verification](phase-112-fpk-ci-build-and-artifact-verification.md) — Resume automated FPK validation after the core application stabilized, without treating a successful CI job as certification of a real fnOS installation.
+
+### Phase 113
+
+- [Phase 113 — FPK Lifecycle Process Identity](phase-113-fpk-process-identity.md) — The native FPK launcher previously trusted only the PID stored in TRIM_PKGVAR/agent.pid and whether kill -0 succeeded. If the service exited and the OS later reused that PID, status could…
+
+### Phase 114
+
+- [Phase 114 — FPK Build Provenance Attestation](phase-114-build-provenance-attestation.md) — Attach verifiable GitHub build provenance to the exact FPK produced by a successful main-branch build, without exposing attestation permissions to pull-request jobs or routine build steps.
+
+### Phase 115
+
+- [Phase 115 — Immutable GitHub Actions References](phase-115-github-actions-pinning.md) — Prevent a moved major-version or release tag from silently changing the third-party code executed by the FPK build pipeline.
+
+### Phase 116
+
+- [Phase 116 — Post-signing Attestation Verification](phase-116-attestation-verification.md) — The attestation action must not be treated as the final gate by itself. After signing the exact FPK, the same isolated main-only job performs a cryptographic verification and enforces the…
+
+### Phase 117
+
+- [Phase 117 — FPK Lifecycle Smoke Verification](phase-117-fpk-lifecycle-smoke.md) — Validate the native lifecycle script contract on a Linux CI runner using an isolated fake app install directory and a temporary data directory. These tests catch regressions in the start…
+
+### Phase 118
+
+- [Phase 118 — File Read Descriptor Confinement](phase-118-file-read-descriptor-confinement.md) — The file browser validated a path with realpath and lstat, then reopened the path by name for preview, checksum, or download. A path entry could be replaced after validation but before the…
+
+### Phase 119
+
+- [Phase 119 — Expired Session Cleanup Error Handling](phase-119-expired-session-cleanup.md) — When a request arrived with an expired session, the request path removed that session and triggered a persistence snapshot without awaiting or attaching a rejection handler. If the…
+
+### Phase 120
+
+- [Phase 120 — File Browser Directory Descriptor Confinement](phase-120-file-browser-directory-descriptor-confinement.md) — The file browser validated a directory path with realpath/lstat and then called readdir or inspected children via the pathname. If that directory or one of its path components was replaced…
+
+### Phase 121
+
+- [Phase 121 — Recoverable Session Persistence](phase-121-session-persistence-retry.md) — Session snapshots were serialized by chaining each write from the previous promise. A single filesystem failure left that promise rejected, so subsequent login/logout/expiry writes never…
+
+### Phase 122
+
+- [Phase 122 — File Mutation Directory Descriptor Confinement](phase-122-file-write-directory-descriptor-confinement.md) — Upload, text creation, folder creation, rename/move, and deletion validated a directory path before later operating on the pathname. A path change between those steps could redirect a…
+
+### Phase 123
+
+- [Phase 123 — Bundled Runtime FPK Lifecycle Smoke](phase-123-fpk-bundled-runtime-smoke.md) — Run the packaged Node.js runtime and actual application entry from the same temporary staging tree that fnpack will package. Static syntax checks and copying a runtime binary are not enough…
+
+### Phase 124
+
+- [Phase 124 — Recoverable Skill Inventory Persistence](phase-124-skill-store-persistence-retry.md) — The Skill inventory chained writes using the previous write promise. After one filesystem failure, the queue stayed rejected and later registrations, state transitions, and removals could…
+
+### Phase 125
+
+- [Phase 125 — Skill Quarantine Directory Descriptor Confinement](phase-125-skill-quarantine-directory-descriptor-confinement.md) — The ZIP quarantine writer checked the quarantine directory with lstat, then used mutable pathnames for the temporary archive, final archive, chmod, and read-back verification. A directory…
+
+### Phase 126
+
+- [Phase 126 — Execution policy: global read-only mode and kill switch](phase-126-execution-policy.md) — apps/fnos-nas-agent/app/execution-policy.mjs introduces a single, server-side decision point for "may this tool call run right now?". It closes the gap described in docs/security.md:72:
+
+### Phase 127
+
+- [Phase 127 — Destructive capability tokens and approval binding](phase-127-destructive-capability.md) — Until Phase 127 the "confirmation" for a destructive file operation was a boolean in the request body:
+
+### Phase 128
+
+- [Phase 128 — Audit log hardening](phase-128-audit-log-hardening.md) — Phase 128 removes the failure mode where a single unauthenticated request could terminate the process: audit recording must never throw synchronously, unknown routes are normalized instead…
+
+### Phase 129
+
+- [Phase 129 — State file recovery and durable writes](phase-129-state-file-recovery.md) — Phase 129 makes a corrupted state file a recoverable condition instead of a startup failure: task and skill inventories are backed up and the service continues with an empty state, and…
+
+### Phase 130
+
+- [Phase 130 — Release Consistency](phase-130-release-consistency.md) — Close the gaps found by a documentation-versus-code audit of the repository: a missing license, a version number that existed in more than one place, CI trigger rules that no longer matched…
+
+### Phase 131
+
+- [Phase 131 — Server hardening: setup code, policy surface and session-bound approvals](phase-131-server-hardening.md) — Phase 126 and 127 introduced the execution policy and the destructive capability token. Phase 131 wires that policy into every HTTP entry point, closes the first-run setup race described in docs/security.md, and makes the running service report the state it is in.
+
+### Phase 132
+
+- [Phase 132 — Real NAS staging acceptance](phase-132-nas-staging-acceptance.md) — The audit that started this round listed "no real NAS staging acceptance" as an open risk. This phase records the acceptance run that closed it.
+
+### Phase 133
+
+- [Phase 133 — Model fallback, scan bounds and one decision point](phase-133-model-fallback-and-scan-bounds.md) — Phase 126 moved the execution decision into a single policy module. Phase 133 removes the remaining places where a second, weaker decision was made, and repairs the two availability bugs the audit found behind it.
+
+## This index
+
+- [Documentation index](README.md) — Complete list of documents in this directory, with a one-line summary for each.

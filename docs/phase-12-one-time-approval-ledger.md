@@ -14,4 +14,4 @@ This is a reusable ledger, not a UI or an execution endpoint. It does not authen
 
 ## Validation
 
-Tests cover one-time use, action binding, stable argument hashing, expiry, revocation, capacity, and fail-closed risk handling. Require Node.js 24/26 tests and Node.js 26 FPK packaging before merge.
+Tests cover one-time use, action binding, stable argument hashing, expiry, revocation, capacity, and fail-closed risk handling. Require the Node.js 26.x test suite and Node.js 26 FPK packaging before merge.

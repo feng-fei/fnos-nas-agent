@@ -129,10 +129,17 @@ test("first-run setup stores only a salted password hash and protects session en
   const directDestructiveRun = await fetch(baseUrl + "/api/tools/files.delete/run", {
     method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: JSON.stringify({ path: "/vol1/never-delete.txt" })
   });
-  assert.equal(directDestructiveRun.status, 409);
+  assert.equal(directDestructiveRun.status, 202);
+  const destructiveApproval = await directDestructiveRun.json();
+  assert.equal(destructiveApproval.approvalRequired, true);
+  assert.equal(destructiveApproval.approval.toolId, "files.delete");
   const pendingActions = await fetch(baseUrl + "/api/actions/pending", { headers: { cookie } });
   assert.equal(pendingActions.status, 200);
-  assert.deepEqual((await pendingActions.json()).actions, []);
+  assert.equal((await pendingActions.json()).actions.length, 1);
+  const pendingDenied = await fetch(baseUrl + "/api/actions/" + destructiveApproval.approval.id + "/deny", {
+    method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: "{}"
+  });
+  assert.equal(pendingDenied.status, 200);
   const statusToolRun = await fetch(baseUrl + "/api/tools/system.status/run", {
     method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" }, body: "{}"
   });

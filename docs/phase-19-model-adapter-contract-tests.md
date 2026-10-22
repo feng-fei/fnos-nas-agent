@@ -10,4 +10,4 @@ No real model provider is contacted. The adapter cannot run shell commands, and 
 
 ## Acceptance
 
-Run with Node.js 24 and 26. This is contract coverage, not proof of a third-party provider's availability or a license to enable write operations.
+Run with Node.js 26.x. This is contract coverage, not proof of a third-party provider's availability or a license to enable write operations.

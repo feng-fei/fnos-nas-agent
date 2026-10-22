@@ -1,7 +1,18 @@
 # Desktop icon assets
 
-Place the required fnOS desktop icons here before building the FPK:
-- `images/icon_0.png`
-- `images/icon_1.png`
+The fnOS desktop icons are **generated automatically at packaging time** by
+`scripts/generate-fpk-icons.py`. No icon file has to be placed here by hand,
+and no generated PNG is committed to the repository.
 
-The icon dimensions and supported states must be checked against the current fnOS developer documentation. The FPK build must not be considered release-ready until valid icon assets and the Node.js runtime are included.
+The generator writes the following files into the isolated CI staging copy of
+`apps/fnos-nas-agent/`:
+
+- `app/ui/images/icon_0.png` and `app/ui/images/icon_1.png` — the icons the
+  desktop config references (`app/ui/config`, `icon_{0}.png`).
+- `app/ui/images/icon_64.png` and `app/ui/images/icon_256.png` — size variants
+  kept for fnOS versions that request an explicit size.
+- `ICON.PNG` and `ICON_256.PNG` at the package root.
+
+Because generation happens in the staging copy, the source checkout stays free
+of binary artifacts. A build is still not release-ready until the generated
+icon set and the bundled Node.js runtime are both present in the FPK.

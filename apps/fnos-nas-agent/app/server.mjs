@@ -26,18 +26,24 @@ import { fetchGitHubSkillArchive } from "./skill-remote-import.mjs";
 import { importGitHubSkillBatch } from "./skill-remote-import-batch.mjs";
 import { createActionApprovalService } from "./action-approval-service.mjs";
 import { createSerialWriteQueue } from "./serial-write-queue.mjs";
+import { createExecutionPolicy, EXECUTION_MODES } from "./execution-policy.mjs";
+import { APP_VERSION } from "./version.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
 const dataDir = process.env.AGENT_DATA_DIR || "";
 const sessionFile = dataDir ? join(dataDir, "sessions.json") : "";
 const passwordFile = dataDir ? join(dataDir, "password.json") : "";
+const setupCodeFile = dataDir ? join(dataDir, "setup-code.txt") : "";
+let setupCode = "";
 let passwordRecord = null;
 const sessions = new Map();
 const authLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
 const modelActionLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
 const fileChecksumLimiter = createFixedWindowLimiter({ limit: 5, windowMs: 60_000, maxKeys: 1000 });
 const skillRemoteImportLimiter = createFixedWindowLimiter({ limit: 5, windowMs: 60_000, maxKeys: 1000 });
+const toolRunLimiter = createFixedWindowLimiter({ limit: 30, windowMs: 60_000, maxKeys: 1000 });
+const agentMessageLimiter = createFixedWindowLimiter({ limit: 20, windowMs: 60_000, maxKeys: 1000 });
 const MAX_SESSIONS = 1000;
 const skillStore = dataDir ? createSkillStore(dataDir) : null;
 const auditLogger = dataDir ? createAuditLogger({ dataDir }) : null;
@@ -45,6 +51,22 @@ const SESSION_TTL = 8 * 60 * 60 * 1000;
 const REMEMBER_TTL = 30 * 24 * 60 * 60 * 1000;
 const MAX_BODY = 16 * 1024;
 const enqueueSessionWrite = createSerialWriteQueue();
+
+function policyMessage(decision) {
+  if (decision.reason === "kill-switch") return "The agent is halted by the kill switch; no operation is accepted.";
+  if (decision.reason === "read-only-mode") return "The agent is in global read-only mode; this operation is not allowed.";
+  if (decision.reason === "unknown-risk") return "The operation risk could not be determined and was refused.";
+  if (decision.reason === "approval-required") return "This operation needs an explicit approval before it can run.";
+  return "The operation is not allowed by the current execution policy.";
+}
+
+// File operations that the file manager understands. Anything else is rejected by the
+// file manager itself, so it never needs an execution policy verdict.
+function fileActionRisk(action) {
+  if (action === "delete") return "destructive";
+  if (action === "mkdir" || action === "rename" || action === "move") return "write";
+  return null;
+}
 
 function reply(res, status, body, type = "application/json; charset=utf-8", headers = {}) {
   res.writeHead(status, {
@@ -76,6 +98,12 @@ function sessionFor(req) {
     return null;
   }
   return { key, session };
+}
+// Loopback callers are already inside the host, so first-run setup does not need the
+// installation code. Every non-loopback caller (the common LAN case) must present it.
+function isLoopbackRequest(req) {
+  const remote = req.socket?.remoteAddress || "";
+  return remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
 }
 async function persistSessions() {
   if (!sessionFile) return;
@@ -155,6 +183,38 @@ async function loadPassword() {
     if (error.code !== "ENOENT") console.error("Password record could not be loaded; setup is required.");
   }
 }
+// First-run setup is guarded by a code that only exists on the appliance. Without it a
+// host on the same LAN could claim an unconfigured instance before the owner does.
+async function ensureSetupCode() {
+  if (!dataDir || passwordRecord) return;
+  const generated = randomBytes(12).toString("hex");
+  try {
+    const existing = (await readFile(setupCodeFile, "utf8")).trim();
+    if (existing.length >= 8) setupCode = existing;
+  } catch { /* the code is created below */ }
+  if (!setupCode) {
+    try {
+      await mkdir(dataDir, { recursive: true, mode: 0o700 });
+      await writeFile(setupCodeFile, generated + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
+      await chmod(setupCodeFile, 0o600);
+      setupCode = generated;
+    } catch (error) {
+      if (error.code === "EEXIST") {
+        const existing = (await readFile(setupCodeFile, "utf8").catch(() => "")).trim();
+        setupCode = existing.length >= 8 ? existing : generated;
+      } else {
+        setupCode = generated;
+        console.error("Setup code could not be persisted; an ephemeral setup code was generated.");
+      }
+    }
+  }
+  console.log(`fnos-nas-agent first-run setup code: ${setupCode}`);
+}
+function setupCodeMatches(candidate) {
+  if (!setupCode) return true;
+  if (typeof candidate !== "string" || candidate.length !== setupCode.length) return false;
+  return timingSafeEqual(Buffer.from(candidate, "utf8"), Buffer.from(setupCode, "utf8"));
+}
 async function diskUsage(path, label) {
   try {
     const s = await statfs(path, { bigint: true });
@@ -186,11 +246,14 @@ async function readOnlyDiagnostics() {
     memory: { totalBytes: os.totalmem(), freeBytes: os.freemem(), usedBytes: os.totalmem() - os.freemem() },
     network: interfaces,
     processes,
-    storage
+    storage,
+    degraded: degradedComponents()
   };
 }
 const fileBrowser = createFileBrowser();
 const fileManager = createFileManager();
+// The execution policy is the single gate for every mutating path.
+const executionPolicy = createExecutionPolicy({ dataDir });
 const skillInstaller = dataDir ? createSkillInstaller({ dataDir }) : null;
 const trimCli = createTrimCliAdapter({
   binaryPathProvider: async () => {
@@ -201,7 +264,7 @@ const trimCli = createTrimCliAdapter({
     return official ? join(dataDir, "skill-tools", official.id, "trim-cli") : "";
   }
 });
-const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics, fileBrowser, fileManager, trimCli });
+const readOnlyTools = createReadOnlyToolRegistry({ getDiagnostics: readOnlyDiagnostics, fileBrowser, fileManager, trimCli, executionPolicy });
 const modelProviderStore = dataDir ? createModelProviderStore({ dataDir }) : null;
 const modelAdapter = createModelAdapter({
   configProvider: () => {
@@ -212,7 +275,30 @@ const modelAdapter = createModelAdapter({
 });
 const actionApprovals = createActionApprovalService({ tools: readOnlyTools });
 const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter, requestApproval: action => actionApprovals.request(action) });
-const taskManager = createTaskManager({ execute: (input, context) => agentCore.run(input, context), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "" });
+const taskManager = createTaskManager({ execute: (input, context) => agentCore.run(input, context), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "", taskTimeoutMs: taskTimeoutMsFromEnv() });
+
+// A state file that could not be restored leaves the service running in a degraded
+// state. The operator can see which part is degraded instead of guessing.
+function degradedComponents() {
+  const components = [];
+  if (skillStore?.degraded?.() === true) components.push("skills");
+  if (modelProviderStore?.degraded?.() === true) components.push("models");
+  if (taskManager?.degraded?.() === true) components.push("tasks");
+  return components;
+}
+
+// A model request can hang for minutes; the task manager aborts it after this
+// budget. 0 disables the timeout, the upper bound is one hour.
+function taskTimeoutMsFromEnv() {
+  const raw = process.env.AGENT_TASK_TIMEOUT_MS;
+  if (raw === undefined || raw === "") return 5 * 60 * 1000;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 60 * 60 * 1000) {
+    console.error("AGENT_TASK_TIMEOUT_MS is invalid; the default of 5 minutes is used.");
+    return 5 * 60 * 1000;
+  }
+  return parsed;
+}
 
 function auditRoute(pathname, method) {
   if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method) || !pathname.startsWith("/api/") || pathname === "/api/health") return null;
@@ -220,6 +306,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/session") return method === "POST" ? "login" : "other_api";
   if (pathname === "/api/logout") return "logout";
   if (pathname === "/api/diagnostics") return "diagnostics";
+  if (pathname === "/api/execution-mode") return "execution.mode";
   if (pathname === "/api/audit") return "audit.list";
   if (pathname === "/api/files/checksum") return "files.checksum";
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
@@ -255,13 +342,33 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", "http://localhost");
     const auditRouteName = auditRoute(url.pathname, req.method);
-    if (auditLogger && auditRouteName) res.once("finish", () => { void auditLogger.record({ method: req.method, route: auditRouteName, statusCode: res.statusCode }); });
+    if (auditLogger && auditRouteName) res.once("finish", () => {
+      try {
+        const auditedSession = sessionFor(req);
+        void auditLogger.record({
+          method: req.method,
+          route: auditRouteName,
+          statusCode: res.statusCode,
+          sessionId: auditedSession ? auditedSession.key : ""
+        });
+      }
+      catch (error) { console.error("Audit record could not be queued:", error?.message || error); }
+    });
     if (req.method === "GET" && url.pathname === "/api/health")
-      return reply(res, 200, { ok: true, app: "fnos-nas-agent", version: "0.2.1", executionEnabled: false, authenticationConfigured: Boolean(passwordRecord) });
+      return reply(res, 200, {
+        ok: true,
+        app: "fnos-nas-agent",
+        version: APP_VERSION,
+        executionEnabled: false,
+        executionMode: executionPolicy.mode(),
+        executionModeSource: executionPolicy.source(),
+        degraded: degradedComponents().length > 0,
+        authenticationConfigured: Boolean(passwordRecord)
+      });
     if (req.method === "GET" && url.pathname === "/")
       return reply(res, 200, await readFile(join(root, "ui", "index.html"), "utf8"), "text/html; charset=utf-8");
     if (req.method === "GET" && url.pathname === "/api/session")
-      return reply(res, 200, { authenticated: Boolean(sessionFor(req)), setupRequired: !passwordRecord });
+      return reply(res, 200, { authenticated: Boolean(sessionFor(req)), setupRequired: !passwordRecord, setupCodeRequired: Boolean(setupCode) && !isLoopbackRequest(req) });
     if (req.method === "POST" && url.pathname === "/api/setup") {
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
       if (passwordRecord) return reply(res, 409, { error: "Setup already completed" });
@@ -270,6 +377,8 @@ const server = createServer(async (req, res) => {
         return reply(res, 415, { error: "Expected application/json" });
       if (!dataDir) return reply(res, 503, { error: "App data directory is not configured" });
       const body = await jsonBody(req);
+      if (setupCode && !isLoopbackRequest(req) && !setupCodeMatches(body.code))
+        return reply(res, 403, { error: "Setup code is invalid", setupCodeRequired: true });
       if (typeof body.password !== "string" || body.password.length < 10 || body.password.length > 128)
         return reply(res, 400, { error: "Password must contain 10 to 128 characters" });
       const record = makePasswordRecord(body.password);
@@ -282,6 +391,8 @@ const server = createServer(async (req, res) => {
         return reply(res, 500, { error: "Unable to save password securely" });
       }
       passwordRecord = record;
+      setupCode = "";
+      await rm(setupCodeFile, { force: true }).catch(() => {});
       authLimiter.reset(req.socket.remoteAddress || "unknown");
       return reply(res, 201, { configured: true });
     }
@@ -385,6 +496,7 @@ const server = createServer(async (req, res) => {
         });
         const stream = item.handle.createReadStream({ autoClose: true });
         streaming = true;
+        res.once("close", () => { stream.destroy(); });
         stream.on("error", () => {
           if (!res.headersSent) reply(res, 500, { error: "Unable to download file" });
           else res.destroy();
@@ -400,6 +512,9 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/api/files/upload") {
       if(req.method!=="POST")return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"POST"});
       if(!sessionFor(req))return reply(res,401,{error:"Unauthorized"});if(!sameOrigin(req))return reply(res,403,{error:"Forbidden origin"});
+      // Uploads mutate the storage volume, so the global execution policy applies here too.
+      const uploadDecision=executionPolicy.evaluate({risk:"write",approved:false});
+      if(!uploadDecision.allowed)return reply(res,uploadDecision.statusCode||403,{error:policyMessage(uploadDecision)});
       if((req.headers["content-type"]||"").split(";")[0].trim().toLowerCase()!=="application/octet-stream")return reply(res,415,{error:"Upload requires application/octet-stream"});
       let name;try{name=decodeURIComponent(url.searchParams.get("name")||"");}catch{return reply(res,400,{error:"Invalid file name"});}
       try{const buffer=await rawBody(req,fileManager.limits.maxUploadBytes);return reply(res,201,await fileManager.upload(url.searchParams.get("path")||"",name,buffer));}
@@ -407,9 +522,28 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === "/api/files/operation") {
       if(req.method!=="POST")return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"POST"});
-      if(!sessionFor(req))return reply(res,401,{error:"Unauthorized"});if(!sameOrigin(req))return reply(res,403,{error:"Forbidden origin"});
+      const active=sessionFor(req);if(!active)return reply(res,401,{error:"Unauthorized"});if(!sameOrigin(req))return reply(res,403,{error:"Forbidden origin"});
       if(!(req.headers["content-type"]||"").toLowerCase().startsWith("application/json"))return reply(res,415,{error:"Expected application/json"});
-      try{return reply(res,200,await fileManager.operate(await jsonBody(req)));}
+      const body=await jsonBody(req);
+      const risk=fileActionRisk(body&&body.action);
+      if(risk==="destructive"){
+        // A client supplied boolean is not an authorization decision. Deletion always
+        // becomes a pending approval that the server confirms with a one-time capability.
+        const decision=executionPolicy.evaluate({risk,approved:false});
+        if(!decision.allowed&&decision.requiresApproval===true){
+          try{
+            const approval=actionApprovals.request({toolId:"files.delete",args:{path:body.path},sessionId:active.key});
+            return reply(res,202,{approvalRequired:true,approval,message:"Deletion requires an explicit confirmation."});
+          }catch(error){const s=[400,409,429].includes(error?.statusCode)?error.statusCode:500;return reply(res,s,{error:s===500?"Unable to request approval":error.message});}
+        }
+        if(!decision.allowed)return reply(res,decision.statusCode||403,{error:policyMessage(decision)});
+        return reply(res,403,{error:"Destructive file operations must be approved by the server."});
+      }
+      if(risk==="write"){
+        const decision=executionPolicy.evaluate({risk,approved:false});
+        if(!decision.allowed)return reply(res,decision.statusCode||403,{error:policyMessage(decision)});
+      }
+      try{return reply(res,200,await fileManager.operate(body));}
       catch(e){const s=[400,403,404,409].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"File operation failed":e.message});}
     }
     if (url.pathname === "/api/files/operations/batch") {
@@ -417,12 +551,42 @@ const server = createServer(async (req, res) => {
       if (!sessionFor(req)) return reply(res,401,{error:"Unauthorized"});
       if (!sameOrigin(req)) return reply(res,403,{error:"Forbidden origin"});
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json")) return reply(res,415,{error:"Expected application/json"});
-      try { return reply(res,200,await fileManager.operateBatch(await jsonBody(req))); }
+      const body = await jsonBody(req);
+      const operations = Array.isArray(body?.operations) ? body.operations : [];
+      if (operations.some(item => fileActionRisk(item?.action) === "destructive"))
+        return reply(res,409,{error:"Destructive actions must be confirmed one at a time; request them through /api/files/operation."});
+      if (operations.some(item => fileActionRisk(item?.action) === "write")) {
+        const decision = executionPolicy.evaluate({ risk: "write", approved: false });
+        if (!decision.allowed) return reply(res, decision.statusCode || 403, { error: policyMessage(decision) });
+      }
+      try { return reply(res,200,await fileManager.operateBatch(body)); }
       catch (e) { const s=[400,413].includes(e?.statusCode)?e.statusCode:500; return reply(res,s,{error:s===500?"Batch file operation request failed":e.message}); }
     }
     if (req.method === "GET" && url.pathname === "/api/diagnostics") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       return reply(res, 200, await readOnlyDiagnostics());
+    }
+    if (url.pathname === "/api/execution-mode") {
+      // The kill switch must stay reachable even while it is engaged, otherwise an
+      // operator could not lift it again from the console.
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method === "GET")
+        return reply(res, 200, { mode: executionPolicy.mode(), source: executionPolicy.source(), modes: EXECUTION_MODES });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const body = await jsonBody(req);
+      if (typeof body?.mode !== "string" || !EXECUTION_MODES.includes(body.mode.trim().toLowerCase()))
+        return reply(res, 400, { error: `Unknown execution mode; expected one of ${EXECUTION_MODES.join(", ")}` });
+      try {
+        const result = await executionPolicy.setMode(body.mode.trim().toLowerCase());
+        return reply(res, 200, { ...result, modes: EXECUTION_MODES });
+      } catch (error) {
+        const status = [500, 503].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 500 ? "Unable to store the execution mode" : error.message });
+      }
     }
     if (url.pathname === "/api/audit") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
@@ -444,7 +608,14 @@ const server = createServer(async (req, res) => {
         const currentPath = auditLogger.filePath();
         const [rotated, current] = await Promise.all([readAudit(currentPath + ".1"), readAudit(currentPath)]);
         const allEvents = (rotated + "\n" + current).split("\n").filter(Boolean).map(line => {
-          try { const item = JSON.parse(line); return { at: item.at, method: item.method, route: item.route, statusCode: item.statusCode, outcome: item.outcome }; }
+          try {
+            const item = JSON.parse(line);
+            const event = { at: item.at, method: item.method, route: item.route, statusCode: item.statusCode, outcome: item.outcome };
+            // The session digest ties an action to the session that requested it. It is
+            // a hash of the session id, never the session token itself.
+            if (typeof item.sessionId === "string" && item.sessionId) event.sessionId = item.sessionId;
+            return event;
+          }
           catch { return null; }
         }).filter(Boolean).reverse().filter(item => (!outcome || item.outcome === outcome) && (!routeFilter || item.route === routeFilter));
         const events = allEvents.slice(requestedOffset, requestedOffset + limit);
@@ -825,8 +996,11 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === "/api/agent/message") {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
-      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!agentMessageLimiter.allow(active.key))
+        return reply(res, 429, { error: "消息过于频繁，请稍后再试。" }, "application/json; charset=utf-8", { "retry-after": "5" });
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
       const input = await jsonBody(req);
@@ -836,7 +1010,7 @@ const server = createServer(async (req, res) => {
       try { history = normalizeConversationHistory(input.history); }
       catch { return reply(res, 400, { error: "Conversation history is invalid or too large" }); }
       let task;
-      try { task = taskManager.submit({ text: input.text.trim(), history }); }
+      try { task = taskManager.submit({ text: input.text.trim(), history }, { sessionId: active.key }); }
       catch (error) {
         const status = Number.isInteger(error?.statusCode) && [429, 503].includes(error.statusCode) ? error.statusCode : 500;
         return reply(res, status, { error: status === 429 ? "Task queue is full; try again shortly." : status === 503 ? "Task capacity is temporarily full; try again shortly." : "Unable to accept task." }, "application/json; charset=utf-8", status === 429 ? { "retry-after": "2" } : {});
@@ -895,26 +1069,28 @@ const server = createServer(async (req, res) => {
       return task ? reply(res, 200, { task }) : reply(res, 404, { error: "Task not found" });
     }
     if (url.pathname === "/api/actions/pending") {
-      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
       if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
-      return reply(res, 200, { actions: actionApprovals.list() });
+      return reply(res, 200, { actions: actionApprovals.list(active.key) });
     }
     const actionDecisionMatch = url.pathname.match(/^\/api\/actions\/([a-f0-9-]{8,64})\/(confirm|deny)$/i);
     if (actionDecisionMatch) {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
-      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
       await jsonBody(req);
       const [, actionId, decision] = actionDecisionMatch;
       if (decision === "deny") {
-        if (!actionApprovals.deny(actionId)) return reply(res, 404, { error: "Pending action not found or expired" });
+        if (!actionApprovals.deny(actionId, active.key)) return reply(res, 404, { error: "Pending action not found or expired" });
         return reply(res, 200, { denied: true, actionId });
       }
-      try { return reply(res, 200, { confirmed: true, ...await actionApprovals.confirm(actionId) }); }
+      try { return reply(res, 200, { confirmed: true, ...await actionApprovals.confirm(actionId, active.key) }); }
       catch (error) {
-        const status = [404, 409, 429].includes(error?.statusCode) ? error.statusCode : 500;
+        const status = [403, 404, 409, 429].includes(error?.statusCode) ? error.statusCode : 500;
         return reply(res, status, { error: status === 500 ? "Unable to execute confirmed action" : error.message });
       }
     }
@@ -929,8 +1105,9 @@ const server = createServer(async (req, res) => {
         return reply(res, 200, {
           tools,
           executionEnabled: false,
+          executionMode: executionPolicy.mode(),
           readOnlyExecutionEnabled: true,
-          routineWriteExecutionEnabled: true,
+          routineWriteExecutionEnabled: executionPolicy.mode() === "normal",
           destructiveActionConfirmationEnabled: true,
           trimCliProviderAvailable: cliAvailable
         });
@@ -940,15 +1117,34 @@ const server = createServer(async (req, res) => {
     const toolRunMatch = url.pathname.match(/^\/api\/tools\/([a-z][a-z0-9.-]{0,63})\/run$/);
     if (toolRunMatch) {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
-      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
+      if (!toolRunLimiter.allow(active.key))
+        return reply(res, 429, { error: "Too many tool runs; try again shortly." }, "application/json; charset=utf-8", { "retry-after": "5" });
       const args = await jsonBody(req);
       const tool = readOnlyTools.list().find(item => item.id === toolRunMatch[1]);
       if (!tool) return reply(res, 404, { error: "Unknown tool" });
-      if (tool.risk === "destructive") return reply(res, 409, { error: "Destructive tools must be requested through the Agent and explicitly confirmed." });
-      return reply(res, 200, { tool: toolRunMatch[1], result: await readOnlyTools.invoke(toolRunMatch[1], args) });
+      const decision = executionPolicy.evaluate({ risk: tool.risk, approved: false });
+      if (!decision.allowed) {
+        if (decision.requiresApproval === true) {
+          try {
+            const approval = actionApprovals.request({ toolId: tool.id, args, sessionId: active.key });
+            return reply(res, 202, { approvalRequired: true, approval, message: "This action needs an explicit confirmation." });
+          } catch (error) {
+            const status = [400, 409, 429].includes(error?.statusCode) ? error.statusCode : 500;
+            return reply(res, status, { error: status === 500 ? "Unable to request approval" : error.message });
+          }
+        }
+        return reply(res, decision.statusCode || 403, { error: policyMessage(decision) });
+      }
+      try { return reply(res, 200, { tool: toolRunMatch[1], result: await readOnlyTools.invoke(toolRunMatch[1], args) }); }
+      catch (error) {
+        const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 500 ? "Tool execution failed" : error.message });
+      }
     }
     return reply(res, 404, { error: "Not found" });
   } catch (error) {
@@ -962,14 +1158,36 @@ const server = createServer(async (req, res) => {
 });
 await loadPassword();
 await loadSessions();
-if (skillStore) await skillStore.load();
+if (skillStore) {
+  try { await skillStore.load(); }
+  catch (error) { console.error("Skill inventory unavailable; the agent started without a skill inventory:", error?.message || error); }
+}
 if (modelProviderStore) {
   try { await modelProviderStore.load(); }
   catch { console.error("Model settings unavailable; managed model providers were disabled."); }
 }
-await taskManager.ready;
+try { await taskManager.ready; }
+catch (error) { console.error("Task history unavailable; the agent started without task history:", error?.message || error); }
+await ensureSetupCode();
+// The state file can also be edited out of band (for example over SSH), so the
+// in-memory mode is refreshed on a timer. The timer never keeps the process alive.
+const executionModeWatcher = setInterval(() => {
+  try { void Promise.resolve(executionPolicy.reload()).catch(() => {}); } catch { /* keep the last known mode */ }
+}, 5_000);
+executionModeWatcher.unref?.();
 // First-run setup is available on the trusted LAN; no NAS commands or Skills execute in this version.
-server.listen(port, process.env.HOST || "0.0.0.0", () => console.log(`fnos-nas-agent listening on ${process.env.HOST || "0.0.0.0"}:${port}; registered tools enabled, arbitrary shell and imported Skill execution disabled`));
-function shutdown() { server.close(() => { void Promise.all([auditLogger?.flush(), taskManager.flush()]).finally(() => process.exit(0)); }); }
+const listenHost = process.env.HOST || "0.0.0.0";
+server.on("error", error => { console.error("HTTP server error:", error?.message || error); });
+server.listen(port, listenHost, () => console.log(`fnos-nas-agent listening on ${listenHost}:${port}; execution mode ${executionPolicy.mode()}; registered tools enabled, arbitrary shell and imported Skill execution disabled`));
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  server.close(() => { void Promise.all([auditLogger?.flush(), taskManager.flush()]).finally(() => process.exit(0)); });
+  server.closeAllConnections?.();
+  setTimeout(() => process.exit(0), 5000).unref();
+}
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+process.on("uncaughtException", error => { console.error("Uncaught exception:", error?.stack || error); });
+process.on("unhandledRejection", reason => { console.error("Unhandled rejection:", reason?.stack || reason); });

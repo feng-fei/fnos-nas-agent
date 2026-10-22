@@ -12,6 +12,12 @@ test("batch file operation API requires session, same-origin POST and JSON", asy
   assert.match(route, /sessionFor\(req\)/);
   assert.match(route, /sameOrigin\(req\)/);
   assert.match(route, /application\/json/);
-  assert.match(route, /fileManager\.operateBatch\(await jsonBody\(req\)\)/);
+  assert.match(route, /fileManager\.operateBatch\(body\)/);
   assert.match(route, /\[400,413\]/);
+  // Destructive entries never run inside a batch: they are refused so the caller has to
+  // request them one at a time through /api/files/operation and the approval flow.
+  assert.match(route, /Destructive actions must be confirmed one at a time/);
+  assert.match(route, /409/);
+  // A batch that carries a write entry still has to pass the execution policy.
+  assert.match(route, /executionPolicy\.evaluate\(\{ risk: "write", approved: false \}\)/);
 });

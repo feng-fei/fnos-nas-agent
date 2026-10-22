@@ -13,10 +13,10 @@ The Agent is independent of any single LLM or Agent framework. Skills are option
 3. **Agent coordinator** — classifies requests, creates bounded plans, tracks task state, and summarizes results.
 4. **Tool registry** — exposes only registered, schema-validated tools to the coordinator/model.
 5. **Policy engine** — evaluates each proposed action before execution.
-6. **Skill manager** — imports, inspects, enables, disables, updates, and removes Skill packages.
+6. **Skill manager** — imports, inspects, enables, disables, and removes Skill packages.
 7. **fnOS adapter** — invokes explicitly supported `trim-cli` operations through a fixed argument interface.
 8. **Model adapter** — optional remote model API; secrets are held server-side and redacted from logs.
-9. **FPK lifecycle integration** — install/start/stop/upgrade/uninstall integration, to be implemented only after validating current official fnOS packaging requirements.
+9. **FPK lifecycle integration** — install/start/stop/upgrade/uninstall integration is implemented and covered by a CI smoke test on the bundled runtime (see docs/phase-117 and docs/phase-123); real fnOS device acceptance remains a manual staging gate.
 
 ## Trust boundaries
 

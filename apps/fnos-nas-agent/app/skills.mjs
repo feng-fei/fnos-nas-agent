@@ -2,10 +2,10 @@ import { createHash, randomBytes } from "node:crypto";
 import { extractZipEntry, inspectZipArchive, MAX_ARCHIVE_BYTES, saveQuarantinedArchive } from "./skill-archives.mjs";
 import { isPreviewableSkillTextPath, MAX_SKILL_SOURCE_PREVIEW_BYTES } from "./skill-source-review.mjs";
 import { inspectSkillManifest } from "./skill-manifest.mjs";
-import { mkdir, readFile, writeFile, rename, chmod, unlink, lstat } from "node:fs/promises";
+import { mkdir, open, readFile, writeFile, rename, chmod, unlink, lstat } from "node:fs/promises";
 import { createSerialWriteQueue } from "./serial-write-queue.mjs";
 import { resolve, sep } from "node:path";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 const STATES = new Set(["pending_review", "approved", "enabled", "disabled", "rejected"]);
 const TRANSITIONS = {
@@ -36,11 +36,43 @@ function normalizeManifestReview(value) {
   };
 }
 
-export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, writeFile, rename, chmod, unlink } } = {}) {
+export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, writeFile, rename, chmod, unlink, open } } = {}) {
   const file = join(dataDir, "skills.json");
   let records = [];
+  // Set when the inventory could not be read and the service continued with an empty
+  // list. The operator can see the difference between a normal and a degraded start.
+  let degradedState = false;
   const enqueueWrite = createSerialWriteQueue();
   const enqueueMutation = createSerialWriteQueue();
+
+  async function syncDirectory(directory) {
+    // Directory fsync is not available on every platform; the rename itself stays atomic.
+    let handle = null;
+    try {
+      handle = await open(directory, "r");
+      await handle.sync();
+    } catch {
+      // best effort only
+    } finally {
+      if (handle) await handle.close().catch(() => {});
+    }
+  }
+
+  async function writeInventoryFile(target, data) {
+    // Durable write: the bytes reach the disk before the atomic rename publishes them.
+    // Injected filesystems without file handles fall back to a plain write.
+    if (typeof storageFs.open === "function") {
+      const handle = await storageFs.open(target, "wx", 0o600);
+      try {
+        await handle.writeFile(data, "utf8");
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      return;
+    }
+    await storageFs.writeFile(target, data, { encoding: "utf8", mode: 0o600, flag: "wx" });
+  }
 
   async function persist() {
     return enqueueWrite(async () => {
@@ -48,9 +80,10 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
       await storageFs.mkdir(dataDir, { recursive: true, mode: 0o700 });
       const tmp = file + "." + randomBytes(8).toString("hex") + ".tmp";
       try {
-        await storageFs.writeFile(tmp, snapshot + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
+        await writeInventoryFile(tmp, snapshot + "\n");
         await storageFs.chmod(tmp, 0o600);
         await storageFs.rename(tmp, file);
+        await syncDirectory(dataDir);
       } catch (error) {
         await storageFs.unlink(tmp).catch(() => {});
         throw error;
@@ -58,30 +91,58 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
     });
   }
 
-  async function load() {
+  async function quarantineInventory() {
+    // A damaged inventory must never block startup: keep the bytes for forensics and
+    // continue with an empty Skill list.
+    degradedState = true;
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backup = join(dataDir, basename(file) + ".corrupt-" + stamp + ".json");
     try {
-      const value = JSON.parse(await storageFs.readFile(file, "utf8"));
-      if (!Array.isArray(value) || value.length > MAX_RECORDS) throw new Error("invalid store");
-      records = value.filter(item =>
-        item && typeof item.id === "string" && typeof item.name === "string" &&
-        STATES.has(item.state) && typeof item.archiveSha256 === "string" &&
-        /^[a-f0-9]{64}$/.test(item.archiveSha256)
-      ).map(item => ({
-        id: item.id, name: item.name, version: item.version,
-        sourceLabel: item.sourceLabel, importedAt: item.importedAt,
-        archiveSha256: item.archiveSha256, state: item.state,
-        quarantineFile: typeof item.quarantineFile === "string" ? item.quarantineFile : "",
-        archiveSizeBytes: Number.isSafeInteger(item.archiveSizeBytes) ? item.archiveSizeBytes : null,
-        archiveEntryCount: Number.isSafeInteger(item.archiveEntryCount) ? item.archiveEntryCount : null,
-        declaredUncompressedBytes: Number.isSafeInteger(item.declaredUncompressedBytes) ? item.declaredUncompressedBytes : null,
-        declaredCapabilities: Array.isArray(item.declaredCapabilities) ? item.declaredCapabilities.slice(0, 20) : [],
-        manifestReview: normalizeManifestReview(item.manifestReview),
-        reviewNote: typeof item.reviewNote === "string" ? item.reviewNote.slice(0, MAX_NOTE) : "",
-        reviewedAt: item.reviewedAt || null
-      }));
+      await storageFs.rename(file, backup);
+      console.error(`[skills] Corrupt Skill inventory was quarantined as ${basename(backup)}; the service continues with an empty Skill list.`);
     } catch (error) {
-      if (error.code !== "ENOENT") throw new Error("Skill inventory could not be loaded safely");
+      console.error(`[skills] Corrupt Skill inventory could not be moved aside (${error?.message || "unknown error"}); the service continues with an empty Skill list.`);
     }
+    records = [];
+  }
+
+  async function load() {
+    let raw = null;
+    try {
+      raw = await storageFs.readFile(file, "utf8");
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        degradedState = true;
+        throw new Error("Skill inventory could not be loaded safely");
+      }
+      return;
+    }
+    let value = null;
+    try {
+      value = JSON.parse(raw);
+      if (!Array.isArray(value) || value.length > MAX_RECORDS) throw new Error("invalid store");
+    } catch (error) {
+      console.error(`[skills] Skill inventory could not be parsed (${error?.message || "unknown error"}); it is quarantined and the service continues with an empty Skill list.`);
+      await quarantineInventory();
+      return;
+    }
+    records = value.filter(item =>
+      item && typeof item.id === "string" && typeof item.name === "string" &&
+      STATES.has(item.state) && typeof item.archiveSha256 === "string" &&
+      /^[a-f0-9]{64}$/.test(item.archiveSha256)
+    ).map(item => ({
+      id: item.id, name: item.name, version: item.version,
+      sourceLabel: item.sourceLabel, importedAt: item.importedAt,
+      archiveSha256: item.archiveSha256, state: item.state,
+      quarantineFile: typeof item.quarantineFile === "string" ? item.quarantineFile : "",
+      archiveSizeBytes: Number.isSafeInteger(item.archiveSizeBytes) ? item.archiveSizeBytes : null,
+      archiveEntryCount: Number.isSafeInteger(item.archiveEntryCount) ? item.archiveEntryCount : null,
+      declaredUncompressedBytes: Number.isSafeInteger(item.declaredUncompressedBytes) ? item.declaredUncompressedBytes : null,
+      declaredCapabilities: Array.isArray(item.declaredCapabilities) ? item.declaredCapabilities.slice(0, 20) : [],
+      manifestReview: normalizeManifestReview(item.manifestReview),
+      reviewNote: typeof item.reviewNote === "string" ? item.reviewNote.slice(0, MAX_NOTE) : "",
+      reviewedAt: item.reviewedAt || null
+    }));
   }
 
   function list({ limit = 50, offset = 0, state, q = "" } = {}) {
@@ -289,7 +350,7 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
     });
   }
 
-  return { load, list, register, importArchive, listSourceFiles, previewSourceFile, transition, remove };
+  return { load, list, register, importArchive, listSourceFiles, previewSourceFile, transition, remove, degraded: () => degradedState };
 }
 
 export const skillStates = [...STATES];

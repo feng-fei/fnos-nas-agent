@@ -14,4 +14,4 @@ The service still recommends trusted-LAN-only use while HTTP is configured. A Se
 
 ## Validation
 
-CI must run Node.js 24/26 tests, syntax-check the server and limiter, validate the embedded UI script, and build/inspect the Node.js 26 FPK artifact.
+CI must run the Node.js 26.x test suite, syntax-check the server and limiter, validate the embedded UI script, and build/inspect the Node.js 26 FPK artifact.

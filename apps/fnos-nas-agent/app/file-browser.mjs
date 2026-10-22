@@ -1,4 +1,4 @@
-import { readdir, lstat, realpath, open } from "node:fs/promises";
+import { readdir, lstat, realpath, open, opendir } from "node:fs/promises";
 import { constants } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
@@ -7,14 +7,17 @@ const DEFAULT_LIMIT = 100;
 const MAX_SEARCH_VISITS = 5000;
 const MAX_SEARCH_DEPTH = 8;
 const MAX_SEARCH_RESULTS = 100;
+// A single directory can hold millions of entries. Reading them all and then stat-ing
+// every one of them is a denial of service vector, so a listing examines a bounded
+// number of entries and reports that it was truncated.
+const MAX_SCAN_ENTRIES = 2000;
 
 function within(root, target) {
   const rel = relative(root, target);
   return rel === "" || (!rel.startsWith(".." + sep) && rel !== ".." && !isAbsolute(rel));
 }
 
-export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs = { readdir, lstat, realpath, open } } = {}) {
-  function descriptorPath(handle) {
+export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs = { readdir, lstat, realpath, open, opendir } } = {}) {  function descriptorPath(handle) {
     if (process.platform !== "linux")
       throw Object.assign(new Error("Secure directory browsing requires Linux descriptor paths"), { statusCode: 503 });
     return "/proc/self/fd/" + handle.fd;
@@ -34,6 +37,26 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
         throw Object.assign(new Error("Directory changed while opening; retry the operation"), { statusCode: 409 });
       throw error;
     }
+  }
+  // Reads at most `limit` directory entries. The directory is opened through the
+  // already validated descriptor, so the entries always come from the pinned inode.
+  async function readDirectoryEntries(fdPath, limit) {
+    if (typeof fs.opendir === "function") {
+      const directory = await fs.opendir(fdPath, { withFileTypes: true });
+      const collected = [];
+      let truncated = false;
+      try {
+        for await (const entry of directory) {
+          if (collected.length >= limit) { truncated = true; break; }
+          collected.push(entry);
+        }
+      } finally {
+        await directory.close().catch(() => {});
+      }
+      return { entries: collected, truncated };
+    }
+    const dirents = await fs.readdir(fdPath, { withFileTypes: true });
+    return { entries: dirents.slice(0, limit), truncated: dirents.length > limit };
   }
   async function getRoots() {
     let candidates = suppliedRoots;
@@ -81,10 +104,12 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     if (!["all", "directory", "file"].includes(requestedType)) throw Object.assign(new Error("Invalid directory type filter"), { statusCode: 400 });
     const handle = await openValidatedDirectory(actual, info);
     const entries = [];
+    let truncated = false;
     try {
       const fdPath = descriptorPath(handle);
-      const dirents = await fs.readdir(fdPath, { withFileTypes: true });
-      for (const entry of dirents) {
+      const scanned = await readDirectoryEntries(fdPath, MAX_SCAN_ENTRIES);
+      truncated = scanned.truncated;
+      for (const entry of scanned.entries) {
         if (entry.isSymbolicLink()) continue;
         const fullPath = resolve(actual, entry.name);
         if (!within(root, fullPath)) continue;
@@ -123,6 +148,7 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
       entries: filteredEntries.slice(offset, offset + limit),
       totalEntries: filteredEntries.length,
       totalDirectoryEntries,
+      truncated,
       limit,
       offset,
       sort: requestedSort,
@@ -175,8 +201,10 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
       try {
         handle = await openValidatedDirectory(currentPath, currentInfo);
         const fdPath = descriptorPath(handle);
-        const dirents = await fs.readdir(fdPath, { withFileTypes: true });
-        for (const entry of dirents) {
+        const remaining = Math.max(0, Math.min(MAX_SCAN_ENTRIES, MAX_SEARCH_VISITS - scanned));
+        const scannedEntries = await readDirectoryEntries(fdPath, remaining);
+        if (scannedEntries.truncated) truncated = true;
+        for (const entry of scannedEntries.entries) {
           if (scanned >= MAX_SEARCH_VISITS || entries.length >= limit) { truncated = true; break; }
           scanned++;
           if (entry.isSymbolicLink()) continue;
