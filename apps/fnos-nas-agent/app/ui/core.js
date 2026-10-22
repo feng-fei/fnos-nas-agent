@@ -261,6 +261,7 @@ const SERVER_ERROR_MESSAGES=[
   ["A server-side static review is required before approving this Skill","该 Skill 缺少服务端静态审核结论，无法批准。"],
   ["The Skill was not reviewed by the server; re-import the archive before installing its CLI","该 Skill 未经过服务端审核，请重新导入归档后再安装官方 CLI。"],
   ["Official fnOS CLI binary entry is missing from the archive","归档中缺少官方 CLI 二进制条目。"],
+  ["Only a quarantined official fnOS Skill archive can provide the CLI","该 Skill 不是经服务端审核的官方 fnOS 包，无法提供官方 CLI。"],
   ["Unknown execution mode; expected one of normal, read-only, halted","未知的执行模式，仅支持 normal / read-only / halted。"],
   ["Too many tool runs","工具调用过于频繁，请稍后再试。"],
   ["Too many agent messages","消息发送过于频繁，请稍后再试。"],

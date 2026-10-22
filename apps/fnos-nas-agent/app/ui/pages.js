@@ -807,7 +807,11 @@ async function refreshSkills(){
     });
     card.append(sourceDetails);
    }
-   if(item.name?.toLowerCase()==="fnos"&&item.quarantineFile&&item.manifestReview?.name?.toLowerCase()==="fnos"&&["approved","enabled"].includes(item.state)){
+   const officialPackage=item.manifestReview?.reviewedBy==="server"&&item.manifestReview?.name?.toLowerCase()==="fnos"&&item.manifestReview?.archiveSha256===item.archiveSha256;
+   if(officialPackage){
+    const badge=document.createElement("span");badge.className="badge badge--ok";badge.textContent="官方 fnOS 包";card.append(badge);
+   }
+   if(officialPackage&&item.quarantineFile&&["approved","enabled"].includes(item.state)){
     const install=document.createElement("button");install.type="button";install.textContent="安装官方 CLI（当前平台）";
     install.addEventListener("click",async()=>{if(!(await confirmAction("仅提取官方 Skill 包中与当前 Linux 架构匹配的 trim-cli 二进制；不会解压其他文件，也不会执行 Skill 指令。继续安装？")))return;install.disabled=true;try{const ir=await api("/api/skills/"+item.id+"/install-cli",{method:"POST"});const result=await ir.json();if(!ir.ok)throw Error(result.error||"CLI 安装失败");showToast("CLI 已安装："+result.installation.platform+"，"+formatBytes(result.installation.sizeBytes)+"。请启用 Skill 后再使用官方只读工具。","ok");await refreshSkills();}catch(error){document.querySelector("#skill-error").textContent=errorText(error,"CLI 安装失败");}finally{install.disabled=false;}});
     card.append(install);

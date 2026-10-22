@@ -30,6 +30,7 @@ import { createActionApprovalService } from "./action-approval-service.mjs";
 import { createSerialWriteQueue } from "./serial-write-queue.mjs";
 import { createExecutionPolicy, EXECUTION_MODES } from "./execution-policy.mjs";
 import { APP_VERSION } from "./version.mjs";
+import { isOfficialFnosPackage } from "./skill-official-package.mjs";
 import { createOverviewService } from "./overview.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -311,7 +312,10 @@ const trimCli = createTrimCliAdapter({
     if (process.env.TRIM_CLI_PATH) return process.env.TRIM_CLI_PATH;
     if (!skillStore) return "";
     const enabled = skillStore.list({ limit: 500, state: "enabled" }).skills;
-    const official = enabled.find(item => item.name.toLowerCase() === "fnos" && item.manifestReview?.name?.toLowerCase() === "fnos");
+    // The official CLI is whatever the server itself reviewed as the official
+    // fnOS package. The Skill name the operator typed is only a display label
+    // and must never decide whether the official binary is offered.
+    const official = enabled.find(item => isOfficialFnosPackage(item));
     return official ? join(dataDir, "skill-tools", official.id, "trim-cli") : "";
   }
 });
@@ -953,7 +957,7 @@ const server = createServer(async (req, res) => {
         const installation = await skillInstaller.installCli(record);
         return reply(res, 200, { installation, note: "仅提取了匹配当前 Linux 架构的 CLI 二进制；没有解压其他归档内容，也没有执行 Skill 指令。启用 Skill 后才会使用此 CLI。" });
       } catch (error) {
-        const status = [400, 404, 409, 413].includes(error?.statusCode) ? error.statusCode : 500;
+        const status = [400, 403, 404, 409, 413].includes(error?.statusCode) ? error.statusCode : 500;
         return reply(res, status, { error: status === 500 ? "Unable to install the official CLI binary safely" : error.message });
       }
     }
