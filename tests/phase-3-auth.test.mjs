@@ -110,7 +110,7 @@ test("first-run setup stores only a salted password hash and protects session en
   assert.ok(toolCatalogue.tools.every(tool => ["read-only", "write", "destructive"].includes(tool.risk) && tool.inputSchema.additionalProperties === false));
   assert.equal(toolCatalogue.routineWriteExecutionEnabled, true);
   assert.equal(toolCatalogue.destructiveActionConfirmationEnabled, true);
-  assert.ok(toolCatalogue.tools.filter(tool => tool.risk === "write").every(tool => ["files.create-folder", "files.rename", "files.move", "files.upload", "files.create-text"].includes(tool.id)));
+  assert.ok(toolCatalogue.tools.filter(tool => tool.risk === "write").every(tool => ["files.create-folder", "files.rename", "files.move", "files.upload", "files.create-text", "documents.index-refresh"].includes(tool.id)));
 
   const pendingWithoutSession = await fetch(baseUrl + "/api/actions/pending");
   assert.equal(pendingWithoutSession.status, 401);

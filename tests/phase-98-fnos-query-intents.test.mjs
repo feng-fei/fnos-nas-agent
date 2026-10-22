@@ -85,7 +85,7 @@ test("natural-language local knowledge base requests route to index status, refr
   const search = await f.agent.run({ text: "搜索知识库：家庭预算" });
   assert.equal(status.results[0].tool, "documents.index-status");
   assert.equal(refresh.results[0].tool, "documents.index-refresh");
-  assert.deepEqual(refresh.results[0].args, { force: true, maxFiles: 500 });
+  assert.deepEqual(f.calls[1].args, { force: true, maxFiles: 500 });
   assert.equal(search.results[0].tool, "documents.search");
   assert.deepEqual(search.results[0].args, { query: "家庭预算", limit: 10 });
   assert.deepEqual(f.calls.map(item => item.id), ["documents.index-status","documents.index-refresh","documents.search"]);
