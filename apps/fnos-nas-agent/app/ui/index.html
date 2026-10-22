@@ -143,6 +143,25 @@
           </div>
         </details>
 
+        <details class="card card--flat">
+          <summary class="card__head">
+            <h3 class="card__title">运行状态、安全巡检与模型用量</h3>
+            <p class="card__sub">展开查看系统快照、安全巡检与模型调用统计（只读，不改配置）。</p>
+          </summary>
+          <div class="card__body">
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" id="insights-refresh" type="button">刷新观察数据</button>
+            </div>
+            <p class="field__hint" id="insights-status" role="status">登录后点击刷新读取观察数据。</p>
+            <h4 class="card__title">系统快照</h4>
+            <pre id="insights-system">尚未读取。</pre>
+            <h4 class="card__title">安全巡检</h4>
+            <pre id="insights-security">尚未读取。</pre>
+            <h4 class="card__title">模型用量</h4>
+            <pre id="insights-usage">尚未读取。</pre>
+          </div>
+        </details>
+
       </div>
     </section>
 

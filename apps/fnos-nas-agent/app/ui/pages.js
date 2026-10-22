@@ -1457,6 +1457,80 @@ document.querySelector("#audit-prev").addEventListener("click",()=>{auditOffset=
 document.querySelector("#audit-next").addEventListener("click",()=>{auditOffset+=20;refreshAudit();});
 document.querySelector("#audit-route").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();auditOffset=0;refreshAudit();}});
 
+/* ------------------------------------------------------------------ *
+ * 运行状态 / 安全巡检 / 模型用量（Phase 166 只读观察面）
+ * 三个接口都是只读的：这里只读数据、只写文本，不改任何配置。
+ * 渲染一律使用 textContent，不做 HTML 字符串拼接。
+ * ------------------------------------------------------------------ */
+const INSIGHT_SECTION_LABELS={ok:"正常",unknown:"未采集",unavailable:"接口不可用"};
+function insightSectionLines(sections){
+ if(!Array.isArray(sections)||!sections.length)return ["暂无数据。"];
+ return sections.map(section=>{
+  const title=section.title||section.id||"未命名段落";
+  const status=INSIGHT_SECTION_LABELS[section.status]||section.status||"未知状态";
+  const note=section.note?"："+section.note:"";
+  const values=section.values&&typeof section.values==="object"
+   ?Object.entries(section.values).slice(0,6).map(pair=>pair[0]+"="+String(pair[1])).join(" "):"";
+  return "- "+title+"："+status+note+(values?"（"+values+"）":"");
+ });
+}
+async function insightRead(path){
+ try{
+  const response=await api(path);
+  if(!response.ok){
+   const body=await response.json().catch(()=>({}));
+   return {error:(body&&body.error)||("HTTP "+response.status)};
+  }
+  return await response.json();
+ }catch(e){return {error:errorText(e,"读取失败")};}
+}
+async function refreshInsights(){
+ const statusEl=document.querySelector("#insights-status");
+ const systemEl=document.querySelector("#insights-system");
+ const securityEl=document.querySelector("#insights-security");
+ const usageEl=document.querySelector("#insights-usage");
+ if(!systemEl||!securityEl||!usageEl)return;
+ if(statusEl)statusEl.textContent="正在读取观察数据…";
+ const results=await Promise.all([insightRead("/api/system/snapshot"),insightRead("/api/security/inspection"),insightRead("/api/models/usage")]);
+ const snapshot=results[0],inspection=results[1],usage=results[2];
+ if(snapshot&&snapshot.error){systemEl.textContent="读取失败："+snapshot.error;}
+ else{
+  const score=(snapshot&&snapshot.score)||{};
+  const lines=["生成时间："+((snapshot&&snapshot.generatedAt)||"-"),
+   "健康评分："+(typeof score.value==="number"?score.value:"-")+" 分（等级 "+(score.grade||"-")+" · 覆盖率 "+Math.round((Number(score.coverage)||0)*100)+"%）"]
+   .concat(insightSectionLines(snapshot&&snapshot.sections));
+  if(snapshot&&Array.isArray(snapshot.uncovered)&&snapshot.uncovered.length)
+   lines.push("未覆盖项："+snapshot.uncovered.map(item=>item.id).join("、"));
+  systemEl.textContent=lines.join("\n");
+ }
+ if(inspection&&inspection.error){securityEl.textContent="读取失败："+inspection.error;}
+ else{
+  const summary=(inspection&&inspection.summary)||{};
+  const lines=["生成时间："+((inspection&&inspection.generatedAt)||"-"),
+   "待处理：严重 "+(summary.critical||0)+" · 警告 "+(summary.warning||0)+" · 提示 "+(summary.info||0)+" · 合计 "+(summary.total||0)]
+   .concat(insightSectionLines(inspection&&inspection.sections).map(line=>line.replace(/^-\s*/,"")));
+  const permissions=inspection&&Array.isArray(inspection.toolPermissions)?inspection.toolPermissions:[];
+  if(permissions.length)lines.push("工具权限表："+permissions.length+" 个工具");
+  const audit=inspection&&inspection.auditSummary;
+  if(audit)lines.push("审计摘要：共 "+(audit.total||0)+" 条 · 错误 "+(audit.errors||0)+" 条");
+  securityEl.textContent=lines.join("\n");
+ }
+ if(usage&&usage.error){usageEl.textContent="读取失败："+usage.error;}
+ else{
+  const summary=(usage&&usage.summary)||{};
+  const privacy=(usage&&usage.privacy)||{};
+  const lines=["请求 "+(summary.requests||0)+" · 成功 "+(summary.ok||0)+" · 失败 "+(summary.error||0),
+   "输入 token "+(summary.promptTokens||0)+" · 输出 token "+(summary.completionTokens||0)+" · 平均延迟 "+(summary.averageLatencyMs||0)+" ms",
+   "本地请求 "+(summary.localRequests||0)+" · 云端请求 "+(summary.cloudRequests||0)+" · 计价："+(summary.priced?"已计价":"未计价（价格未知，不估算）"),
+   "隐私模式："+(privacy.enabled?"已开启":"未开启")+"（enforced="+(privacy.enforced===true?"true":"false")+"）"];
+  const models=usage&&Array.isArray(usage.byModel)?usage.byModel:[];
+  if(models.length)for(const model of models.slice(0,8))lines.push("- "+model.provider+" / "+model.model+"："+model.requests+" 次 · 失败 "+model.error+" 次");
+  usageEl.textContent=lines.join("\n");
+ }
+ if(statusEl)statusEl.textContent="已更新于 "+formatDateTime(new Date().toISOString());
+}
+document.querySelector("#insights-refresh").addEventListener("click",()=>{refreshInsights();});
+
 
 /* ------------------------------------------------------------------ *
  * 概览页统计：优先用 /api/overview 一次性取回全部头条指标，
@@ -1605,7 +1679,7 @@ async function refreshOverviewStats(){
 async function refreshCurrentPage(){
   const id=currentRouteId();
   try{
-    if(id==="status-card"){await refresh();await refreshOverviewStats();}
+    if(id==="status-card"){await refresh();await refreshOverviewStats();await refreshInsights();}
     else if(id==="files-card")await refreshFiles(currentFilePath,currentFileOffset);
     else if(id==="agent-card"){await refreshAgentStatus();await refreshRecentTasks();await refreshPendingActions();}
     else if(id==="tools-card")await refreshTools();

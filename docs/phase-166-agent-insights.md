@@ -18,7 +18,9 @@ Phase 160–165 各自交付了安全审计、系统快照、诊断、重复检�
 | `apps/fnos-nas-agent/app/agent-insights.mjs` | 新增。`estimateTokens(value)`（按长度/4 估算，单条上限 100000 字符）、`buildUsageEntry({provider,model,endpoint,outcome,promptText,completionText,latencyMs,privacyMode})`（生成不含原文的用量条目）、`createSystemCollector({trimCli})`（按段落采集真实状态，采不到返回 `unavailable`） |
 | `apps/fnos-nas-agent/app/mcp-stdio-entry.mjs` | 新增。stdio JSON-RPC 2.0 入口，`initialize` 返回 `protocolVersion: "2024-11-05"`，`tools/list` 只发布只读工具 |
 | `apps/fnos-nas-agent/app/server.mjs` | 变更。新增 `usageMeter`（`createUsageMeter({maxEntries:500})`）、`recordChatUsage(...)`（直聊链路记账）、四个只读路由与审计路由名 `system.snapshot` / `diagnostics.report` / `security.inspection` / `models.usage` |
-| `tests/phase-166-agent-insights.test.mjs` | 新增。6 个用例覆盖单位层、HTTP 层与 MCP stdio 握手 |
+| `apps/fnos-nas-agent/app/ui/index.html` | 变更。运行概览页新增「运行状态、安全巡检与模型用量」折叠卡片（`#insights-refresh` / `#insights-system` / `#insights-security` / `#insights-usage` / `#insights-status`） |
+| `apps/fnos-nas-agent/app/ui/pages.js` | 变更。新增 `refreshInsights()` 与 `insightRead()`，进入运行概览页或点击刷新时并行读取三个只读接口；渲染一律使用 `textContent` |
+| `tests/phase-166-agent-insights.test.mjs` | 新增。7 个用例覆盖单位层、HTTP 层、MCP stdio 握手与前端面板接线 |
 
 ## HTTP 出口
 
@@ -41,14 +43,15 @@ Phase 160–165 各自交付了安全审计、系统快照、诊断、重复检�
 
 ## 验证
 
-`node --test tests/phase-166-agent-insights.test.mjs` → **6 tests / 6 pass / 0 fail**：
+`node --test tests/phase-166-agent-insights.test.mjs` → **7 tests / 7 pass / 0 fail**：
 
 1. `estimateTokens` 对空值不抛错，长度按 1/4 估算；
 2. `buildUsageEntry` 拒绝无法归属 provider 的条目，且序列化结果不含提示词原文；
 3. 用量计量器统计请求数/成功失败/token，并保持"未知价格不计价"；隐私模式下云端请求被计入 `cloudRequestsBlocked`；
 4. 系统采集器读官方 CLI 的 `monitor.cpu` / `monitor.memory` 并换算百分比，缺失源返回非 ok；
 5. MCP stdio 入口完成 `initialize` + `tools/list` 握手且工具目录非空；
-6. HTTP 层：四个新路由未登录 `401`；登录后快照 6 段、巡检 6 段 + 工具权限表 + 审计摘要、用量 `requests=0`；诊断报告跨源 `403`、正常返回且建议中不含 `rm -rf`。
+6. HTTP 层：四个新路由未登录 `401`；登录后快照 6 段、巡检 6 段 + 工具权限表 + 审计摘要、用量 `requests=0`；诊断报告跨源 `403`、正常返回且建议中不含 `rm -rf`；
+7. 前端面板：概览页存在五个观察元素，脚本绑定三个只读接口，刷新按钮已接线，且整份脚本不含 HTML 字符串拼接。
 
 ## 遗留
 

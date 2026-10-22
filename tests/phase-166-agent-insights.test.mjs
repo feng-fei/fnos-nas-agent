@@ -184,6 +184,20 @@ test("the observation routes require a session and answer with the documented sh
   assert.equal(JSON.stringify(reportPayload.nextSteps).includes("rm -rf"), false);
 });
 
+test("the overview page exposes the observation panel and wires it to the three routes", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const html = await readFile(join(process.cwd(), "apps/fnos-nas-agent/app/ui/index.html"), "utf8");
+  const script = await readFile(join(process.cwd(), "apps/fnos-nas-agent/app/ui/pages.js"), "utf8");
+  for (const id of ["insights-refresh", "insights-system", "insights-security", "insights-usage", "insights-status"]) {
+    assert.ok(html.includes(`id="${id}"`), `the page must carry #${id}`);
+  }
+  assert.ok(script.includes("/api/system/snapshot"));
+  assert.ok(script.includes("/api/security/inspection"));
+  assert.ok(script.includes("/api/models/usage"));
+  assert.ok(script.includes('document.querySelector("#insights-refresh")'), "the refresh button must be wired");
+  assert.equal(script.includes("innerHTML"), false, "the observation panel must not use innerHTML");
+});
+
 async function unusedPort() {
   const server = createTcpServer();
   await new Promise((resolve, reject) => server.listen(0, "127.0.0.1", resolve).once("error", reject));
