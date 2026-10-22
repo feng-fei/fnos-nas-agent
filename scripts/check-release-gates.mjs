@@ -519,4 +519,44 @@ assert.match(phase140Docs, /fallback/i);
 assert.match(phase136DocsIndex, /### Phase 140/);
 assert.match(readme, /Phase 140 — Model Provider Resilience/);
 
+
+/* ---------------------------------------------- Phase 141 assertions -- */
+// The official fnOS package is identified by the server side review of the
+// archive, never by the name the operator typed when registering it.
+const phase141Package = await read("apps/fnos-nas-agent/app/skill-official-package.mjs");
+const phase141Installer = await read("apps/fnos-nas-agent/app/skill-installer.mjs");
+const phase141Tests = await read("tests/phase-141-official-skill-identity.test.mjs");
+const phase141Docs = await read("docs/phase-141-official-skill-identity.md");
+assert.match(phase141Package, /export function isOfficialFnosPackage/);
+assert.match(phase141Package, /reviewedBy/);
+assert.match(phase141Package, /archiveSha256/);
+assert.match(phase141Package, /skill-quarantine/);
+assert.match(phase141Installer, /import \{ isOfficialFnosPackage \} from "\.\/skill-official-package\.mjs";/);
+assert.match(phase141Installer, /if \(!isOfficialFnosPackage\(record\)\)/);
+assert.doesNotMatch(phase141Installer, /record\.name\.toLowerCase\(\) !== "fnos"/);
+assert.match(server, /import \{ isOfficialFnosPackage \} from "\.\/skill-official-package\.mjs";/);
+assert.match(server, /enabled\.find\(item => isOfficialFnosPackage\(item\)\)/);
+assert.match(ui, /const officialPackage=item\.manifestReview\?\.reviewedBy==="server"/);
+assert.doesNotMatch(ui, /item\.name\?\.toLowerCase\(\)==="fnos"/);
+assert.match(phase141Tests, /isOfficialFnosPackage/);
+assert.match(phase141Docs, /reviewedBy|server side review/i);
+assert.match(phase136DocsIndex, /### Phase 141/);
+assert.match(readme, /Phase 141 — Official Skill Identity/);
+
+
+/* ---------------------------------------------- Phase 142 assertions -- */
+// The official package declares its binaries relative to the package
+// root, so the declaration is resolved before it is compared with the
+// archive entry that the current platform expects.
+const phase142Installer = await read("apps/fnos-nas-agent/app/skill-installer.mjs");
+const phase142Tests = await read("tests/phase-142-official-cli-manifest-paths.test.mjs");
+const phase142Docs = await read("docs/phase-142-official-cli-manifest-paths.md");
+assert.match(phase142Installer, /export function resolveManifestEntry/);
+assert.match(phase142Installer, /resolveManifestEntry\(manifest, target\.key\) !== target\.entry/);
+assert.doesNotMatch(phase142Installer, /manifest\.bin\?\.\[target\.key\] !== target\.entry/);
+assert.match(phase142Tests, /resolveManifestEntry/);
+assert.match(phase142Docs, /manifest/i);
+assert.match(phase136DocsIndex, /### Phase 142/);
+assert.match(readme, /Phase 142 — Official CLI Manifest Paths/);
+
 console.log("Release readiness gates passed: runtime dependency, CI matrix, packaging, and safety invariants.");

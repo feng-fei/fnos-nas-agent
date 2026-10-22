@@ -184,6 +184,8 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 137 — Task and Approval Lifecycle](docs/phase-137-task-approval-lifecycle.md)
 - [Phase 138 — File Domain Hardening](docs/phase-138-file-domain-hardening.md)
 - [Phase 140 — Model Provider Resilience](docs/phase-140-model-provider-resilience.md)
+- [Phase 141 — Official Skill Identity](docs/phase-141-official-skill-identity.md)
+- [Phase 142 — Official CLI Manifest Paths](docs/phase-142-official-cli-manifest-paths.md)
 - [Documentation index](docs/README.md)
 
 ## License

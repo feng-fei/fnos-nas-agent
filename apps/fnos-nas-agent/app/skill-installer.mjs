@@ -2,15 +2,31 @@ import { createHash, randomBytes } from "node:crypto";
 import { chmod, lstat, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { extractZipEntry, inspectZipArchive, MAX_ARCHIVE_BYTES } from "./skill-archives.mjs";
+import { isOfficialFnosPackage } from "./skill-official-package.mjs";
 
 const SUPPORTED = Object.freeze({
   "linux:x64": { key: "linux-x64", entry: "fnos/bin/trim-cli-linux-x64", machine: 62 },
   "linux:arm64": { key: "linux-arm64", entry: "fnos/bin/trim-cli-linux-arm64", machine: 183 }
 });
 const MAX_CLI_BYTES = 16 * 1024 * 1024;
+// The official package keeps its manifest at the package root, so the paths it
+// declares are relative to that root ("bin/trim-cli-linux-x64"), while the
+// archive itself stores them below the package folder
+// ("fnos/bin/trim-cli-linux-x64"). Both spellings are accepted, and the
+// resolved entry still has to be exactly the expected one.
+const PACKAGE_ROOT = "fnos/";
 
 function fail(statusCode, message) {
   throw Object.assign(new Error(message), { statusCode });
+}
+
+export function resolveManifestEntry(manifest, key) {
+  const declared = manifest && typeof manifest === "object" ? manifest.bin?.[key] : undefined;
+  if (typeof declared !== "string" || !declared.trim()) return "";
+  const cleaned = declared.trim().replace(/^\.\//, "").replace(/^\/+/, "");
+  if (!cleaned || cleaned.split("/").some(part => part === ".." || part === "")) return "";
+  const entry = cleaned.startsWith(PACKAGE_ROOT) ? cleaned : PACKAGE_ROOT + cleaned;
+  return entry.split("/").some(part => part === ".." || part === "") ? "" : entry;
 }
 
 function sha256(buffer) {
@@ -49,11 +65,11 @@ export function createSkillInstaller({ dataDir, platform = process.platform, arc
       fail(403, "The Skill was not reviewed by the server; re-import the archive before installing its CLI");
     }
     if (!["approved", "enabled"].includes(record.state)) fail(409, "Review and approve the Skill before installing its CLI");
-    if (typeof record.name !== "string" || record.name.toLowerCase() !== "fnos" ||
-        record.manifestReview?.name?.toLowerCase() !== "fnos" ||
-        typeof record.quarantineFile !== "string" ||
-        !/^[a-f0-9]{64}$/.test(record.archiveSha256 || "") ||
-        record.quarantineFile !== `skill-quarantine/${record.archiveSha256}.zip`) {
+    // The official identity comes from the server-side review of the archive,
+    // never from the name the operator typed when registering the Skill. The
+    // name is only a display label, so a typo must not lock the official CLI
+    // out of an otherwise valid, server reviewed official package.
+    if (!isOfficialFnosPackage(record)) {
       fail(400, "Only a quarantined official fnOS Skill archive can provide the CLI");
     }
 
@@ -78,7 +94,7 @@ export function createSkillInstaller({ dataDir, platform = process.platform, arc
       fail(400, "Official fnOS package manifest is invalid");
     }
     if (manifest?.name !== "fnos" || typeof manifest.version !== "string" ||
-        manifest.bin?.[target.key] !== target.entry) {
+        resolveManifestEntry(manifest, target.key) !== target.entry) {
       fail(400, "Package manifest does not declare the expected official fnOS CLI binary");
     }
 

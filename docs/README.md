@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 142 documents (129 phase documents and 12 non-phase documents, plus this file).
+This index lists 144 documents (131 phase documents and 12 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -528,6 +528,14 @@ This index lists 142 documents (129 phase documents and 12 non-phase documents, 
 
 - [Phase 139 — Reverse proxy deployment](phase-139-reverse-proxy-deployment.md) — The agent never documented which environment variables it actually reads, and it rejected every write request that arrived through a TLS-terminating reverse proxy. Phase 139 rewrites the environment template from the real defaults and documents how to put the agent behind nginx or the fnOS portal without breaking the origin check or the session cookie.
 ### Phase 140
+
+### Phase 141
+
+### Phase 142
+
+- [Phase 142 — Official CLI Manifest Paths](phase-142-official-cli-manifest-paths.md) — the binary path declared by the official package manifest is resolved against the package folder, so the official CLI can be installed.
+
+- [Phase 141 — Official Skill Identity](phase-141-official-skill-identity.md) — the official fnOS package identity follows the server side review instead of the name the operator typed.
 
 - [Phase 140 — Model provider resilience](phase-140-model-provider-resilience.md) — A model provider that could not answer was treated as the end of the line: the configured fallback was never tried, a single corrupted record disabled every provider, and a request that had already been cancelled still spent minutes on the wire. Phase 140 promotes an enabled fallback to the primary slot, keeps one broken record from taking the whole catalog down, distinguishes a cancelled request from a failed one, and reports HTTP attempts and wall-clock latency next to the existing counters.
 
