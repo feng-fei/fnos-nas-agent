@@ -1340,6 +1340,87 @@ label:where(:not(.field__label):not(.checkbox):not(.visually-hidden)) {
   flex: 1 1 auto;
 }
 
+/* 窄屏上的工具栏：两列网格。
+ * 搜索框占满一整行，两个下拉框并排，操作按钮另起一行。
+ * 之前三个控件被 flex 的 140px 基准宽度挤成竖排的全宽长墙，
+ * 在 390px 的屏幕上要多滚两屏才能看到目录内容。 */
+@media (max-width: 767px) {
+  .toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+
+  .toolbar .toolbar__group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+    width: 100%;
+  }
+
+  .toolbar .toolbar__group .input,
+  .toolbar .toolbar__group .select,
+  .toolbar .toolbar__group .btn {
+    width: 100%;
+    min-width: 0;
+    flex: none;
+  }
+
+  .toolbar .toolbar__group .input[type="search"] {
+    grid-column: 1 / -1;
+  }
+
+  .toolbar .toolbar__group .btn {
+    grid-column: 1 / -1;
+  }
+
+  .toolbar__spacer {
+    display: none;
+  }
+}
+
+/* 存储卷面板：可以折叠，卷很多时不会把目录内容推到屏幕之外。 */
+.roots-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.roots-panel__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: calc(var(--tap) - 8px);
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.roots-panel__summary::-webkit-details-marker {
+  display: none;
+}
+
+.roots-panel__summary::before {
+  content: "▸";
+  color: var(--text-muted);
+  transition: transform var(--duration-fast, 120ms) ease;
+}
+
+.roots-panel[open] > .roots-panel__summary::before {
+  content: "▾";
+}
+
+.roots-panel > .stack {
+  margin-top: var(--space-2);
+}
+
+.roots-panel > .stack > button {
+  justify-content: flex-start;
+  text-align: left;
+}
+
 .segmented {
   display: inline-flex;
   align-items: center;

@@ -390,6 +390,9 @@ if(logoutButtonEl)logoutButtonEl.addEventListener("click",logoutSession);
 document.querySelectorAll('[data-action="logout"]').forEach(el=>el.addEventListener("click",logoutSession));
 
 /* 通用小工具 */
+const renderTokens=new WeakMap();
+function beginRender(node){const token=(renderTokens.get(node)||0)+1;renderTokens.set(node,token);return token;}
+function renderIsCurrent(node,token){return renderTokens.get(node)===token;}
 function debounce(fn,wait){
   let timer=null;
   return function(...args){
