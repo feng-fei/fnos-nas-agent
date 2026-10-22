@@ -250,12 +250,11 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
   // descriptor pinned scanner above.
   const scan = typeof scanDirectory === "function" ? scanDirectory : defaultScanDirectory;
 
-  // Refuses a symbolic link with a reason of its own. The link may well sit
-  // inside a storage root, so "outside the storage roots" would point the
-  // caller at the wrong problem.
-  async function refuseSymbolicLink(path) {
-    if (!await isSymbolicLinkPath(path)) return;
-    throw Object.assign(new Error("Symbolic links are not supported"), { statusCode: 403 });
+  // Reads the identity of a path. The bigint variant keeps the device and
+  // inode numbers exact, because a 64 bit inode does not survive a double.
+  async function lstatOrFail(path, message) {
+    try { return await fs.lstat(path, { bigint: true }); }
+    catch { throw Object.assign(new Error(message), { statusCode: 404 }); }
   }
   async function list(pathValue = "", requestedLimit = DEFAULT_LIMIT, requestedOffset = 0, requestedSort = "directories-first", requestedQuery = "", requestedType = "all") {
     if (typeof pathValue !== "string" || pathValue.length > 2048) {
@@ -264,13 +263,21 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     const roots = await getRoots();
     if (!roots.length) return { roots: [], path: null, parentPath: null, entries: [], limit: 0, offset: 0, totalEntries: 0, totalDirectoryEntries: 0, skippedSymbolicLinks: 0, directoryVersion: "", driftHint: OFFSET_DRIFT_HINT, note: "未发现可浏览的存储卷；可通过 AGENT_FILE_ROOTS 配置允许的绝对路径。" };
     const requestedPath = pathValue.trim() ? resolve(pathValue) : roots[0];
-    await refuseSymbolicLink(requestedPath);
+    // The identity of the requested path is captured before it is resolved.
+    // A path that is swapped for a symbolic link in between is a conflict the
+    // caller can retry, while a path that was a symbolic link from the start
+    // is refused on its own terms. The two must not share a status code.
+    const requestedInfo = await lstatOrFail(requestedPath, "Directory not found");
+    if (requestedInfo.isSymbolicLink())
+      throw Object.assign(new Error("Symbolic links are not supported"), { statusCode: 403 });
     let actual;
     try { actual = await fs.realpath(requestedPath); }
     catch { throw Object.assign(new Error("Directory not found"), { statusCode: 404 }); }
+    const info = await lstatOrFail(actual, "Directory not found");
+    if (info.dev !== requestedInfo.dev || info.ino !== requestedInfo.ino)
+      throw Object.assign(new Error("Directory changed while opening; retry the operation"), { statusCode: 409 });
     const root = roots.find(candidate => within(candidate, actual));
     if (!root) await refuseOutsideRoot(requestedPath);
-    const info = await fs.lstat(actual);
     if (!info.isDirectory()) throw Object.assign(new Error("Path is not a directory"), { statusCode: 400 });
     const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(MAX_ENTRIES, requestedLimit)) : DEFAULT_LIMIT;
     const offset = Number.isInteger(requestedOffset) ? Math.max(0, Math.min(MAX_OFFSET, requestedOffset)) : 0;
@@ -309,13 +316,17 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     const roots = await getRoots();
     if (!roots.length) return { roots: [], path: null, query: queryValue.trim(), entries: [], scanned: 0, truncated: false, stopped: false, incomplete: false, partialDirectories: 0, skippedSymbolicLinks: 0 };
     const requestedPath = pathValue.trim() ? resolve(pathValue) : roots[0];
-    await refuseSymbolicLink(requestedPath);
+    const requestedInfo = await lstatOrFail(requestedPath, "Search directory not found");
+    if (requestedInfo.isSymbolicLink())
+      throw Object.assign(new Error("Symbolic links are not supported"), { statusCode: 403 });
     let start;
     try { start = await fs.realpath(requestedPath); }
     catch { throw Object.assign(new Error("Search directory not found"), { statusCode: 404 }); }
+    const startInfo = await lstatOrFail(start, "Search directory not found");
+    if (startInfo.dev !== requestedInfo.dev || startInfo.ino !== requestedInfo.ino)
+      throw Object.assign(new Error("Directory changed while searching; retry the operation"), { statusCode: 409 });
     const root = roots.find(candidate => within(candidate, start));
     if (!root) await refuseOutsideRoot(requestedPath);
-    const startInfo = await fs.lstat(start);
     if (!startInfo.isDirectory() || startInfo.isSymbolicLink()) throw Object.assign(new Error("Search path is not a directory"), { statusCode: 400 });
     const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(MAX_SEARCH_RESULTS, requestedLimit)) : 50;
     const needle = foldName(queryValue.trim());
