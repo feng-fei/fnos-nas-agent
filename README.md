@@ -186,6 +186,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 140 — Model Provider Resilience](docs/phase-140-model-provider-resilience.md)
 - [Phase 141 — Official Skill Identity](docs/phase-141-official-skill-identity.md)
 - [Phase 142 — Official CLI Manifest Paths](docs/phase-142-official-cli-manifest-paths.md)
+- [Phase 143 — Official CLI Login Guidance](docs/phase-143-cli-login-required.md)
 - [Documentation index](docs/README.md)
 
 ## License
