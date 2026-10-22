@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 145 documents (132 phase documents and 12 non-phase documents, plus this file).
+This index lists 161 documents (148 phase documents and 12 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -542,6 +542,66 @@ This index lists 145 documents (132 phase documents and 12 non-phase documents, 
 - [Phase 141 — Official Skill Identity](phase-141-official-skill-identity.md) — the official fnOS package identity follows the server side review instead of the name the operator typed.
 
 - [Phase 140 — Model provider resilience](phase-140-model-provider-resilience.md) — A model provider that could not answer was treated as the end of the line: the configured fallback was never tried, a single corrupted record disabled every provider, and a request that had already been cancelled still spent minutes on the wire. Phase 140 promotes an enabled fallback to the primary slot, keeps one broken record from taking the whole catalog down, distinguishes a cancelled request from a failed one, and reports HTTP attempts and wall-clock latency next to the existing counters.
+
+### Phase 144
+
+- [Phase 144 — Skill package format](phase-144-skill-package-format.md) — A Skill archive was an opaque ZIP: the agent could list its entries, but it could not tell a valid package from a broken one. Phase 144 parses the canonical package layout in memory — one SKILL.md, an optional metadata.json, and the references, scripts and tests folders — and reports every deviation as a named finding, without extracting or executing anything.
+
+### Phase 145
+
+- [Phase 145 — Dangerous command rule pack](phase-145-dangerous-command-rules.md) — The rules that decide whether a command is dangerous were hard coded in two modules, so shell, PowerShell, Python and Node.js constructs were judged inconsistently. Phase 145 moves them into one dependency free rule pack that is shared by the manifest review, the source review and the command scanner.
+
+### Phase 146
+
+- [Phase 146 — Tool call observability](phase-146-tool-trace.md) — The audit log recorded the HTTP request that led to a tool call and nothing about the call itself, so a failed task could not be told apart from a model timeout, a denied destructive action and a broken path. Phase 146 traces every tool invocation with its identity, timing, outcome and a fixed error classification, and it adds a one line per event JSON logger that drops secret looking fields.
+
+- [Phase 146 — Task event stream](phase-146-task-events.md) — The conversation window had to poll the task queue to learn what the agent was doing. Phase 146 gives every task an event stream with progress, tool, approval, done and error events, and it keeps the terminal event unique so a failed task ends with exactly one event.
+
+### Phase 147
+
+- [Phase 147 — Registrable tool registry](phase-147-tool-registry.md) — The tool catalogue was a hard coded list, so a Skill or an MCP server could not publish a tool into it and the origin of a tool was invisible. Phase 147 turns the catalogue into a registry of tagged sources, and it keeps the execution policy of the product in force for every foreign tool.
+
+### Phase 148
+
+- [Phase 148 — MCP client](phase-148-mcp-client.md) — The agent could not speak the protocol that Marvis uses to reach its tools. Phase 148 adds a dependency free JSON-RPC client over the stdio transport, a configuration file for the servers, and the rules that keep a foreign server from weakening the safety contract of the agent.
+
+### Phase 149
+
+- [Phase 149 — Marvis style conversation window](phase-149-chat-window.md) — The agent answered in a form panel: one result block, a poll, and no trace of how the answer was produced. Phase 149 rebuilds the chat surface as a conversation — bubbles, a multi line composer, tool cards, an inline approval, a stop button, and a streamed progress — with the same security rules as before.
+
+### Phase 150
+
+- [Phase 150 — Model chat adapter](phase-150-model-chat-adapter.md) — The repository could talk to an OpenAI compatible provider, but only in the plan shape. Phase 150 adds the transport of the chat channel: it streams the answer token by token, it bounds the conversation and the answer, and it speaks a fixed error vocabulary.
+
+### Phase 151
+
+- [Phase 151 — Direct chat channel over HTTP](phase-151-direct-chat-http.md) — A plain conversation had no route: the only channel answered with a plan. Phase 151 adds the streaming chat route with the same origin, session, rate limit and endpoint whitelist rules as the rest of the product, and it keeps the chat turn apart from the tool contract of the planner.
+
+- [Phase 151 — Dual-mode chat window](phase-151-chat-direct-mode.md) — The conversation window could only talk to the task pipeline, so a plain question still created a NAS task and answered with tool cards. This phase makes the window dual-mode: the operator switches between the task mode and the direct chat mode, and the direct mode streams a plain text answer from the chat channel.
+
+### Phase 153
+
+- [Phase 153 — MCP tool bridge](phase-153-mcp-tool-bridge.md) — The tool registry of Phase 147 and the MCP client of Phase 148 did not meet: a foreign server could publish any name it wanted, and a tool from outside had no place where its risk was decided. This phase bridges the two and keeps the safety rules while a foreign tool runs.
+
+### Phase 154
+
+- [Phase 154 — Model settings UI](phase-154-model-settings-ui.md) — The provider manager grew into a real settings surface: the API key is shown as a fingerprint instead of a clear value, the password never comes back in clear text while it is edited, a failed save names the field that caused it, and adding a provider and entering its credentials are two separate steps.
+
+### Phase 155
+
+- [Phase 155 — Tool call observer](phase-155-tool-call-observer.md) — The tracer of Phase 146 existed, but nothing called it: the built-in catalogue, the agent plan and the external MCP tools all ran without a trace entry. Phase 155 wires the observer into those three call sites, so a real run leaves the same evidence the tests did.
+
+### Phase 156
+
+- [Phase 156 — Marvis migration integration](phase-156-marvis-migration-integration.md) — The migration ran phase by phase and every phase kept its own document, so nothing in the repository said which Marvis capability is now part of it, where it lives and which rule keeps it safe. This phase writes that map down, together with the naming and risk rules of the MCP bridge, the red lines that survived the migration and the limits that are still open. It adds no runtime code.
+
+### Phase 157
+
+- [Phase 157 — UI integration verification](phase-157-ui-integration.md) — The model settings module of Phase 154 and the conversation window of Phase 149/151 were written, but nothing proved that the page actually used them. This phase verifies the real page against the real module: the wizard state classes match the stylesheet, the page listens for the ready event of the module so the first screen is never empty, the provider card carries the model settings classes, the invalid state sits on the field container, and the submit handler guards the form like the input handler does. It also found five real defects, fixed them, and turned every placeholder into a real assertion.
+
+### Phase 158
+
+- [Phase 158 — Windows absolute path guard](phase-158-windows-absolute-path.md) — The installer decided that an absolute path starts with a slash, which is true on POSIX and false on Windows, so the service refused to start with a data directory and 18 unrelated HTTP tests failed on a Windows machine. This phase replaces the check with the platform independent isAbsolute() and keeps a regression test for it.
 
 ## This index
 

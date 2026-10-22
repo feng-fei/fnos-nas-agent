@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
 import { chmod, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join, isAbsolute } from "node:path";
 
@@ -66,6 +66,17 @@ function publicProvider(item, activeProviderId) {
   return Object.freeze({
     id: item.id, name: item.name, endpoint: item.endpoint, model: item.model,
     enabled: item.enabled, fallback: item.fallback === true, hasApiKey: Boolean(item.apiKey), isDefault: item.id === activeProviderId,
+    // The fingerprint of the stored key. The key itself never leaves the
+    // store, but the operator still needs a way to tell two keys apart, so the
+    // UI shows the first eight hexadecimal digits of its SHA-256 digest.
+    keyFingerprint: item.apiKey ? "sha256:" + createHash("sha256").update(item.apiKey, "utf8").digest("hex").slice(0, 8) : null,
+    // The protocol of the upstream conversation API. "openai-chat" is the only
+    // protocol the product speaks today, and it is also the protocol every
+    // older record was written with, so an old library needs no migration.
+    protocol: "openai-chat",
+    // The UI shows a "可对话" badge for a provider that can serve a plain
+    // chat turn next to the planning channel.
+    supportsChat: true,
     createdAt: item.createdAt, updatedAt: item.updatedAt, lastTest: item.lastTest ? { ...item.lastTest } : null
   });
 }
@@ -105,6 +116,9 @@ function normalizeProviderRecord(item) {
   return {
     id: item.id, name: item.name, endpoint: endpoint(item.endpoint), model: item.model,
     apiKey: "", enabled: item.enabled, fallback: item.fallback === true, createdAt: item.createdAt, updatedAt: item.updatedAt,
+    // A record written before the protocol field existed is normalized to the
+    // only supported protocol, so an old library keeps working unchanged.
+    protocol: "openai-chat",
     lastTest: item.lastTest && typeof item.lastTest === "object" ? {
       ok: item.lastTest.ok === true, at: typeof item.lastTest.at === "string" ? item.lastTest.at : "",
       message: typeof item.lastTest.message === "string" ? item.lastTest.message.slice(0, 240) : "",

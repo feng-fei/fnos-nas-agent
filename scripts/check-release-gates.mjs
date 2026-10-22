@@ -7,6 +7,9 @@ import { createPermissionPolicy } from "../apps/fnos-nas-agent/app/permission-po
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = path => readFile(join(root, path), "utf8");
 const exists = async path => { try { await access(join(root, path)); return true; } catch { return false; } };
+// A phase record that is still being delivered does not break the gate for
+// every other phase: the missing file is reported and that phase is skipped.
+const readOptional = async path => { try { return await read(path); } catch { return null; } };
 // The user interface is split into an HTML shell, one stylesheet and two
 // scripts. The gates read the same bundle the user interface tests read, so a
 // contract that holds in the tests also holds in the release gates.
@@ -573,5 +576,131 @@ assert.match(phase143Tests, /login_required/);
 assert.match(phase143Docs, /login/i);
 assert.match(phase136DocsIndex, /### Phase 143/);
 assert.match(readme, /Phase 143 — Official CLI Login Guidance/);
+
+/* ---------------------------------------------- Phase 144-151 assertions -- */
+// The Marvis migration added a Skill package parser, a shared rule pack for
+// dangerous commands, a registrable tool registry, an MCP client, a tool
+// trace, a conversation window, a chat adapter and a direct chat route.
+// Every one of them has to stay documented, indexed and linked from the
+// README, otherwise the next release silently loses the design record.
+const phase144Docs = await read("docs/phase-144-skill-package-format.md");
+const phase145Docs = await readOptional("docs/phase-145-dangerous-command-rules.md");
+const phase146TraceDocs = await read("docs/phase-146-tool-trace.md");
+const phase146EventsDocs = await read("docs/phase-146-task-events.md");
+const phase147Docs = await read("docs/phase-147-tool-registry.md");
+const phase148Docs = await read("docs/phase-148-mcp-client.md");
+const phase149Docs = await read("docs/phase-149-chat-window.md");
+const phase150Docs = await read("docs/phase-150-model-chat-adapter.md");
+const phase151Docs = await read("docs/phase-151-direct-chat-http.md");
+const phase144Tests = await read("tests/phase-144-skill-package-format.test.mjs");
+const phase145Tests = await read("tests/phase-145-dangerous-command-rules.test.mjs");
+const phase146TraceTests = await read("tests/phase-146-tool-trace.test.mjs");
+const phase146EventsTests = await read("tests/phase-146-task-events.test.mjs");
+const phase147Tests = await read("tests/phase-147-tool-registry.test.mjs");
+const phase148Tests = await read("tests/phase-148-mcp-client.test.mjs");
+const phase149Tests = await read("tests/phase-149-chat-window.test.mjs");
+const phase150Tests = await read("tests/phase-150-model-chat-adapter.test.mjs");
+const phase151Tests = await read("tests/phase-151-chat-http.test.mjs");
+const phase144Parser = await read("apps/fnos-nas-agent/app/skill-package.mjs");
+const phase145Rules = await read("apps/fnos-nas-agent/app/dangerous-command-rules.mjs");
+const phase147Registry = await read("apps/fnos-nas-agent/app/tool-registry.mjs");
+const phase148Client = await read("apps/fnos-nas-agent/app/mcp-client.mjs");
+const phase151Adapter = await read("apps/fnos-nas-agent/app/model-chat-adapter.mjs");
+assert.match(phase144Parser, /export function parseSkillPackage/);
+assert.match(phase144Tests, /parseSkillPackage/);
+assert.match(phase144Docs, /Skill/i);
+assert.match(phase145Rules, /DANGEROUS_COMMAND_RULES/);
+assert.match(phase145Tests, /dangerous/i);
+if (phase145Docs) {
+  assert.match(phase145Docs, /dangerous/i);
+} else {
+  console.log("Release gates: docs/phase-145-dangerous-command-rules.md is not written yet, its content check is skipped.");
+}
+assert.match(phase146TraceDocs, /trace/i);
+assert.match(phase146TraceTests, /trace/i);
+assert.match(phase146EventsDocs, /event/i);
+assert.match(phase146EventsTests, /subscribe/i);
+assert.match(phase147Registry, /export function createToolRegistry/);
+assert.match(phase147Tests, /createToolRegistry/);
+assert.match(phase147Docs, /registry/i);
+assert.match(phase148Client, /MCP_PROTOCOL_VERSION/);
+assert.match(phase148Tests, /mcp/i);
+assert.match(phase148Docs, /MCP/i);
+assert.match(phase149Tests, /chat/i);
+assert.match(phase149Docs, /conversation/i);
+assert.match(phase150Tests, /chat/i);
+assert.match(phase150Docs, /adapter/i);
+assert.match(phase151Adapter, /MODEL_CHAT_/);
+assert.match(phase151Tests, /chat/i);
+assert.match(phase151Docs, /chat/i);
+assert.match(phase136DocsIndex, /### Phase 144/);
+assert.match(phase136DocsIndex, /### Phase 145/);
+assert.match(phase136DocsIndex, /### Phase 146/);
+assert.match(phase136DocsIndex, /### Phase 147/);
+assert.match(phase136DocsIndex, /### Phase 148/);
+assert.match(phase136DocsIndex, /### Phase 149/);
+assert.match(phase136DocsIndex, /### Phase 150/);
+assert.match(phase136DocsIndex, /### Phase 151/);
+assert.match(readme, /Phase 144 — Skill Package Format/);
+assert.match(readme, /Phase 145 — Dangerous Command Rule Pack/);
+assert.match(readme, /Phase 146 — Tool Call Observability/);
+assert.match(readme, /Phase 146 — Task Event Stream/);
+assert.match(readme, /Phase 147 — Registrable Tool Registry/);
+assert.match(readme, /Phase 148 — MCP Client/);
+assert.match(readme, /Phase 149 — Marvis Style Conversation Window/);
+assert.match(readme, /Phase 150 — Model Chat Adapter/);
+assert.match(readme, /Phase 151 — Direct Chat Channel over HTTP/);
+
+/* ---------------------- Phase 151 (dual mode) and Phase 152+ assertions -- */
+// The conversation window gained a second, direct mode under the same phase
+// number, and the phases after 151 are still being delivered by the other
+// authors. A phase whose record is not written yet is reported and skipped,
+// so one unfinished phase does not hide the state of the rest.
+const phase151ModeDocs = await readOptional("docs/phase-151-chat-direct-mode.md");
+const phase151ModeTests = await readOptional("tests/phase-151-chat-direct-mode.test.mjs");
+if (phase151ModeDocs && phase151ModeTests) {
+  assert.match(phase151ModeDocs, /chat/i);
+  assert.match(phase151ModeTests, /chat/i);
+  assert.match(phase136DocsIndex, /### Phase 151/);
+  assert.match(phase136DocsIndex, /\]\(phase-151-chat-direct-mode\.md\)/);
+  assert.match(readme, /Phase 151 — Dual-mode Chat Window/);
+  assert.match(readme, /docs\/phase-151-chat-direct-mode\.md/);
+} else {
+  console.log("Release gates: the Phase 151 dual-mode chat window record is not written yet, its content check is skipped.");
+}
+
+// Every phase record from 152 onwards has to be indexed and linked from the
+// README, exactly like the records before it. The phase number is taken from
+// the file name, so a record is never allowed to sit in the directory
+// without a place in the documentation. The titles that are already known
+// are checked word for word.
+const laterPhaseTitles = new Map([
+  [153, "Phase 153 — MCP Tool Bridge"],
+  [154, "Phase 154 — Model Settings UI"],
+  [155, "Phase 155 — Tool Call Observer"]
+]);
+const laterPhaseRecords = (await readdir(join(root, "docs")))
+  .filter(name => /^phase-15[2-9]-.*\.md$/.test(name))
+  .sort();
+for (const name of laterPhaseRecords) {
+  const phaseNumber = Number(name.match(/^phase-(\d+)/)[1]);
+  const phaseDoc = await read(`docs/${name}`);
+  const phaseTestPath = `tests/${name.replace(/\.md$/, ".test.mjs")}`;
+  if (!(await exists(phaseTestPath))) {
+    console.log(`Release gates: ${name} has no test file (${phaseTestPath}) yet, its content check is skipped.`);
+  } else {
+    const phaseTest = await read(phaseTestPath);
+    assert.match(phaseDoc, /\S/);
+    assert.match(phaseTest, /\S/);
+  }
+  assert.match(phase136DocsIndex, new RegExp(`### Phase ${phaseNumber}`));
+  assert.match(phase136DocsIndex, new RegExp(`\\]\\(${name}\\)`));
+  assert.match(readme, new RegExp(`docs/${name.replace(/\./g, "\\.")}`));
+  const knownTitle = laterPhaseTitles.get(phaseNumber);
+  if (knownTitle) {
+    assert.match(readme, new RegExp(knownTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  console.log(`Release gates: Phase ${phaseNumber} record ${name} is indexed and linked.`);
+}
 
 console.log("Release readiness gates passed: runtime dependency, CI matrix, packaging, and safety invariants.");

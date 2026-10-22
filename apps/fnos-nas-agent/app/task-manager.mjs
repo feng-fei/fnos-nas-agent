@@ -8,6 +8,18 @@ const MAX_RESULT_BYTES = 16 * 1024;
 const DEFAULT_TASK_TIMEOUT_MS = 5 * 60 * 1000;
 const MAX_TASK_TIMEOUT_MS = 60 * 60 * 1000;
 const MAX_SESSION_ID_LENGTH = 128;
+// The event stream is a metadata channel for the conversation window. It carries
+// progress, tool and terminal information only; it never carries the task
+// input, the prompt or an unbounded tool result.
+const MAX_SUBSCRIBERS_PER_TASK = 32;
+const MAX_TOTAL_SUBSCRIBERS = 1024;
+const MAX_TOOL_EVENT_BYTES = MAX_RESULT_BYTES;
+// The public shape of a task. It is exported so the HTTP layer and the event
+// stream describe a task in exactly the same way. The fields are part of the
+// contract and must not change silently.
+export function publicTask(task) {
+  return { taskId: task.taskId, createdAt: task.createdAt, startedAt: task.startedAt, completedAt: task.completedAt, status: task.status, progress: task.progress, stage: task.stage, cancelRequested: task.cancelRequested === true, timeoutMs: task.timeoutMs, timedOut: task.timedOut === true, result: task.result, error: task.error };
+}
 function boundedTaskResult(value) {
   const state = { remaining: MAX_RESULT_BYTES - 2048, nodes: 0, truncated: false };
   function project(item, depth = 0) {
@@ -72,7 +84,96 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
   // empty history. The operator can see the difference between a normal and a
   // degraded start.
   let degradedState = false;
-  const publicTask = task => ({ taskId: task.taskId, createdAt: task.createdAt, startedAt: task.startedAt, completedAt: task.completedAt, status: task.status, progress: task.progress, stage: task.stage, cancelRequested: task.cancelRequested === true, timeoutMs: task.timeoutMs, timedOut: task.timedOut === true, result: task.result, error: task.error });
+  // Task id -> Set of listeners. A listener only ever receives the events of
+  // the task it subscribed to.
+  const subscribers = new Map();
+  let subscriberCount = 0;
+
+  function eventListeners(taskId) {
+    const listeners = subscribers.get(taskId);
+    return listeners ? [...listeners] : [];
+  }
+
+  function emit(taskId, type, data) {
+    const listeners = eventListeners(taskId);
+    if (!listeners.length) return;
+    const event = Object.freeze({ type, at: now(), data });
+    for (const listener of listeners) {
+      // A broken listener must never break the task it observes.
+      try { listener(event); }
+      catch (error) { console.error("[tasks] Task event listener failed:", error?.message || "unknown error"); }
+    }
+  }
+
+  function byteSize(value) {
+    try { return Buffer.byteLength(JSON.stringify(value ?? null) ?? "null", "utf8"); }
+    catch { return MAX_RESULT_BYTES; }
+  }
+
+  // The tool results of one task share a single budget: a plan with many tools
+  // must not be able to push more than the result cap through the event stream.
+  function toolEventResult(task, value) {
+    const bounded = boundedTaskResult(value);
+    const size = byteSize(bounded);
+    const used = typeof task.toolBytes === "number" ? task.toolBytes : 0;
+    if (used + size > MAX_RESULT_BYTES) return { truncated: true, message: "结果已截断。" };
+    task.toolBytes = used + size;
+    return bounded;
+  }
+
+  function dropSubscribers(taskId) {
+    const listeners = subscribers.get(taskId);
+    if (!listeners) return;
+    subscriberCount -= listeners.size;
+    subscribers.delete(taskId);
+  }
+
+  // A terminal task closes the stream with exactly one final event. A failure
+  // ends with "error" so the client learns the reason, every other terminal
+  // state ends with "done". The HTTP layer treats both as the end of the
+  // stream, so a second final event would be written to a closed stream.
+  function terminalEvents(task) {
+    if (task.status === "failed") return [{ type: "error", data: { message: task.error || "任务执行失败。" } }];
+    return [{ type: "done", data: { task: publicTask(task) } }];
+  }
+
+  // The event stream is a metadata channel. It reports what happened, never the
+  // task input, the prompt or an unbounded tool result.
+  function finishTask(task) {
+    if (!TERMINAL.has(task.status)) return;
+    for (const event of terminalEvents(task)) emit(task.taskId, event.type, event.data);
+    // A finished task never produces another event.
+    dropSubscribers(task.taskId);
+  }
+
+  function reportToolEvent(task, tool, result) {
+    const name = typeof tool === "string" ? tool.slice(0, 80) : "";
+    if (!name) return false;
+    if (!Array.isArray(task.reportedTools)) task.reportedTools = [];
+    task.reportedTools.push(name);
+    emit(task.taskId, "tool", { tool: name, result: toolEventResult(task, result) });
+    return true;
+  }
+
+  // The executor may report every tool on its own through the execution
+  // context. When it does not, the finished result is used as a fallback
+  // source so the stream still shows which tools ran. Tools that were already
+  // reported are not repeated.
+  function reportToolEventsFromResult(task, raw) {
+    const list = Array.isArray(raw?.results) ? raw.results : [];
+    if (!list.length) return;
+    const reported = Array.isArray(task.reportedTools) ? [...task.reportedTools] : [];
+    for (const entry of list) {
+      if (!entry || typeof entry !== "object") continue;
+      const name = typeof entry.tool === "string" ? entry.tool.slice(0, 80) : "";
+      if (!name) continue;
+      const index = reported.indexOf(name);
+      if (index >= 0) { reported.splice(index, 1); continue; }
+      if (!Array.isArray(task.reportedTools)) task.reportedTools = [];
+      task.reportedTools.push(name);
+      emit(task.taskId, "tool", { tool: name, result: toolEventResult(task, entry.result) });
+    }
+  }
 
   function prune() {
     const terminal = [...tasks.values()].filter(task => TERMINAL.has(task.status)).sort((a,b) => a.createdAt.localeCompare(b.createdAt));
@@ -224,7 +325,14 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
           task.progress = Math.max(task.progress, Math.min(99, Math.max(0, Math.floor(value))));
           task.stage = task.cancelRequested ? "等待当前工具结束后停止" : (typeof stage === "string" ? stage.trim().slice(0, 80) : "");
           void persist().catch(logPersistFailure);
+          emit(task.taskId, "progress", { progress: task.progress, stage: task.stage });
           return true;
+        },
+        // The executor reports a finished tool here. The result is bounded before
+        // it reaches the stream, so a large tool output cannot flood a client.
+        reportTool(tool, result) {
+          if (task.status !== "running") return false;
+          return reportToolEvent(task, tool, result);
         }
       })));
       // A late failure after the task already timed out must not become an unhandled rejection.
@@ -250,8 +358,14 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
             task.stage = "等待确认";
             task.progress = Math.min(task.progress, 99);
             task.result = boundedTaskResult(result);
+            // The approval is announced explicitly so the conversation window can
+            // show the pending confirmation without polling the task.
+            emit(task.taskId, "approval", { task: publicTask(task) });
             return;
           }
+          // The executor may not report its tools one by one. The finished result
+          // is used as a fallback so the stream still shows what ran.
+          reportToolEventsFromResult(task, result);
           if (reported === "failed") {
             task.status = "failed";
             task.stage = "执行失败";
@@ -270,6 +384,8 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
       ).finally(() => {
         if (timer) clearTimeout(timer);
         if (TERMINAL.has(task.status)) task.completedAt = now();
+        // A task that reached a terminal state closes the event stream.
+        finishTask(task);
         active--; prune(); void persist().catch(logPersistFailure); pump();
       });
     }
@@ -279,6 +395,51 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
     ready,
     degraded: () => degradedState,
     async flush() { await ready; await persist(); await persistQueue; },
+    // The event stream of one task. The returned function removes the listener
+    // again. It returns null when the stream cannot be opened, so the caller
+    // can answer with a clean error instead of crashing.
+    subscribe(taskId, listener) {
+      if (typeof taskId !== "string" || !taskId) return null;
+      if (typeof listener !== "function") return null;
+      const existing = subscribers.get(taskId);
+      if (existing && existing.size >= MAX_SUBSCRIBERS_PER_TASK) return null;
+      if (subscriberCount >= MAX_TOTAL_SUBSCRIBERS) return null;
+      // A task that already finished never produces another event. The caller is
+      // told once so the client does not wait for a stream that will stay silent.
+      const task = tasks.get(taskId);
+      if (task && TERMINAL.has(task.status)) {
+        for (const event of terminalEvents(task)) {
+          try { listener(Object.freeze({ type: event.type, at: now(), data: event.data })); }
+          catch (error) { console.error("[tasks] Task event listener failed:", error?.message || "unknown error"); }
+        }
+        return () => {};
+      }
+      // A task that is already waiting for a confirmation will not announce it
+      // again. The pending state is delivered once so the client can show it.
+      if (task && task.status === "awaiting-approval") {
+        try { listener(Object.freeze({ type: "approval", at: now(), data: { task: publicTask(task) } })); }
+        catch (error) { console.error("[tasks] Task event listener failed:", error?.message || "unknown error"); }
+      }
+      if (!subscribers.has(taskId)) subscribers.set(taskId, new Set());
+      const listeners = subscribers.get(taskId);
+      const before = listeners.size;
+      listeners.add(listener);
+      // The same listener may be registered twice. The set keeps one entry, so
+      // the global counter only grows when the set really grew.
+      if (listeners.size > before) subscriberCount++;
+      let active = true;
+      return () => {
+        if (!active) return;
+        active = false;
+        const current = subscribers.get(taskId);
+        if (!current) return;
+        if (current.delete(listener)) subscriberCount = Math.max(0, subscriberCount - 1);
+        if (!current.size) subscribers.delete(taskId);
+      };
+    },
+    // The number of open listeners of one task. It is used by the tests and by
+    // the diagnostics endpoint.
+    subscriberCount(taskId) { return subscribers.get(taskId)?.size || 0; },
     submit(input, context = {}) {
       if (queue.length >= queueLimit) throw Object.assign(new Error("Task queue is full"), { statusCode: 429 });
       const sessionId = typeof context?.sessionId === "string" ? context.sessionId.slice(0, MAX_SESSION_ID_LENGTH) : "";
@@ -298,6 +459,7 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
       }
       if (task.status === "awaiting-approval") {
         task.status = "cancelled"; task.completedAt = now(); task.stage = "已取消"; task.error = "任务已取消；待确认的操作已撤销。";
+        finishTask(task);
         prune(); void persist().catch(logPersistFailure);
         return { cancelled: true, task: publicTask(task) };
       }
@@ -306,6 +468,7 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
       if (index < 0) return { cancelled: false, task: publicTask(task) };
       queue.splice(index, 1);
       task.status = "cancelled"; task.completedAt = now(); task.stage = "已取消"; task.error = "任务已取消。";
+      finishTask(task);
       prune(); void persist().catch(logPersistFailure);
       return { cancelled: true, task: publicTask(task) };
     },
@@ -356,6 +519,8 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
       task.completedAt = now();
       if (outcome && typeof outcome.result !== "undefined") task.result = boundedTaskResult(outcome.result);
       if (typeof outcome?.error === "string" && outcome.error) task.error = outcome.error.slice(0, 200);
+      // The task reached its real terminal state: the stream ends here.
+      finishTask(task);
       prune(); void persist().catch(logPersistFailure);
       return { updated: true, task: publicTask(task) };
     },

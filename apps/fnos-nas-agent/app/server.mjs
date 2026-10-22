@@ -11,6 +11,7 @@ import { MAX_ARCHIVE_BYTES } from "./skill-archives.mjs";
 import { createReadOnlyToolRegistry } from "./read-only-tools.mjs";
 import { createModelAdapter, modelConfiguration } from "./model-adapter.mjs";
 import { createModelProviderStore } from "./model-provider-store.mjs";
+import { createModelChatAdapter } from "./model-chat-adapter.mjs";
 import { listModelProviderPresets } from "./model-provider-presets.mjs";
 import { createAgentCore } from "./agent-core.mjs";
 import { normalizeConversationHistory } from "./conversation-context.mjs";
@@ -32,6 +33,12 @@ import { createExecutionPolicy, EXECUTION_MODES } from "./execution-policy.mjs";
 import { APP_VERSION } from "./version.mjs";
 import { isOfficialFnosPackage } from "./skill-official-package.mjs";
 import { createOverviewService } from "./overview.mjs";
+import { createToolRegistry } from "./tool-registry.mjs";
+import { readMcpConfig, createMcpManager } from "./mcp-servers.mjs";
+import { createMcpToolBridge } from "./mcp-tool-bridge.mjs";
+import { createToolTracer } from "./tool-trace.mjs";
+import { createToolCallObserver } from "./tool-call-observer.mjs";
+import { createStructuredLogger } from "./structured-logger.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -48,6 +55,9 @@ const fileChecksumLimiter = createFixedWindowLimiter({ limit: 5, windowMs: 60_00
 const skillRemoteImportLimiter = createFixedWindowLimiter({ limit: 5, windowMs: 60_000, maxKeys: 1000 });
 const toolRunLimiter = createFixedWindowLimiter({ limit: 30, windowMs: 60_000, maxKeys: 1000 });
 const agentMessageLimiter = createFixedWindowLimiter({ limit: 20, windowMs: 60_000, maxKeys: 1000 });
+// The direct chat channel is a separate route. It has its own budget, because
+// a streamed answer costs far more than one plan request.
+const chatMessageLimiter = createFixedWindowLimiter({ limit: 30, windowMs: 60_000, maxKeys: 1000 });
 const MAX_SESSIONS = 1000;
 const skillStore = dataDir ? createSkillStore(dataDir) : null;
 const auditLogger = dataDir ? createAuditLogger({ dataDir }) : null;
@@ -329,6 +339,9 @@ scheduledHealthChecks = dataDir ? createScheduledHealthChecks({
   runTool: (toolId, args) => readOnlyTools.invoke(toolId, args)
 }) : null;
 const modelProviderStore = dataDir ? createModelProviderStore({ dataDir }) : null;
+// The direct chat channel is separate from the planner. The planner returns a
+// JSON plan, the chat channel streams the answer of the model token by token.
+const modelChatAdapter = modelProviderStore ? createModelChatAdapter({ providerStore: modelProviderStore }) : null;
 const modelAdapter = createModelAdapter({
   configProvider: () => {
     const managed = modelProviderStore?.runtimeConfig();
@@ -336,9 +349,63 @@ const modelAdapter = createModelAdapter({
   },
   fallbackConfigProvider: () => modelProviderStore?.runtimeFallbackConfigs() || []
 });
-const actionApprovals = createActionApprovalService({ tools: readOnlyTools });
-const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter, requestApproval: action => actionApprovals.request(action) });
-const taskManager = createTaskManager({ execute: (input, context) => agentCore.run(input, context), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "", taskTimeoutMs: taskTimeoutMsFromEnv() });
+// The tool catalogue is a registry. The built-in fnOS tools are one source of
+// it, an MCP server is another one. The registry keeps the origin of every
+// tool visible and it applies the global execution policy to the tools of a
+// foreign source as well.
+const toolTracer = createToolTracer({ dataDir });
+// Every tool call ends in exactly one observer record. The record holds
+// metadata only: the arguments are reduced to a fingerprint, the result and the
+// error message never reach it.
+const toolObserver = createToolCallObserver({ trace: toolTracer, logger: createStructuredLogger({ level: "info" }) });
+const mcpConfig = dataDir ? await readMcpConfig(dataDir) : { servers: [], errors: [] };
+const mcpManager = createMcpManager({ servers: mcpConfig.servers, timeoutMs: 8_000 });
+// The MCP servers are contacted once at start. A server that does not answer
+// is reported in /api/mcp/status, it never blocks the built-in tools.
+await mcpManager.warmup();
+// The MCP tools are published through the bridge of Phase 153. The bridge
+// gives every foreign tool a namespaced identifier, maps it to a risk level
+// and keeps the approval of the product in force before the call leaves the
+// process.
+const mcpBridge = createMcpToolBridge({
+  policy: executionPolicy,
+  // No approval hook is given to the bridge on purpose. A foreign tool that is
+  // not read-only has to travel through the approval queue of the product, so
+  // the bridge may never approve a call on its own.
+  requestApproval: null
+});
+for (const entry of mcpManager.entries()) {
+  try { mcpBridge.registerServer({ name: entry.id, tools: entry.tools, client: entry.client }); }
+  catch (error) { mcpConfig.errors.push({ id: entry.id, error: error?.message || "The MCP server could not be bridged" }); }
+}
+const mcpToolSource = {
+  id: "mcp",
+  kind: "mcp",
+  label: "MCP 工具",
+  // A foreign tool that is not read-only is published as destructive. The
+  // product then asks the operator for a confirmation before the call, exactly
+  // like a destructive action of the built-in tools.
+  list: () => mcpBridge.listBridgedTools().map(tool =>
+    tool.risk === "read-only" ? tool : { ...tool, risk: "destructive" }),
+  invoke: (toolId, args, options) => mcpBridge.invoke(toolId, args, options)
+};
+const toolRegistry = createToolRegistry({
+  sources: [
+    {
+      id: "builtin",
+      kind: "builtin",
+      label: "内置 fnOS 工具",
+      list: () => readOnlyTools.list(),
+      invoke: (toolId, args, options) => readOnlyTools.invoke(toolId, args, options)
+    },
+    mcpToolSource
+  ],
+  executionPolicy,
+  tracer: toolTracer,
+  observer: toolObserver
+});
+const actionApprovals = createActionApprovalService({ tools: toolRegistry });
+const agentCore = createAgentCore({ tools: toolRegistry, model: modelAdapter, requestApproval: action => actionApprovals.request(action) });const taskManager = createTaskManager({ execute: (input, context) => agentCore.run(input, context), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "", taskTimeoutMs: taskTimeoutMsFromEnv() });
 
 // A state file that could not be restored leaves the service running in a degraded
 // state. The operator can see which part is degraded instead of guessing.
@@ -458,6 +525,10 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/agent/trim-cli/test") return "agent.trim-cli-test";
   if (pathname === "/api/agent/trim-cli/login-command") return "agent.trim-cli-login-command";
   if (pathname === "/api/agent/message") return "agent.message";
+  if (pathname === "/api/chat/message") return "chat.message";
+  if (pathname === "/api/chat/status") return "chat.status";
+  if (pathname === "/api/agent/trace") return "agent.trace";
+  if (pathname === "/api/mcp/status") return "mcp.status";
   if (pathname === "/api/tasks/clear-history") return "tasks.clear";
   if (pathname === "/api/health-checks") return method === "GET" ? "health-checks.list" : method === "POST" ? "health-checks.create" : "other_api";
   if (/^\/api\/health-checks\/[a-f0-9-]{36}\/run$/i.test(pathname)) return "health-checks.run";
@@ -465,11 +536,12 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/tasks/status") return "tasks.status";
   if (pathname === "/api/tasks") return "tasks.list";
   if (/^\/api\/tasks\/[a-f0-9-]{8,64}\/cancel$/i.test(pathname)) return "tasks.cancel";
+  if (/^\/api\/tasks\/[a-f0-9-]{8,64}\/events$/i.test(pathname)) return "tasks.events";
   if (/^\/api\/tasks\/[a-f0-9-]{8,64}$/i.test(pathname)) return "tasks.get";
   if (pathname === "/api/actions/pending") return "actions.pending";
   if (/^\/api\/actions\/[a-f0-9-]{8,64}\/(?:confirm|deny)$/i.test(pathname)) return "actions.confirm";
   if (pathname === "/api/tools") return "tools.list";
-  if (/^\/api\/tools\/[a-z][a-z0-9.-]{0,63}\/run$/.test(pathname)) return "tools.run";
+  if (/^\/api\/tools\/[a-z][a-z0-9.:_-]{0,127}\/run$/.test(pathname)) return "tools.run";
   return "other_api";
 }
 
@@ -1164,6 +1236,59 @@ const server = createServer(async (req, res) => {
       }
       return reply(res, 202, { task });
     }
+    if (url.pathname === "/api/chat/message") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!modelChatAdapter) return reply(res, 503, { error: "模型直聊通道不可用：未配置应用数据目录。" });
+      if (!chatMessageLimiter.allow(active.key))
+        return reply(res, 429, { error: "消息过于频繁，请稍后再试。" }, "application/json; charset=utf-8", { "retry-after": "60" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      if (!input || typeof input !== "object" || Array.isArray(input) || !Array.isArray(input.messages))
+        return reply(res, 400, { error: "Chat message must contain a messages array" });
+      // The stream is the answer of this route, so the headers are written
+      // before the provider is called. The upstream error is reported inside
+      // the stream, the HTTP status stays 200 for a started stream.
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+      });
+      res.write("retry: 2000\n\n");
+      const controller = new AbortController();
+      req.on("close", () => { if (!controller.signal.aborted) controller.abort(); });
+      const write = (type, payload) => {
+        try { res.write(`event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`); } catch { /* the client is gone */ }
+      };
+      try {
+        const text = await modelChatAdapter.chat({
+          messages: input.messages,
+          signal: controller.signal,
+          onDelta: chunk => { write("delta", { text: chunk }); }
+        });
+        write("done", { text: typeof text === "string" ? text : "" });
+      } catch (error) {
+        const status = Number.isInteger(error?.statusCode) ? error.statusCode : 502;
+        write("error", {
+          code: typeof error?.code === "string" ? error.code : "MODEL_CHAT_UPSTREAM_ERROR",
+          message: typeof error?.message === "string" ? error.message : "模型直聊失败。",
+          statusCode: status
+        });
+      }
+      try { res.end(); } catch { /* already closed */ }
+      return undefined;
+    }
+    if (url.pathname === "/api/chat/status") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      if (!modelChatAdapter) return reply(res, 503, { error: "模型直聊通道不可用：未配置应用数据目录。" });
+      return reply(res, 200, modelChatAdapter.status());
+    }
     if (url.pathname === "/api/health-checks") {
       const active = sessionFor(req);
       if (!active) return reply(res, 401, { error: "Unauthorized" });
@@ -1264,6 +1389,47 @@ const server = createServer(async (req, res) => {
       if (!result.cancelled) return reply(res, 409, { error: "Task is already terminal or cannot be cancelled.", task: result.task });
       return reply(res, 200, result);
     }
+    const taskEventsMatch = url.pathname.match(new RegExp("^/api/tasks/([a-f0-9-]{8,64})/events$", "i"));
+    if (taskEventsMatch) {
+      const taskSession = sessionFor(req);
+      if (!taskSession) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      if (typeof taskManager.subscribe !== "function") return reply(res, 501, { error: "Task events are not available" });
+      const task = taskManager.get(taskEventsMatch[1], taskSession.key);
+      if (!task) return reply(res, 404, { error: "Task not found" });
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+      });
+      res.write("retry: 2000\n\n");
+      let closed = false;
+      const keepAlive = setInterval(() => {
+        try { res.write(": keep-alive\n\n"); } catch { /* the client is gone */ }
+      }, 15_000);
+      let unsubscribe = null;
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(keepAlive);
+        try { if (typeof unsubscribe === "function") unsubscribe(); } catch { /* already unsubscribed */ }
+        try { res.end(); } catch { /* already closed */ }
+      };
+      const send = event => {
+        try { res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`); } catch { /* the client is gone */ }
+        // A final event ends the stream.
+        if (event.type === "done" || event.type === "error") close();
+      };
+      unsubscribe = taskManager.subscribe(taskEventsMatch[1], send);
+      if (typeof unsubscribe !== "function") {
+        send({ type: "error", at: new Date().toISOString(), data: { message: "事件流已满，请稍后重试。" } });
+        close();
+        return undefined;
+      }
+      res.on("close", close);
+      return undefined;
+    }
     const taskMatch = url.pathname.match(new RegExp("^/api/tasks/([a-f0-9-]{8,64})$", "i"));
     if (taskMatch) {
       const taskSession = sessionFor(req);
@@ -1304,12 +1470,37 @@ const server = createServer(async (req, res) => {
         return reply(res, status, { error: status === 500 ? "Unable to execute confirmed action" : error.message });
       }
     }
+    if (url.pathname === "/api/mcp/status") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const status = mcpManager.status();
+      return reply(res, 200, {
+        servers: status.servers,
+        errors: [...mcpConfig.errors.map(item => ({ error: item.error })), ...status.errors],
+        sources: toolRegistry.sources()
+      });
+    }
+    if (url.pathname === "/api/agent/trace") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const requested = Number(url.searchParams.get("limit"));
+      const limit = Number.isInteger(requested) && requested > 0 ? Math.min(requested, 500) : 100;
+      // The trace only holds metadata. Arguments, results and error messages
+      // never reach this endpoint. The observer adds the live view of the last
+      // calls: one terminal record per call, including the calls that the
+      // execution policy denied.
+      return reply(res, 200, {
+        summary: toolTracer.summary(),
+        entries: toolTracer.list().slice(-limit),
+        observer: { summary: toolObserver.summary(), records: toolObserver.listRecords(limit) }
+      });
+    }
     if (url.pathname === "/api/tools") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (req.method === "GET") {
         let cliAvailable = false;
         try { cliAvailable = (await trimCli.status()).available; } catch { /* unavailable providers stay disabled in the UI */ }
-        const tools = readOnlyTools.list().map(tool =>
+        const tools = toolRegistry.list().map(tool =>
           tool.id.startsWith("fnos.") ? { ...tool, providerAvailable: cliAvailable } : tool
         );
         return reply(res, 200, {
@@ -1319,12 +1510,13 @@ const server = createServer(async (req, res) => {
           readOnlyExecutionEnabled: true,
           routineWriteExecutionEnabled: executionPolicy.mode() === "normal",
           destructiveActionConfirmationEnabled: true,
-          trimCliProviderAvailable: cliAvailable
+          trimCliProviderAvailable: cliAvailable,
+          toolSources: toolRegistry.sources()
         });
       }
       return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
     }
-    const toolRunMatch = url.pathname.match(/^\/api\/tools\/([a-z][a-z0-9.-]{0,63})\/run$/);
+    const toolRunMatch = url.pathname.match(/^\/api\/tools\/([a-z][a-z0-9.:_-]{0,127})\/run$/);
     if (toolRunMatch) {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
       const active = sessionFor(req);
@@ -1335,7 +1527,7 @@ const server = createServer(async (req, res) => {
       if (!toolRunLimiter.allow(active.key))
         return reply(res, 429, { error: "Too many tool runs; try again shortly." }, "application/json; charset=utf-8", { "retry-after": "60" });
       const args = await jsonBody(req);
-      const tool = readOnlyTools.list().find(item => item.id === toolRunMatch[1]);
+      const tool = toolRegistry.list().find(item => item.id === toolRunMatch[1]);
       if (!tool) return reply(res, 404, { error: "Unknown tool" });
       const decision = executionPolicy.evaluate({ risk: tool.risk, approved: false });
       if (!decision.allowed) {
@@ -1350,7 +1542,7 @@ const server = createServer(async (req, res) => {
         }
         return reply(res, decision.statusCode || 403, { error: policyMessage(decision) });
       }
-      try { return reply(res, 200, { tool: toolRunMatch[1], result: await readOnlyTools.invoke(toolRunMatch[1], args) }); }
+      try { return reply(res, 200, { tool: toolRunMatch[1], result: await toolRegistry.invoke(toolRunMatch[1], args) }); }
       catch (error) {
         const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
         return reply(res, status, { error: status === 500 ? "Tool execution failed" : error.message });

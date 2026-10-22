@@ -20,6 +20,18 @@ Core development is active. The repository currently includes:
 - Reviewers can browse quarantined Skill file paths and preview supported UTF-8 source/config text in memory (64 KiB per file), without extracting or executing imported content.
 - GitHub Skill source labels retain the repository and branch/tag ref when importing a specific archive.
 - Privacy-conscious audit records that omit prompts, task inputs, credentials, and raw exceptions.
+- A registrable tool registry: the built-in fnOS tools, Skill tools and MCP server tools share one catalogue, and every tool keeps the origin it was registered with.
+- An MCP client over the stdio transport with a declarative server configuration; a server that fails is reported and never blocks the built-in tools.
+- A Skill package parser that reads the canonical package layout in memory and reports every deviation as a named finding, without extracting or executing anything.
+- A dangerous command rule pack that judges shell, PowerShell, Python and Node.js constructs identically in the manifest review, the source review and the command scanner.
+- Tool call observability: every invocation is traced with its identity, timing, outcome and a fixed error classification, and a structured JSON logger drops secret-looking fields.
+- A Marvis style conversation window with bubbles, a multi-line composer, tool cards, an inline approval, a stop button and a streamed progress.
+- A direct chat channel: the model answers in plain text over a streamed HTTP response, under the same origin, session, rate limit and endpoint whitelist rules as the rest of the product.
+- A dual-mode chat window: the operator switches between the task mode and the direct chat mode, and the direct mode streams a plain text answer instead of creating a NAS task.
+- A model settings surface: an API key is shown as a fingerprint, the password never comes back in clear text while it is edited, and a failed save names the field that caused it.
+- A tool call observer: the built-in catalogue, the agent plan and the external MCP tools all leave a trace entry, so a real run produces the same evidence the tests do.
+- An MCP tool bridge: a tool of a foreign server enters the catalogue under a namespaced identifier (`mcp__server__tool`), the risk comes from the tool name alone, an unknown name is treated as destructive, and a write or destructive tool needs a one time approval while the read-only mode and the kill switch still cover it (Phases 147, 148, 153).
+- A migration record that maps every migrated Marvis capability to its implementation, its phase and its file, next to the naming and risk rules of the bridge, the red lines of the round and the limits that are still open (Phase 156).
 
 **Runtime and validation:** Node.js 26.x is the supported development and CI runtime. GitHub Actions builds an unsigned x86 CI test FPK, inspects the archive, verifies SHA-256 and release-manifest consistency, and uploads the artifact for 14 days. A separate job creates GitHub build-provenance attestation only for verified `main` builds; pull requests do not receive OIDC/attestation permissions. CI success does not mean the package has been installed or validated on a real fnOS NAS; lifecycle acceptance remains a separate manual staging gate.
 
@@ -114,6 +126,22 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Model action rate limiting](docs/phase-76-model-action-rate-limit.md)
 - [Mobile upload progress](docs/phase-77-mobile-upload-progress.md)
 - [Mobile upload cancellation](docs/phase-78-cancel-file-upload.md)
+- [Phase 144 — Skill Package Format](docs/phase-144-skill-package-format.md)
+- [Phase 145 — Dangerous Command Rule Pack](docs/phase-145-dangerous-command-rules.md)
+- [Phase 146 — Tool Call Observability](docs/phase-146-tool-trace.md)
+- [Phase 146 — Task Event Stream](docs/phase-146-task-events.md)
+- [Phase 147 — Registrable Tool Registry](docs/phase-147-tool-registry.md)
+- [Phase 148 — MCP Client](docs/phase-148-mcp-client.md)
+- [Phase 149 — Marvis Style Conversation Window](docs/phase-149-chat-window.md)
+- [Phase 150 — Model Chat Adapter](docs/phase-150-model-chat-adapter.md)
+- [Phase 151 — Direct Chat Channel over HTTP](docs/phase-151-direct-chat-http.md)
+- [Phase 151 — Dual-mode Chat Window](docs/phase-151-chat-direct-mode.md)
+- [Phase 153 — MCP Tool Bridge](docs/phase-153-mcp-tool-bridge.md)
+- [Phase 154 — Model Settings UI](docs/phase-154-model-settings-ui.md)
+- [Phase 155 — Tool Call Observer](docs/phase-155-tool-call-observer.md)
+- [Phase 156 — Marvis Migration Integration](docs/phase-156-marvis-migration-integration.md)
+- [Phase 157 — UI Integration Verification](docs/phase-157-ui-integration.md)
+- [Phase 158 — Windows Absolute Path Guard](docs/phase-158-windows-absolute-path.md)
 
 - [Phase 94 — Model Catalog HTTP Integration](docs/phase-94-model-catalog-http.md)
 - [Phase 95 — Searchable Model Catalog Picker](docs/phase-95-model-catalog-search.md)
@@ -187,6 +215,20 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 141 — Official Skill Identity](docs/phase-141-official-skill-identity.md)
 - [Phase 142 — Official CLI Manifest Paths](docs/phase-142-official-cli-manifest-paths.md)
 - [Phase 143 — Official CLI Login Guidance](docs/phase-143-cli-login-required.md)
+- [Phase 144 — Skill Package Format](docs/phase-144-skill-package-format.md)
+- [Phase 145 — Dangerous Command Rule Pack](docs/phase-145-dangerous-command-rules.md)
+- [Phase 146 — Tool Call Observability](docs/phase-146-tool-trace.md)
+- [Phase 146 — Task Event Stream](docs/phase-146-task-events.md)
+- [Phase 147 — Registrable Tool Registry](docs/phase-147-tool-registry.md)
+- [Phase 148 — MCP Client](docs/phase-148-mcp-client.md)
+- [Phase 149 — Marvis Style Conversation Window](docs/phase-149-chat-window.md)
+- [Phase 150 — Model Chat Adapter](docs/phase-150-model-chat-adapter.md)
+- [Phase 151 — Direct Chat Channel over HTTP](docs/phase-151-direct-chat-http.md)
+- [Phase 151 — Dual-mode Chat Window](docs/phase-151-chat-direct-mode.md)
+- [Phase 153 — MCP Tool Bridge](docs/phase-153-mcp-tool-bridge.md)
+- [Phase 154 — Model Settings UI](docs/phase-154-model-settings-ui.md)
+- [Phase 155 — Tool Call Observer](docs/phase-155-tool-call-observer.md)
+- [Phase 156 — Marvis Migration Integration](docs/phase-156-marvis-migration-integration.md)
 - [Documentation index](docs/README.md)
 
 ## License

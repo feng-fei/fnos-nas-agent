@@ -81,15 +81,25 @@ async function refreshModels(){
    const p=document.createElement("p");p.className="muted";p.textContent="尚未添加模型服务商。填写上方表单即可添加。";host.append(p);return;
   }
   for(const item of data.providers){
-   const card=document.createElement("div");card.className="card";
+   // The card carries the classes of the model settings stylesheet, so the
+   // Marvis look applies to the real page as well.
+   const card=document.createElement("div");card.className="card model-settings__card";
    const labels=[item.isDefault?"当前默认":item.enabled?"已启用":"已停用",item.fallback?"备用模型":""].filter(Boolean).join(" · ");
-   const heading=document.createElement("strong");heading.textContent=item.name+" · "+labels;card.append(heading);
-   const meta=document.createElement("p");meta.className="muted";meta.textContent="模型："+item.model+"；API Key："+(item.hasApiKey?"已加密保存":"未配置")+"；Endpoint："+item.endpoint;card.append(meta);
+   const heading=document.createElement("strong");heading.className="model-settings__card-title";heading.textContent=item.name+" · "+labels;card.append(heading);
+   const meta=document.createElement("p");meta.className="muted model-settings__card-meta";meta.textContent="模型："+item.model+"；API Key："+(item.hasApiKey?"已加密保存":"未配置")+"；Endpoint："+item.endpoint;card.append(meta);
+   const helpers=window.ModelSettings;
+   if(helpers){
+    const credential=helpers.describeCredentialState({hasKey:item.hasApiKey===true,lastTestOk:Boolean(item.lastTest&&item.lastTest.ok),lastTestAt:item.lastTest&&item.lastTest.at});
+    const credentialLine=document.createElement("p");
+    credentialLine.className="model-settings__card-credential model-settings__card-credential--"+(credential.keyTone||"muted");
+    credentialLine.textContent=credential.keyLabel;
+    card.append(credentialLine);
+   }
    if(item.lastTest){
-    const last=document.createElement("p");last.className=item.lastTest.ok?"muted":"error";
+    const last=document.createElement("p");last.className=item.lastTest.ok?"muted model-settings__card-test":"error model-settings__card-test model-settings__card-test--failed";
     last.textContent=(item.lastTest.ok?"最近连接测试成功：":"最近连接测试失败：")+item.lastTest.message+(item.lastTest.at?"（"+formatDateTime(item.lastTest.at)+"）":"")+(Number.isSafeInteger(item.lastTest.durationMs)?" · 耗时 "+formatDurationMs(item.lastTest.durationMs):"")+(Number.isInteger(item.lastTest.statusCode)?" · HTTP "+item.lastTest.statusCode:"");card.append(last);
    }else{
-    const last=document.createElement("p");last.className="muted";last.textContent="尚未测试连接。";card.append(last);
+    const last=document.createElement("p");last.className="muted model-settings__card-test";last.textContent="尚未测试连接。";card.append(last);
    }
    const actions=document.createElement("div");
    const edit=document.createElement("button");edit.type="button";edit.textContent="编辑";
@@ -106,6 +116,7 @@ async function refreshModels(){
     document.querySelector("#model-provider-clear-key").checked=false;
     document.querySelector("#model-provider-preset").value="";
     document.querySelector("#model-provider-preset-help").textContent="正在编辑已有服务商；留空 API Key 可以保留原值。";
+    document.querySelector("#model-provider-key").dataset.hasStoredKey=String(Boolean(item.hasApiKey));
     document.querySelector("#model-provider-save").textContent="保存修改";
     document.querySelector("#model-provider-error").textContent="";
     document.querySelector("#model-provider-name").focus();
@@ -210,7 +221,62 @@ async function refreshModels(){
   const p=document.createElement("p");p.className="error";p.textContent=errorText(error,"检查 Agent 私有数据目录配置。");host.append(p);
  }
 }
-document.querySelector("#model-provider-form").addEventListener("submit",async event=>{
+/* --- Phase 154: Marvis style form helpers ---------------------------- */
+const MODEL_FIELD_IDS={name:"#model-provider-name",baseUrl:"#model-provider-endpoint",apiKey:"#model-provider-key",modelId:"#model-provider-model",presetId:"#model-provider-preset"};
+function showModelProviderFieldErrors(errors){
+ const map=errors||{};
+ for(const [field,selector] of Object.entries(MODEL_FIELD_IDS)){
+  const element=document.querySelector(selector);if(!element)continue;
+  const message=map[field]||"";
+  // The shared style marks the field container, the fallback rule of the
+  // model settings stylesheet marks the control itself. Both are set, so the
+  // error is visible in either style.
+  const container=element.closest(".field")||element.parentElement||element;
+  container.classList.toggle("field--invalid",Boolean(message));
+  element.classList.toggle("field--invalid",Boolean(message));
+  element.setAttribute("aria-invalid",message?"true":"false");
+  let hint=container.querySelector(".field__error");
+  if(!hint){hint=document.createElement("p");hint.className="field__error error";container.append(hint);}
+  hint.textContent=message;
+ }
+}
+function renderModelProviderWizard(){
+ const host=document.querySelector("#model-provider-wizard");if(!host)return;
+ const helpers=window.ModelSettings;if(!helpers){return;}
+ const id=document.querySelector("#model-provider-id").value;
+ const storedKey=Boolean(document.querySelector("#model-provider-key").dataset.hasStoredKey);
+ const values={
+  presetId:document.querySelector("#model-provider-preset").value,
+  name:document.querySelector("#model-provider-name").value,
+  baseUrl:document.querySelector("#model-provider-endpoint").value,
+  apiKey:document.querySelector("#model-provider-key").value,
+  modelId:document.querySelector("#model-provider-model").value
+ };
+ const steps=helpers.buildProviderWizardSteps(values,{requireApiKey:!id||!storedKey,hasStoredKey:storedKey});
+ const summary=helpers.summarizeWizard(steps);
+ host.replaceChildren();
+ const title=document.createElement("p");title.className="model-settings__wizard-title";
+ title.textContent="配置向导："+(steps[summary.stepIndex]?steps[summary.stepIndex].title:"确认保存")+"（第 "+(summary.stepIndex+1)+"/"+summary.totalSteps+" 步）";
+ host.append(title);
+ const list=document.createElement("ol");list.className="model-settings__wizard-steps";
+ for(const step of steps){
+  const item=document.createElement("li");
+  // The class names are the ones of the model settings stylesheet, so the
+  // state of a step is visible.
+  item.className="model-settings__wizard-step"+(step.valid?" model-settings__wizard-step--done":" model-settings__wizard-step--current");
+  item.textContent=step.title+(step.valid?" ✓":"");
+  list.append(item);
+ }
+ host.append(list);
+}
+const modelProviderForm=document.querySelector("#model-provider-form");
+// The module of the model settings publishes itself when it is ready. The
+// wizard is drawn again at that moment, so the first screen is never empty.
+if(typeof window!=="undefined")window.addEventListener("model-settings-ready",()=>renderModelProviderWizard());
+renderModelProviderWizard();
+if(modelProviderForm){
+ modelProviderForm.addEventListener("input",()=>{showModelProviderFieldErrors({});renderModelProviderWizard();});
+ modelProviderForm.addEventListener("submit",async event=>{
  event.preventDefault();
  const error=document.querySelector("#model-provider-error"),save=document.querySelector("#model-provider-save");
  error.textContent="";save.disabled=true;
@@ -225,6 +291,20 @@ document.querySelector("#model-provider-form").addEventListener("submit",async e
    enabled:document.querySelector("#model-provider-enabled").checked,
    fallback:document.querySelector("#model-provider-fallback").checked
   };
+  // Phase 154: the field level check of Marvis. It runs before the request, so
+  // a wrong endpoint or a missing key is reported on the field itself.
+  const helpers=window.ModelSettings;
+  if(helpers){
+   const storedKey=Boolean(document.querySelector("#model-provider-key").dataset.hasStoredKey);
+   const check=helpers.validateProviderForm({
+    name:body.name,baseUrl:body.endpoint,apiKey,modelId:body.model,
+    presetId:document.querySelector("#model-provider-preset").value
+   },{requireApiKey:!id||!storedKey,hasStoredKey:storedKey});
+   if(!check.valid){
+    showModelProviderFieldErrors(check.errors);
+    throw Object.assign(new Error("请先修正表单中标红的字段。"),{statusCode:400});
+   }
+  }
   if(apiKey)body.apiKey=apiKey;
   if(clearApiKey)body.clearApiKey=true;
   const response=await api(id?"/api/models/"+encodeURIComponent(id):"/api/models",{method:id?"PUT":"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
@@ -233,7 +313,8 @@ document.querySelector("#model-provider-form").addEventListener("submit",async e
   error.textContent="模型配置已安全保存。";
  }catch(error){document.querySelector("#model-provider-error").textContent=errorText(error,"保存模型配置失败");}
  finally{save.disabled=false;}
-});
+ });
+}
 let modelBatchTestOffset = 0;
 async function runModelProviderBatchTest(){
  const button=document.querySelector("#model-provider-test-batch");
@@ -368,10 +449,131 @@ document.querySelector("#agent-clear-context").addEventListener("click",async()=
   showToast("对话上下文已清空。","ok");
 });
 
-function renderAgentTurn(label, body){
- const host=document.querySelector("#agent-history");const card=document.createElement("div");card.className="card";
- const title=document.createElement("strong");title.textContent=label;card.append(title);
- const content=document.createElement("pre");content.textContent=body;card.append(content);host.append(card);
+/* ---------------------------------------------------------------- chat window */
+const CHAT_TERMINAL_STATUS=new Set(["completed","failed","cancelled"]);
+const CHAT_STREAM_EVENT_TYPES=["progress","tool","approval","done","error"];
+let chatActiveTaskId="";
+const chatApprovalNodes=new Map();
+function chatTimeText(){return formatDateTime(new Date().toISOString());}
+function chatScrollToBottom(){const host=document.querySelector("#agent-history");if(host)host.scrollTop=host.scrollHeight;}
+function chatPart(bubble,selector){return bubble&&bubble.querySelector?bubble.querySelector(selector):null;}
+function chatSetStatus(text){const el=document.querySelector("#agent-stream-status");if(el)el.textContent=text;}
+function chatSetStopVisible(taskId){
+ const button=document.querySelector("#agent-stop");if(!button)return;
+ chatActiveTaskId=taskId||"";
+ button.hidden=!taskId;
+ button.disabled=!taskId;
+}
+function chatAutoGrowInput(field){
+ if(!field)return;
+ field.style.height="auto";
+ const full=field.scrollHeight||0;
+ field.style.height=Math.min(full,400)+"px";
+ field.style.overflowY=full>400?"auto":"hidden";
+}
+function chatRenderInline(target,text){
+ const parts=String(text===null||text===undefined?"":text).split(/`([^`\n]+)`/g);
+ for(let i=0;i<parts.length;i++){
+  if(i%2===1){const code=document.createElement("code");code.className="chat__code-inline";code.textContent=parts[i];target.append(code);}
+  else if(parts[i])target.append(document.createTextNode(parts[i]));
+ }
+}
+function chatCodeBlock(source){
+ const pre=document.createElement("pre");pre.className="chat__code";
+ const code=document.createElement("code");code.textContent=source;pre.append(code);
+ return pre;
+}
+function chatRenderMarkdown(source){
+ const fragment=document.createDocumentFragment();
+ const lines=String(source===null||source===undefined?"":source).split(/\r?\n/);
+ let paragraph=[],codeLines=null;
+ const flushParagraph=()=>{if(!paragraph.length)return;const p=document.createElement("p");chatRenderInline(p,paragraph.join("\n"));fragment.append(p);paragraph=[];};
+ for(const line of lines){
+  if(codeLines){if(/^\s*```\s*$/.test(line)){fragment.append(chatCodeBlock(codeLines.join("\n")));codeLines=null;}else codeLines.push(line);continue;}
+  if(/^\s*```/.test(line)){flushParagraph();codeLines=[];continue;}
+  if(!line.trim()){flushParagraph();continue;}
+  paragraph.push(line);
+ }
+ if(codeLines)fragment.append(chatCodeBlock(codeLines.join("\n")));
+ flushParagraph();
+ return fragment;
+}
+function renderAgentTurn(role, body, meta){
+ const host=document.querySelector("#agent-history");if(!host)return null;
+ const info=meta&&typeof meta==="object"?meta:{};
+ const isUser=role==="user"||role==="你";
+ const bubble=document.createElement("div");
+ bubble.className="chat__bubble "+(isUser?"chat__bubble--user":"chat__bubble--agent");
+ if(info.taskId)bubble.dataset.taskId=String(info.taskId);
+ const time=document.createElement("div");time.className="chat__time";time.textContent=chatTimeText();
+ const content=document.createElement("div");content.className="chat__content";
+ content.append(chatRenderMarkdown(body===null||body===undefined?"":body));
+ const tools=document.createElement("div");tools.className="chat__tools";
+ const approvals=document.createElement("div");approvals.className="chat__approval";
+ bubble.append(time,content,tools,approvals);
+ host.append(bubble);chatScrollToBottom();
+ return bubble;
+}
+function chatSetTurnContent(bubble,body){
+ const content=chatPart(bubble,".chat__content");if(!content)return;
+ content.replaceChildren(chatRenderMarkdown(body===null||body===undefined?"":body));
+ chatScrollToBottom();
+}
+function chatSetTurnMeta(bubble,text){
+ if(!bubble)return;
+ const previous=bubble.querySelector("[data-chat-meta]");if(previous)previous.remove();
+ const meta=document.createElement("p");meta.className="muted";meta.dataset.chatMeta="1";meta.textContent=text;
+ bubble.append(meta);chatScrollToBottom();
+}
+function chatToolCard(item,index){
+ const details=document.createElement("details");details.className="chat__tool";
+ const summary=document.createElement("summary");summary.className="chat__tool__summary";
+ const name=item&&item.tool?String(item.tool):(item&&item.name?String(item.name):"未命名工具");
+ summary.textContent="工具 "+(index+1)+" · "+name;
+ const body=document.createElement("pre");body.className="chat__tool__body";
+ let serialized="";
+ try{serialized=formatOutputJson(item?item.result:null);}catch{serialized="结果无法显示。";}
+ if(!serialized)serialized="（无返回内容）";
+ body.textContent=serialized.length>8000?serialized.slice(0,8000)+"\n…（结果已截断）":serialized;
+ details.append(summary,body);
+ return details;
+}
+function chatRenderToolCards(host,results){
+ if(!host)return;
+ host.replaceChildren();
+ const list=Array.isArray(results)?results:[];
+ for(let i=0;i<list.length;i++)host.append(chatToolCard(list[i],i));
+ chatScrollToBottom();
+}
+function chatEnsureProgress(bubble){
+ if(!bubble)return null;
+ let progress=chatPart(bubble,".chat__progress");
+ if(progress)return progress;
+ progress=document.createElement("div");progress.className="chat__progress";
+ const bar=document.createElement("progress");bar.max=100;bar.value=0;bar.setAttribute("aria-label","任务进度");
+ const label=document.createElement("span");label.className="muted";label.textContent="正在处理…";
+ progress.append(bar,label);bubble.append(progress);
+ return progress;
+}
+function chatUpdateProgress(bubble,payload){
+ const progress=chatEnsureProgress(bubble);if(!progress)return;
+ const raw=payload&&typeof payload==="object"?payload:{};
+ const number=Number(raw.progress);
+ let percent=Number.isFinite(number)?Math.max(0,Math.min(100,number)):null;
+ if(percent!==null&&percent>0&&percent<=1)percent=Math.round(percent*100);
+ const bar=progress.querySelector("progress"),label=progress.querySelector("span");
+ if(bar&&percent!==null)bar.value=percent;
+ if(label){const stage=raw.stage||raw.message||raw.status;label.textContent=(stage?stage+" · ":"")+(percent!==null?Math.round(percent)+"%":"处理中…");}
+}
+function chatRemoveProgress(bubble){
+ const progress=chatPart(bubble,".chat__progress");
+ if(progress)progress.remove();
+}
+function chatFindTurn(taskId){
+ if(!taskId)return null;
+ const bubbles=document.querySelectorAll(".chat__bubble");
+ for(const bubble of bubbles){if(bubble.dataset.taskId===String(taskId))return bubble;}
+ return null;
 }
 let taskRefreshTimer=null,taskHistoryOffset=0;
  const taskHistoryPageSize=10;
@@ -439,8 +641,10 @@ async function refreshPendingActions(){
  try{
   const r=await api("/api/actions/pending"),data=await r.json();if(!r.ok)throw Error(data.error||"读取待确认操作失败");
    if(!renderIsCurrent(host,renderToken))return;
-  if(!data.actions.length){const p=document.createElement("p");p.className="muted";p.textContent="没有待确认操作。";host.append(p);return;}
+  const pending=new Set();
   for(const action of data.actions){
+   const id=String(action.id);pending.add(id);
+   const previous=chatApprovalNodes.get(id);if(previous)previous.remove();
    const card=document.createElement("div");card.className="card warning";
    const title=document.createElement("strong");title.textContent=action.title+" · 需要确认";card.append(title);
    const target=document.createElement("p");target.textContent="目标："+(action.target||formatOutputJson(action.args));card.append(target);
@@ -450,8 +654,18 @@ async function refreshPendingActions(){
    confirmButton.addEventListener("click",async()=>{if(!(await confirmAction("请再次确认：执行“"+action.title+"”，目标为“"+(action.target||formatOutputJson(action.args))+"”。此操作可能造成数据丢失。")))return;confirmButton.disabled=true;try{const cr=await api("/api/actions/"+encodeURIComponent(action.id)+"/confirm",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});const result=await cr.json();if(!cr.ok)throw Error(result.error||"确认执行失败");const out=document.querySelector("#tool-result");out.textContent="已执行确认操作：\\n"+formatOutputJson(result.result);await refreshFiles(currentFilePath);await refreshPendingActions();}catch(error){showToast(errorText(error,"确认执行失败"),"error");confirmButton.disabled=false;}});
    const denyButton=document.createElement("button");denyButton.type="button";denyButton.textContent="拒绝";
    denyButton.addEventListener("click",async()=>{denyButton.disabled=true;try{const dr=await api("/api/actions/"+encodeURIComponent(action.id)+"/deny",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});const result=await dr.json();if(!dr.ok)throw Error(result.error||"拒绝失败");await refreshPendingActions();}catch(error){showToast(errorText(error,"拒绝失败"),"error");denyButton.disabled=false;}});
-   card.append(confirmButton,denyButton);host.append(card);
+   const bubble=chatFindTurn(action.taskId);
+   const inline=bubble?chatPart(bubble,".chat__approval"):null;
+   if(inline){inline.append(card);chatScrollToBottom();}
+   else host.append(card);
+   chatApprovalNodes.set(id,card);
   }
+  for(const [id,node] of Array.from(chatApprovalNodes.entries())){
+   if(pending.has(id))continue;
+   if(node)node.remove();
+   chatApprovalNodes.delete(id);
+  }
+  if(!host.childElementCount){const p=document.createElement("p");p.className="muted";p.textContent=data.actions.length?"待确认操作已显示在上方对话中。":"没有待确认操作。";host.append(p);}
  }catch(error){const p=document.createElement("p");p.className="error";p.textContent=errorText(error,"待确认操作读取失败");host.append(p);}
 }
 document.querySelector("#refresh-pending-actions").addEventListener("click",refreshPendingActions);
@@ -460,6 +674,37 @@ document.querySelector("#task-history-search").addEventListener("change",()=>{ta
 document.querySelector("#task-history-prev").addEventListener("click",()=>{taskHistoryOffset=Math.max(0,taskHistoryOffset-taskHistoryPageSize);refreshRecentTasks();});
 document.querySelector("#task-history-next").addEventListener("click",()=>{taskHistoryOffset+=taskHistoryPageSize;refreshRecentTasks();});
 document.querySelector("#agent-refresh-tasks").addEventListener("click",refreshRecentTasks);
+const chatStopButton=document.querySelector("#agent-stop");
+if(chatStopButton)chatStopButton.addEventListener("click",async()=>{
+ if(chatDirectController){
+  chatStopButton.disabled=true;
+  try{chatDirectController.abort();}catch{}
+  chatSetStatus("已停止");
+  return;
+ }
+ const taskId=chatActiveTaskId;if(!taskId||chatStopButton.disabled)return;
+ chatStopButton.disabled=true;
+ try{
+  const cr=await api("/api/tasks/"+encodeURIComponent(taskId)+"/cancel",{method:"POST"});
+  const cb=await cr.json();if(!cr.ok)throw Error(cb.error||"停止失败");
+  chatSetStatus(cb.cancelRequested?"已请求停止，等待当前工具结束":"任务已取消");
+  showToast(cb.cancelRequested?"已请求停止；当前工具会先完成，不会启动后续工具。":"任务已取消。","ok");
+ }catch(error){chatStopButton.disabled=false;showToast(errorText(error,"停止失败"),"error");}
+});
+const chatInputField=document.querySelector("#agent-input");
+if(chatInputField){
+ chatInputField.addEventListener("input",()=>chatAutoGrowInput(chatInputField));
+ chatInputField.addEventListener("keydown",event=>{
+  if(event.key!=="Enter")return;
+  if(event.shiftKey||event.ctrlKey||event.metaKey||event.altKey||event.isComposing)return;
+  event.preventDefault();
+  const form=document.querySelector("#agent-form");
+  if(!form)return;
+  if(typeof form.requestSubmit==="function")form.requestSubmit();
+  else form.dispatchEvent(new Event("submit",{cancelable:true,bubbles:true}));
+ });
+ chatAutoGrowInput(chatInputField);
+}
 document.querySelector("#task-history-clear").addEventListener("click",async()=>{
  if(!(await confirmAction("清理已完成、失败和已取消的任务记录？排队中和运行中的任务会保留，不会被取消。")))return;
  const button=document.querySelector("#task-history-clear");button.disabled=true;
@@ -472,36 +717,266 @@ document.querySelector("#task-history-clear").addEventListener("click",async()=>
  finally{button.disabled=false;}
 });
 
+function chatOpenStream(taskId,bubble,state){
+ if(typeof EventSource!=="function")return null;
+ let source=null;
+ try{source=new EventSource("/api/tasks/"+encodeURIComponent(taskId)+"/events");}
+ catch{return null;}
+ const handle=event=>chatHandleStreamEvent(event,bubble,state);
+ source.addEventListener("message",handle);
+ for(const type of CHAT_STREAM_EVENT_TYPES)source.addEventListener(type,handle);
+ source.addEventListener("error",()=>{state.streamFailed=true;try{source.close();}catch{}});
+ return source;
+}
+function chatHandleStreamEvent(event,bubble,state){
+ let payload={};
+ try{payload=JSON.parse(event.data||"{}");}catch{payload={};}
+ if(!payload||typeof payload!=="object")payload={};
+ const type=String(payload.type||event.type||"");
+ if(!CHAT_STREAM_EVENT_TYPES.includes(type))return;
+ const data=payload.data&&typeof payload.data==="object"?payload.data:payload;
+ if(type==="progress"){chatUpdateProgress(bubble,data);chatSetStatus(data.stage||data.message||data.status||"处理中…");}
+ else if(type==="tool")chatAppendStreamTool(bubble,data);
+ else if(type==="approval")refreshPendingActions();
+ else if(type==="done"){state.finalTask=data.task||data;state.streamDone=true;}
+ else if(type==="error"){state.streamError=String(data.message||data.error||"任务失败");chatSetStatus(state.streamError);}
+}
+function chatAppendStreamTool(bubble,payload){
+ const tools=chatPart(bubble,".chat__tools");if(!tools)return;
+ const item={tool:payload.tool||payload.name||"工具",result:payload.result!==undefined?payload.result:payload};
+ tools.append(chatToolCard(item,tools.childElementCount));
+ chatScrollToBottom();
+}
+async function chatAwaitTask(taskId,bubble,initialTask){
+ const state={finalTask:null,streamDone:false,streamFailed:false,streamError:""};
+ const stream=chatOpenStream(taskId,bubble,state);
+ chatSetStatus(stream?"已连接流式进度…":"流式不可用，已回退到 750ms 轮询…");
+ let task=initialTask||null;
+ try{
+  for(let i=0;i<120;i++){
+   if(task&&CHAT_TERMINAL_STATUS.has(task.status))break;
+   if(state.finalTask&&CHAT_TERMINAL_STATUS.has(state.finalTask.status)){task=state.finalTask;break;}
+   await new Promise(resolve=>setTimeout(resolve,750));
+   const poll=await api("/api/tasks/"+encodeURIComponent(taskId));const body=await poll.json();
+   if(!poll.ok)throw Error(body.error||"任务状态读取失败");
+   task=body.task;
+   chatUpdateProgress(bubble,task);
+   if(task.status==="awaiting-approval")refreshPendingActions();
+  }
+ }finally{if(stream){try{stream.close();}catch{}}}
+ if(state.finalTask&&(!task||!CHAT_TERMINAL_STATUS.has(task.status)))task=state.finalTask;
+ return task;
+}
+function chatFinalizeTask(taskId,task,bubble){
+ chatRemoveProgress(bubble);
+ if(!bubble)return;
+ if(!task){chatSetTurnContent(bubble,"任务状态未知。任务 ID："+taskId);return;}
+ if(task.status==="completed"&&task.result){
+  const result=task.result;
+  chatSetTurnContent(bubble,result.message||"（无返回内容）");
+  chatRenderToolCards(chatPart(bubble,".chat__tools"),result.results||[]);
+  chatSetTurnMeta(bubble,"任务："+taskId+"；模式："+(result.mode||"—")+"；状态："+(result.status||task.status));
+ }else if(task.status==="failed"){
+  chatSetTurnContent(bubble,"任务失败："+(task.error||"未知错误"));
+  chatSetTurnMeta(bubble,"任务："+taskId+"；状态：failed");
+ }else if(task.status==="cancelled"){
+  chatSetTurnContent(bubble,"任务已取消。");
+  chatSetTurnMeta(bubble,"任务："+taskId+"；状态：cancelled");
+ }else{
+  chatSetTurnContent(bubble,"任务仍在执行。任务 ID："+taskId+"。可在“最近任务”中刷新查看。");
+  chatSetTurnMeta(bubble,"任务："+taskId+"；状态："+(task.status||"running"));
+ }
+}
+/* ------------------------------------------------------ direct chat mode --- */
+const CHAT_MODE_KEY="fnos-nas-agent.chat-mode";
+let chatMode="task";
+let chatDirectController=null;
+let chatDirectStreamText="";
+let chatStopDirect=false;
+function chatReadStoredMode(){
+ try{const stored=localStorage.getItem(CHAT_MODE_KEY);if(stored==="direct"||stored==="task")return stored;}catch{}
+ return "task";
+}
+function chatApplyMode(mode,persist){
+ const next=mode==="direct"?"direct":"task";
+ chatMode=next;
+ if(persist!==false){try{localStorage.setItem(CHAT_MODE_KEY,next);}catch{}}
+ const taskButton=document.querySelector("#chat-mode-task");
+ const directButton=document.querySelector("#chat-mode-direct");
+ if(taskButton)taskButton.setAttribute("aria-pressed",next==="task"?"true":"false");
+ if(directButton)directButton.setAttribute("aria-pressed",next==="direct"?"true":"false");
+ const root=document.querySelector("#agent-chat");
+ if(root)root.dataset.chatMode=next;
+ const pendingCard=document.querySelector("#agent-pending-card");
+ if(pendingCard)pendingCard.hidden=next==="direct";
+ const queueCard=document.querySelector("#agent-task-queue-card");
+ if(queueCard)queueCard.hidden=next==="direct";
+ const hint=document.querySelector("#agent-mode-hint");
+ if(hint)hint.textContent=next==="direct"?"对话模式：与模型直接对话，不执行任何 NAS 工具。":"任务模式：执行 NAS 工具任务，可被审批与停止。";
+ const field=document.querySelector("#agent-input");
+ if(field)field.placeholder=next==="direct"?"直接和模型对话，例如：解释一下 NAS 的存储池设计":"例如：查看系统状态 / 然后打开刚才的目录";
+ chatSetStatus(next==="direct"?"对话模式":"任务模式");
+}
+function chatSetStopDirect(active){
+ const button=document.querySelector("#agent-stop");if(!button)return;
+ chatStopDirect=!!active;
+ button.hidden=!active;
+ button.disabled=!active;
+}
+function chatParseSseFrame(frame){
+ const lines=String(frame).split(/\r?\n/);
+ let event="message";const data=[];
+ for(const line of lines){
+  if(line.startsWith("event:"))event=line.slice(6).trim();
+  else if(line.startsWith("data:"))data.push(line.slice(5).trim());
+ }
+ if(!data.length)return null;
+ const raw=data.join("\n");
+ let payload={raw};
+ try{payload=JSON.parse(raw);}catch{payload={raw};}
+ if(!payload||typeof payload!=="object")payload={raw};
+ return {event,data:payload};
+}
+function chatSplitSseFrames(buffer){
+ const frames=[];let rest=String(buffer===null||buffer===undefined?"":buffer);
+ const pattern=/\r\n\r\n|\n\n|\r\r/;
+ let match;
+ while((match=pattern.exec(rest))!==null){
+  frames.push(rest.slice(0,match.index));
+  rest=rest.slice(match.index+match[0].length);
+ }
+ return {frames,rest};
+}
+async function chatReadSseStream(response,onFrame){
+ if(!response||!response.body||typeof response.body.getReader!=="function")return;
+ const reader=response.body.getReader();
+ const decoder=new TextDecoder();
+ let buffer="";let stopped=false;
+ while(!stopped){
+  const chunk=await reader.read();
+  if(chunk.done)break;
+  buffer+=decoder.decode(chunk.value,{stream:true});
+  const split=chatSplitSseFrames(buffer);buffer=split.rest;
+  for(const frame of split.frames){
+   const parsed=chatParseSseFrame(frame);
+   if(!parsed)continue;
+   if(onFrame(parsed)===false){stopped=true;break;}
+  }
+ }
+ if(!stopped&&buffer.trim()){
+  const parsed=chatParseSseFrame(buffer);
+  if(parsed)onFrame(parsed);
+ }
+ try{await reader.cancel();}catch{}
+}
+function chatDirectAppend(content,text){
+ if(!content||!text)return;
+ let target=content.lastElementChild;
+ if(!target||target.dataset.chatDirect!=="1"){
+  target=document.createElement("p");target.dataset.chatDirect="1";content.append(target);
+ }
+ target.append(document.createTextNode(text));
+ chatScrollToBottom();
+}
+function chatDirectFinalize(content,text){
+ if(!content)return;
+ content.replaceChildren();
+ if(text)content.append(document.createTextNode(text));
+ chatScrollToBottom();
+}
+async function chatSendDirect(text){
+ const field=document.querySelector("#agent-input"),send=document.querySelector("#agent-send"),err=document.querySelector("#agent-error");
+ err.textContent="";
+ let status=null;
+ try{
+  const statusResponse=await api("/api/chat/status");
+  status=await statusResponse.json();
+ }catch(error){err.textContent=errorText(error,"对话模式状态读取失败");chatSetStatus("对话模式状态读取失败");return;}
+ if(!status||status.enabled!==true){
+  err.textContent="尚未配置可用的模型服务商";
+  chatSetStatus("尚未配置可用的模型服务商");
+  showToast("尚未配置可用的模型服务商","error");
+  return;
+ }
+ renderAgentTurn("user",text);
+ field.value="";chatAutoGrowInput(field);
+ send.disabled=true;send.textContent="生成中…";
+ const bubble=renderAgentTurn("agent","");
+ const content=chatPart(bubble,".chat__content");
+ const controller=new AbortController();
+ chatDirectController=controller;chatDirectStreamText="";
+ chatSetStopDirect(true);chatSetStatus("正在生成…");
+ let finalText="";
+ try{
+  const response=await api("/api/chat/message",{method:"POST",headers:{"content-type":"application/json","accept":"text/event-stream"},body:JSON.stringify({messages:[{role:"user",content:text}]}),signal:controller.signal});
+  if(!response.ok){
+   let detail={};
+   try{detail=await response.json();}catch{}
+   throw Error(detail.message||detail.error||"直聊请求失败（HTTP "+response.status+"）");
+  }
+  await chatReadSseStream(response,frame=>{
+   if(frame.event==="delta"){
+    const piece=typeof frame.data.text==="string"?frame.data.text:"";
+    if(piece){finalText+=piece;chatDirectStreamText=finalText;chatDirectAppend(content,piece);}
+    return true;
+   }
+   if(frame.event==="done"){
+    const full=typeof frame.data.text==="string"&&frame.data.text?frame.data.text:finalText;
+    finalText=full;chatDirectStreamText=full;chatDirectFinalize(content,full);
+    return true;
+   }
+   if(frame.event==="error"){
+    const message=String(frame.data.message||"直聊失败");
+    err.textContent=message;chatSetStatus(message);
+    return false;
+   }
+   return true;
+  });
+  if(finalText)chatDirectFinalize(content,finalText);
+  if(!err.textContent)chatSetStatus("就绪");
+ }catch(error){
+  if(error&&error.name==="AbortError"){
+   chatDirectFinalize(content,chatDirectStreamText||"（已停止）");
+   chatSetStatus("已停止");
+  }else{
+   err.textContent=errorText(error,"直聊失败");
+   chatSetStatus("直聊失败");
+  }
+ }finally{
+  chatDirectController=null;
+  chatSetStopDirect(false);
+  send.disabled=false;send.textContent="发送";field.focus();
+ }
+}
+const chatModeTaskButton=document.querySelector("#chat-mode-task");
+const chatModeDirectButton=document.querySelector("#chat-mode-direct");
+if(chatModeTaskButton)chatModeTaskButton.addEventListener("click",()=>chatApplyMode("task"));
+if(chatModeDirectButton)chatModeDirectButton.addEventListener("click",()=>chatApplyMode("direct"));
+chatApplyMode(chatReadStoredMode(),false);
 document.querySelector("#agent-form").addEventListener("submit",async e=>{
  e.preventDefault();const field=document.querySelector("#agent-input"),send=document.querySelector("#agent-send"),err=document.querySelector("#agent-error");
- const text=field.value.trim();if(!text)return;err.textContent="";renderAgentTurn("你",text);field.value="";send.disabled=true;send.textContent="已提交…";
+ const text=field.value.trim();if(!text)return;err.textContent="";
+ if(chatMode==="direct"){await chatSendDirect(text);return;}
+ renderAgentTurn("user",text);field.value="";chatAutoGrowInput(field);send.disabled=true;send.textContent="已提交…";
  try{
   const r=await api("/api/agent/message",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text,history:conversationContext})});
   const accepted=await r.json();if(!r.ok)throw Error(accepted.error||"请求失败");
   const taskId=accepted.task.taskId;
-  let task=accepted.task;
-  for(let i=0;i<120;i++){
-   if(task.status==="completed"||task.status==="failed"||task.status==="cancelled")break;
-   await new Promise(resolve=>setTimeout(resolve,750));
-   const poll=await api("/api/tasks/"+encodeURIComponent(taskId));const body=await poll.json();
-   if(!poll.ok)throw Error(body.error||"任务状态读取失败");task=body.task;
+  const bubble=renderAgentTurn("agent","正在处理…",{taskId});
+  chatEnsureProgress(bubble);
+  chatSetStopVisible(taskId);
+  const task=await chatAwaitTask(taskId,bubble,accepted.task);
+  chatFinalizeTask(taskId,task,bubble);
+  if(task&&task.status==="completed"&&task.result&&task.result.status==="completed"){
+   const result=task.result;
+   const contextParts=[result.message||"已完成请求。"];
+   for(const item of result.results||[])contextParts.push("工具 "+item.tool+"："+JSON.stringify(item.result).slice(0,320));
+   conversationContext=[...conversationContext,{role:"user",content:text},{role:"assistant",content:contextParts.join("\n").slice(0,1200)}].slice(-8);
+   refreshConversationContextStatus();
   }
-  if(task.status==="completed"&&task.result){
-   const result=task.result,details=[result.message,"任务："+taskId+"；模式："+result.mode+"；状态："+result.status];
-   for(const item of result.results||[])details.push("工具 "+item.tool+"：\n"+formatOutputJson(item.result));
-   renderAgentTurn("NAS Agent",details.join("\n\n"));
-   if(result.status==="completed"){
-    const contextParts=[result.message||"已完成请求。"];
-    for(const item of result.results||[])contextParts.push("工具 "+item.tool+"："+JSON.stringify(item.result).slice(0,320));
-    conversationContext=[...conversationContext,{role:"user",content:text},{role:"assistant",content:contextParts.join("\n").slice(0,1200)}].slice(-8);
-    refreshConversationContextStatus();
-   }
-  }else if(task.status==="failed")renderAgentTurn("NAS Agent","任务失败："+(task.error||"未知错误")+"\n任务 ID："+taskId);
-  else if(task.status==="cancelled")renderAgentTurn("NAS Agent","任务已取消。任务 ID："+taskId);
-  else renderAgentTurn("NAS Agent","任务仍在执行。任务 ID："+taskId+"。可在“最近任务”中刷新查看。");
   await refreshRecentTasks();await refreshPendingActions();
- }catch(error){err.textContent=errorText(error,"请求失败");}
- finally{send.disabled=false;send.textContent="发送";field.focus();}
+ }catch(error){err.textContent=errorText(error,"请求失败");chatSetStatus("请求失败");}
+ finally{send.disabled=false;send.textContent="发送";field.focus();chatSetStopVisible("");chatSetStatus("就绪");}
 });
 let currentFilePath="",currentFileOffset=0;
 async function refreshFiles(pathValue=currentFilePath,pageOffset=0){

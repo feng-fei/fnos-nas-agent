@@ -1,4 +1,5 @@
 import { extractZipEntry, inspectZipArchive } from "./skill-archives.mjs";
+import { SOURCE_REVIEW_COMMAND_RULES } from "./dangerous-command-rules.mjs";
 
 const MAX_SOURCE_FILES = 32;
 export const MAX_SKILL_SOURCE_PREVIEW_BYTES = 64 * 1024;
@@ -12,19 +13,10 @@ export function isPreviewableSkillTextPath(value) {
   return /(?:^|\/)SKILL\.md$/i.test(value) || TEXT_SOURCE.test(value) || SECRET_CONFIG.test(value);
 }
 
-const RULES = [
-  ["shell-execution-api", /\b(?:child_process|execFileSync|execSync|spawnSync|subprocess|Popen)\b|\bos\.system\s*\(|\bexec\s*\(/i],
-  ["dynamic-code-evaluation", /\beval\s*\(|\bnew\s+Function\s*\(/i],
-  ["download-piped-to-shell", /\b(?:curl|wget)\b[^\n]{0,180}\|\s*(?:sh|bash|zsh)\b/i],
-  ["privilege-escalation-command", /\b(?:sudo|doas|pkexec)\b/i],
-  ["destructive-system-command", /\brm\s+-rf\b|\bmkfs(?:\.\w+)?\b|\bdd\s+if=|\bchmod\s+777\b|\bchown\s+-R\b|Remove-Item[^\n]{0,120}-Recurse/i],
-  ["credential-or-private-key-path", /\/etc\/shadow|~\/\.ssh(?:\/|\b)|\.aws\/credentials|\.docker\/config\.json|cookies\.sqlite|(?:^|[\\/])Login Data(?:$|[\\/])/i],
-  ["private-key-material", /-----BEGIN (?:(?:RSA|EC|OPENSSH|DSA|ENCRYPTED) )?PRIVATE KEY-----/i],
-  ["cloud-access-key-id", /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
-  ["github-token-pattern", /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/],
-  ["hardcoded-secret-assignment", /\b[A-Za-z0-9_-]*(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|passwd|secret|authorization)\b["']?\s*[:=]\s*["']?[A-Za-z0-9/+_.=-]{24,}/i],
-  ["package-registry-token", /(?:_authToken|_password)\s*=\s*[A-Za-z0-9_+/=-]{20,}/i]
-];
+// Phase 145: the rule table now lives in the shared dangerous command rule
+// pack. Identifiers, regular expressions, and their order are unchanged, so
+// the findings produced here stay identical.
+const RULES = SOURCE_REVIEW_COMMAND_RULES.map(item => [item.id, item.pattern]);
 
 /**
  * Advisory static scan of selected text/source files from an already validated ZIP.

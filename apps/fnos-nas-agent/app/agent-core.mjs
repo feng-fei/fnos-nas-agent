@@ -94,7 +94,7 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
   if (!tools || typeof tools.list !== "function" || typeof tools.invoke !== "function") throw new TypeError("A tool registry is required");
   if (!model || typeof model.plan !== "function" || typeof model.status !== "function") throw new TypeError("A model adapter is required");
 
-  async function executePlan(plan, approvalTaskId = id(), reportProgress = () => {}, shouldCancel = () => false, sessionId = "") {
+  async function executePlan(plan, approvalTaskId = id(), reportProgress = () => {}, shouldCancel = () => false, sessionId = "", reportTool = () => false) {
     if (shouldCancel()) throw Object.assign(new Error("Task cancellation requested"), { code: "TASK_CANCELLED" });
     reportProgress(25, "校验工具计划");
     const catalogue = new Map(tools.list().map(tool => [tool.id, tool]));
@@ -124,6 +124,11 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       if (shouldCancel()) throw Object.assign(new Error("Task cancellation requested"), { code: "TASK_CANCELLED" });
       const result = await tools.invoke(call.id, call.args);
       results.push({ tool: call.id, result });
+      // The tool result is reported to the event stream of the task, so the
+      // chat window can show the card while the task is still running. The
+      // stream bounds the size of the result, the caller never sees a tool
+      // argument here.
+      try { reportTool(call.id, result); } catch { /* the stream must not break the task */ }
       completed++;
       reportProgress(55 + Math.floor(completed / plan.toolCalls.length * 40), "已完成工具 " + completed + "/" + plan.toolCalls.length);
     }
@@ -137,6 +142,9 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
     async run(input, context = {}) {
       const reportProgress = typeof context?.reportProgress === "function" ? context.reportProgress : () => {};
       const shouldCancel = typeof context?.shouldCancel === "function" ? context.shouldCancel : () => false;
+      // The queue reports a finished tool here, so the conversation window can
+      // show the tool card while the task is still running.
+      const reportTool = typeof context?.reportTool === "function" ? context.reportTool : () => false;
       const sessionId = typeof context?.sessionId === "string" ? context.sessionId : "";
       // The queue aborts the task when it is cancelled or when its budget runs
       // out. The signal is handed to the model request so that a pending HTTP
@@ -159,7 +167,7 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       if (direct) {
         reportProgress(15, "已识别请求");
         if (cancelled()) throw Object.assign(new Error("Task cancellation requested"), { code: "TASK_CANCELLED" });
-        const results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] }, taskId, reportProgress, shouldCancel, sessionId);
+        const results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] }, taskId, reportProgress, shouldCancel, sessionId, reportTool);
         if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "rules", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "rules", message: direct.item.message, results };
       }
@@ -189,7 +197,7 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       // never reach the tools: the user already saw the task as stopped.
       if (cancelled()) throw Object.assign(new Error("Task cancellation requested"), { code: "TASK_CANCELLED" });
       try {
-        const results = await executePlan(plan, taskId, reportProgress, cancelled, sessionId);
+        const results = await executePlan(plan, taskId, reportProgress, cancelled, sessionId, reportTool);
         if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "model", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "model", message: safeMessage(plan.message, "已完成请求。"), results };
       } catch (error) {

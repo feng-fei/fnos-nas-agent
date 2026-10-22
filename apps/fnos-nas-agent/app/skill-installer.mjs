@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { chmod, lstat, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { extractZipEntry, inspectZipArchive, MAX_ARCHIVE_BYTES } from "./skill-archives.mjs";
 import { isOfficialFnosPackage } from "./skill-official-package.mjs";
 
@@ -49,7 +49,10 @@ function validateElf(buffer, machine) {
 }
 
 export function createSkillInstaller({ dataDir, platform = process.platform, arch = process.arch } = {}) {
-  if (typeof dataDir !== "string" || !dataDir || !resolve(dataDir).startsWith("/"))
+  // isAbsolute() is the platform correct check. The previous comparison with
+  // a leading slash was POSIX only, so every absolute Windows path was
+  // rejected and the service could not start on Windows at all.
+  if (typeof dataDir !== "string" || !dataDir || !isAbsolute(dataDir))
     throw new TypeError("An absolute app data directory is required");
 
   async function installCli(record) {

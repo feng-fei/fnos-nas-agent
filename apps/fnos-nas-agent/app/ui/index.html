@@ -8,6 +8,7 @@
 <meta name="description" content="fnOS NAS Agent —— 自托管的 NAS 助手：文件管理、模型服务、Skill 隔离审核与受限只读 fnOS 工具。">
 <title>fnOS NAS Agent</title>
 <link rel="stylesheet" href="/ui/styles.css">
+<link rel="stylesheet" href="/ui/model-settings.css">
 <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
 </head>
 <body class="app">
@@ -328,11 +329,20 @@
             <p class="card__sub">例如：查看系统状态 / 然后打开刚才的目录。</p>
           </div>
           <div class="card__body">
-            <div class="chat">
+            <div class="chat" id="agent-chat" data-chat-mode="task">
+              <div class="chat__modes" role="group" aria-label="对话模式">
+                <button class="chat__mode" id="chat-mode-task" type="button" aria-pressed="true" data-chat-mode="task">任务模式</button>
+                <button class="chat__mode" id="chat-mode-direct" type="button" aria-pressed="false" data-chat-mode="direct">对话模式</button>
+              </div>
+              <p class="chat__mode-hint muted" id="agent-mode-hint">任务模式：执行 NAS 工具任务，可被审批与停止。</p>
               <div class="chat__thread" id="agent-history" aria-live="polite"><p class="muted">登录后可开始查询。</p></div>
+              <div class="chat__toolbar">
+                <span class="chat__status" id="agent-stream-status" role="status">就绪</span>
+                <button class="btn btn--secondary btn--sm chat__stop" id="agent-stop" type="button" hidden>停止生成</button>
+              </div>
               <form class="composer" id="agent-form">
                 <label class="visually-hidden" for="agent-input">你想了解什么？</label>
-                <input class="input composer__input" id="agent-input" maxlength="2000" autocomplete="off" placeholder="例如：查看系统状态 / 然后打开刚才的目录" required>
+                <textarea class="input composer__input" id="agent-input" rows="1" maxlength="2000" autocomplete="off" enterkeyhint="send" placeholder="例如：查看系统状态 / 然后打开刚才的目录" required></textarea>
                 <button class="btn btn--primary composer__send" id="agent-send" type="submit">发送</button>
               </form>
             </div>
@@ -340,7 +350,7 @@
           </div>
         </div>
 
-        <div class="card card--flat">
+        <div class="card card--flat" id="agent-pending-card">
           <div class="card__head">
             <h3 class="card__title">待确认的危险操作</h3>
             <p class="card__sub">确认只对下面显示的具体目标有效，60 秒内有效且只能执行一次。</p>
@@ -351,7 +361,7 @@
           </div>
         </div>
 
-        <div class="card card--flat">
+        <div class="card card--flat" id="agent-task-queue-card">
           <div class="card__head">
             <h3 class="card__title">任务队列</h3>
             <p class="card__sub" id="task-stats">正在读取队列状态…</p>
@@ -492,6 +502,9 @@
               </div>
             </form>
             <p id="model-provider-error" class="error" role="status"></p>
+            <!-- Phase 154: the Marvis style wizard. The module reports the step
+                 the operator is on and the fields that still block the save. -->
+            <div class="model-settings__wizard" id="model-provider-wizard" aria-live="polite"></div>
           </div>
         </div>
 
@@ -799,5 +812,8 @@
 
 <script src="/ui/core.js"></script>
 <script src="/ui/pages.js"></script>
+<!-- Phase 154: the model settings helpers are an ES module. They publish
+     themselves on the window object for the classic script above. -->
+<script type="module" src="/ui/model-settings.js"></script>
 </body>
 </html>
