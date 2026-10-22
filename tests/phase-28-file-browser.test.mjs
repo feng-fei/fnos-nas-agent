@@ -116,3 +116,58 @@ test("file browser applies name/type filters and sort before slicing pages", asy
     await assert.rejects(browser.list(root, 10, 0, "invalid"), { statusCode: 400 });
   } finally { await rm(temp, { recursive: true, force: true }); }
 });
+
+
+test("content search finds text matches within allowed roots and redacts credential snippets", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "fnos-content-search-"));
+  try {
+    const root = join(temp, "vol1");
+    const docs = join(root, "docs");
+    const outside = join(temp, "outside");
+    await mkdir(docs, { recursive: true });
+    await mkdir(outside);
+    await writeFile(join(docs, "guide.md"), "存储方案：使用 5 GB 缓冲。\nAPI_KEY = \"super-secret-value\"\n");
+    await writeFile(join(docs, ".env"), "APP_TOKEN=hidden-env-value\n");
+    await writeFile(join(docs, "database-password.txt"), "password=hidden-password-value\n");
+    await writeFile(join(docs, "binary.txt"), Buffer.from([0, 1, 2, 3]));
+    await writeFile(join(outside, "external.md"), "外部目录中不应出现 TARGETWORD");
+    await symlink(join(outside, "external.md"), join(docs, "external.md"));
+    const browser = createFileBrowser({ roots: [root] });
+
+    const found = await browser.searchContent(docs, "5 GB");
+    assert.equal(found.entries.length, 1);
+    assert.equal(found.entries[0].name, "guide.md");
+    assert.equal(found.entries[0].lineNumber, 1);
+    assert.match(found.entries[0].snippet, /5 GB/);
+    assert.equal(found.truncated, false);
+
+    const secret = await browser.searchContent(docs, "api_key");
+    assert.equal(secret.entries.length, 1);
+    assert.match(secret.entries[0].snippet, /已隐藏/);
+    assert.doesNotMatch(JSON.stringify(secret), /super-secret-value/);
+
+    const skippedSecret = await browser.searchContent(docs, "hidden-env-value");
+    assert.equal(skippedSecret.entries.length, 0);
+    const skippedPasswordFile = await browser.searchContent(docs, "hidden-password-value");
+    assert.equal(skippedPasswordFile.entries.length, 0);
+    const skippedSymlink = await browser.searchContent(docs, "TARGETWORD");
+    assert.equal(skippedSymlink.entries.length, 0);
+    assert.ok(found.bytesRead <= 2 * 1024 * 1024);
+    await assert.rejects(browser.searchContent(outside, "TARGETWORD"), error => error.statusCode === 403 || error.statusCode === 404);
+    await assert.rejects(browser.searchContent(docs, ""), { statusCode: 400 });
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+test("content search skips oversized files and reports traversal limits", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "fnos-content-search-bounds-"));
+  try {
+    const root = join(temp, "vol1");
+    await mkdir(root);
+    await writeFile(join(root, "large.md"), "needle " + "x".repeat(300 * 1024));
+    const browser = createFileBrowser({ roots: [root] });
+    const result = await browser.searchContent(root, "needle");
+    assert.equal(result.entries.length, 0);
+    assert.equal(result.skippedLargeFiles, 1);
+    assert.equal(result.truncated, false);
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
