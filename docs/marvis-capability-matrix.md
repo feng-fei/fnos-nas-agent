@@ -35,7 +35,7 @@ State values:
 | A11 Task progress display | Implemented | Phase 146 task events, Phase 149/151 progress UI | — |
 | A12 Task history | Implemented | Task history API and page | — |
 | A13 Task conflict detection | Open | — | — |
-| A14 Cost and resource budget | Partly | Phase 165 usage meter, server rate limiter | No per-task budget ceiling |
+| A14 Cost and resource budget | Partly | Phase 165 usage meter, Phase 166 `GET /api/models/usage`, server rate limiter | No per-task budget ceiling |
 | A15 Plan and execution separation | Implemented | `app/agent-core.mjs` plan validation and execution split | — |
 
 ## Module 02 — System information and health monitoring
@@ -81,7 +81,7 @@ Data honesty rule: a section whose collector returns nothing is reported as
 | D09 Pre-repair checks | Open | — | — |
 | D10 Post-repair verification | Open | — | — |
 | D11 Failure rollback | Open | — | — |
-| D12 Fault report | Implemented | Phase 162 `report` | — |
+| D12 Fault report | Implemented | Phase 162 `report`, Phase 166 `POST /api/diagnostics/report` | — |
 | D13 Historical fault correlation | Open | — | — |
 | D14 Repair knowledge base | Open | — | — |
 | D15 Diagnostic bundle | Open | — | — |
@@ -124,7 +124,7 @@ can only escalate to a human instead of proposing them.
 
 | Item | State | Where | Gap |
 | --- | --- | --- | --- |
-| C01 Query system state | Partly | Phase 150 chat, Phase 161 snapshot | — |
+| C01 Query system state | Partly | Phase 150 chat, Phase 161 snapshot, Phase 166 `GET /api/system/snapshot` | — |
 | C02 Query resource usage | Partly | trim-cli `monitor.*` | — |
 | C03 Query service state | Open | — | No service collector yet |
 | C04 Query disk state | Partly | trim-cli `monitor.disk` | — |
@@ -189,7 +189,7 @@ per-intent command string builder in the chat path.
 | --- | --- | --- | --- |
 | SEC01 Least privilege | Implemented | `app/tool-registry.mjs`, `app/execution-policy.mjs` | — |
 | SEC02 Identity check | Implemented | Session authentication and origin checks | — |
-| SEC03 Tool permission table | Implemented | Phase 160 `buildToolPermissionTable` | — |
+| SEC03 Tool permission table | Implemented | Phase 160 `buildToolPermissionTable`, Phase 166 `GET /api/security/inspection` | — |
 | SEC04 Risk grading | Implemented | `read-only` / `write` / `destructive` | — |
 | SEC05 High-risk confirmation | Implemented | `app/action-approval-service.mjs` | — |
 | SEC06 Operation audit | Implemented | `app/audit-log.mjs` | — |
@@ -316,7 +316,7 @@ collection, never from the index.
 | SK07 Install and uninstall | Implemented | `app/skill-installer.mjs` | — |
 | SK08 Skill health check | Partly | `app/skill-source-review.mjs` | — |
 | SK09 MCP client | Implemented | Phase 148 `app/mcp-client.mjs` | — |
-| SK10 MCP server | Implemented | Phase 164 `app/mcp-server.mjs` | Read-only tools only |
+| SK10 MCP server | Implemented | Phase 164 `app/mcp-server.mjs`, Phase 166 `app/mcp-stdio-entry.mjs` | Read-only tools only |
 | SK11 Tool call audit | Implemented | Phase 146 trace, Phase 155 observer | — |
 | SK12 Skill isolation | Partly | Directory confinement, no auto-execution on import | No network sandbox per skill |
 
