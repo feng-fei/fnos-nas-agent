@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer as createTcpServer } from "node:net";
+import { makeZip, quarantineArchive, READ_ONLY_MANIFEST } from "./helpers/skill-archive.mjs";
 
 async function unusedPort() {
   const server = createTcpServer();
@@ -76,16 +77,22 @@ test("authenticated task, Skill batch review, cleanup and audit filters work thr
   assert.equal(taskPayload.offset, 0);
   assert.ok(Array.isArray(taskPayload.tasks));
 
-  const makeSkill = async (name, fill) => {
+  // Phase 136: the server derives the review from the quarantined bytes, so a
+  // real archive has to be in the quarantine directory before the registration.
+  const makeSkill = async (name, manifestName) => {
+    const digest = await quarantineArchive(dataDir, makeZip([{
+      name: "SKILL.md",
+      data: `---\nname: ${manifestName}\ndescription: A minimal read-only Skill used by the integration tests\n---\nOnly reads files.\n`
+    }]));
     const response = await request("/api/skills", {
       method: "POST",
-      body: JSON.stringify({ name, version: "1.0.0", sourceLabel: "integration-test", archiveSha256: fill.repeat(64), declaredCapabilities: [] })
+      body: JSON.stringify({ name, version: "1.0.0", sourceLabel: "integration-test", archiveSha256: digest, declaredCapabilities: [] })
     });
     assert.equal(response.status, 201);
     return (await response.json()).skill;
   };
-  const reviewable = await makeSkill("Integration A", "a");
-  const invalidTransition = await makeSkill("Integration B", "b");
+  const reviewable = await makeSkill("Integration A", "integration-a");
+  const invalidTransition = await makeSkill("Integration B", "integration-b");
   const batch = await request("/api/skills/transitions/batch", {
     method: "POST",
     body: JSON.stringify({ items: [

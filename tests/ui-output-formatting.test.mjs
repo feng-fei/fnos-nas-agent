@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
+import { readUiSource } from "./helpers/ui-source.mjs";
 
-const html = await readFile(new URL("../apps/fnos-nas-agent/app/ui/index.html", import.meta.url), "utf8");
+const html = await readUiSource();
 const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1] || "";
 const helperStart = script.indexOf("/* Output formatting helpers:");
 const helperEnd = script.indexOf("const setupCard=", helperStart);

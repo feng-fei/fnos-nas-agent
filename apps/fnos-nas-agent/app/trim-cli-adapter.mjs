@@ -6,6 +6,9 @@ import { classifyTrimCliFailure, createTrimCliConnectionHealth } from "./trim-cl
 
 const execFile = promisify(execFileCallback);
 const MAX_OUTPUT_BYTES = 1024 * 1024;
+// A non JSON answer is returned as text. The text is bounded, and a cut off
+// answer says so instead of pretending to be complete.
+const MAX_TEXT_OUTPUT_CHARS = 64_000;
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_TIMEOUT_MS = 60_000;
 
@@ -44,6 +47,9 @@ function validateInput(id, input) {
   if (!allowed.has(id) && Object.keys(input).length) throw Object.assign(new Error("This trim-cli tool accepts no arguments"), { statusCode: 400 });
   if (id === "photos.search") {
     if (Object.keys(input).some(key => !["keyword", "limit"].includes(key)) || typeof input.keyword !== "string" || input.keyword.trim().length < 1 || input.keyword.length > 200 || (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 50))) throw Object.assign(new Error("photos.search requires a keyword up to 200 characters and an optional limit from 1 to 50"), { statusCode: 400 });
+    // A keyword that starts with a dash is read by the CLI as an option
+    // instead of a search term, so it is refused before the call.
+    if (input.keyword.trim().startsWith("-")) throw Object.assign(new Error("photos.search keyword must not start with '-'"), { statusCode: 400 });
   }
   if (allowed.has(id) && id !== "photos.search") {
     const keys = id === "file.usage" ? ["volumeId"] : ["path"];
@@ -137,10 +143,25 @@ export function createTrimCliAdapter({
         }
       });
       const stdout = String(result.stdout || "").trim();
-      if (!stdout) return { command: id, data: null, output: "" };
+      // An empty answer is still a successful call: the CLI ran, exited with
+      // zero and produced no output. It must be recorded as a success, or the
+      // connection health would never leave the "unavailable" state.
+      if (!stdout) {
+        health.success(id);
+        return { command: id, data: null };
+      }
       let data;
       try { data = JSON.parse(stdout); }
-      catch { data = stdout.slice(0, 64_000); }
+      catch {
+        // The answer is plain text. A text that exceeds the bound is cut off,
+        // and the result says that it was cut off: a silent truncation would
+        // look like a complete answer.
+        if (stdout.length > MAX_TEXT_OUTPUT_CHARS) {
+          health.success(id);
+          return { command: id, data: stdout.slice(0, MAX_TEXT_OUTPUT_CHARS), truncated: true };
+        }
+        data = stdout;
+      }
       health.success(id);
       return { command: id, data };
     } catch (error) {

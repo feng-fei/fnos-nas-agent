@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { readUiSource } from "./helpers/ui-source.mjs";
 
 const server = await readFile(new URL("../apps/fnos-nas-agent/app/server.mjs", import.meta.url), "utf8");
-const html = await readFile(new URL("../apps/fnos-nas-agent/app/ui/index.html", import.meta.url), "utf8");
+const html = await readUiSource();
 const taskManagerTests = await readFile(new URL("./phase-9-tasks.test.mjs", import.meta.url), "utf8");
 
 test("task cancellation API distinguishes queued cancellation from running cancellation requests", () => {
@@ -11,7 +12,7 @@ test("task cancellation API distinguishes queued cancellation from running cance
   const end = server.indexOf("const taskMatch = url.pathname.match", start);
   assert.ok(start >= 0 && end > start, "task cancel route must be registered");
   const route = server.slice(start, end);
-  assert.match(route, /taskManager\.cancel\(cancelMatch\[1\]\)/);
+  assert.match(route, /taskManager\.cancel\(cancelMatch\[1\][^)]*\)/);
   assert.match(route, /if \(result\.cancelRequested\) return reply\(res, 202/);
   assert.match(route, /return reply\(res, 200, result\)/);
   assert.match(route, /return reply\(res, 409, \{ error: "Task is already terminal or cannot be cancelled\."/);

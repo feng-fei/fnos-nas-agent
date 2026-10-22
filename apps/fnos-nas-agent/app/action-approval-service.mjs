@@ -87,21 +87,31 @@ export function createActionApprovalService({ tools, ledger = createApprovalLedg
     if (item.sessionId && item.sessionId !== scope)
       throw Object.assign(new Error("The pending action belongs to another session"), { statusCode: 403 });
     const consumed = ledger.consume({ token: item.token, taskId: item.taskId, toolId: item.toolId, args: item.args, risk: item.risk });
-    pending.delete(idValue);
+    // The queue entry only disappears once the grant was actually accepted, so a
+    // rejected confirmation never hides a still pending action.
     if (!consumed.approved) throw Object.assign(new Error("Confirmation is invalid or expired"), { statusCode: 409 });
+    pending.delete(idValue);
     const result = await tools.invoke(item.toolId, item.args, { capability: DELETE_CAPABILITY });
     return { action: publicItem(item), result };
   }
 
-  function deny(idValue, sessionId = "") {
+  function revoke(idValue, sessionId = "") {
     prune();
     const item = pending.get(idValue);
-    if (!item) return false;
+    if (!item) return null;
     const scope = typeof sessionId === "string" ? sessionId : "";
-    if (item.sessionId && scope && item.sessionId !== scope) return false;
+    if (item.sessionId && scope && item.sessionId !== scope) return null;
     revokeTaskPending(item.taskId);
-    return true;
+    return publicItem(item);
   }
 
-  return Object.freeze({ request, list, confirm, deny, snapshot: () => ({ pending: list().length }) });
+  function deny(idValue, sessionId = "") {
+    return Boolean(revoke(idValue, sessionId));
+  }
+
+  return Object.freeze({
+    request, list, confirm, deny, revoke,
+    revokeTask(taskId) { if (typeof taskId === "string" && taskId) revokeTaskPending(taskId); },
+    snapshot: () => ({ pending: list().length })
+  });
 }

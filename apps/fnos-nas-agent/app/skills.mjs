@@ -32,7 +32,12 @@ function normalizeManifestReview(value) {
     archiveEntryCount: Number.isSafeInteger(value.archiveEntryCount) ? value.archiveEntryCount : null,
     sourceFilesScanned: Number.isSafeInteger(value.sourceFilesScanned) ? value.sourceFilesScanned : 0,
     sourceBytesScanned: Number.isSafeInteger(value.sourceBytesScanned) ? value.sourceBytesScanned : 0,
-    sourceReviewIncomplete: value.sourceReviewIncomplete === true
+    sourceReviewIncomplete: value.sourceReviewIncomplete === true,
+    // Phase 136: only the server may claim that it reviewed an archive. A
+    // client-declared review carries no marker, so it can never be stored as
+    // a server verdict.
+    reviewedBy: value.reviewedBy === "server" ? "server" : null,
+    archiveSha256: typeof value.archiveSha256 === "string" && /^[a-f0-9]{64}$/.test(value.archiveSha256) ? value.archiveSha256 : null
   };
 }
 
@@ -143,6 +148,48 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
       reviewNote: typeof item.reviewNote === "string" ? item.reviewNote.slice(0, MAX_NOTE) : "",
       reviewedAt: item.reviewedAt || null
     }));
+    await reviewLegacyRecords();
+  }
+
+  /**
+   * Phase 136 migration: an installation that was upgraded from a build
+   * without server-side reviews still holds records whose verdict was never
+   * computed by the server. The verdict is recomputed here from the very same
+   * quarantined bytes, so an upgraded NAS keeps its Skills usable instead of
+   * silently losing the ability to install the official CLI.
+   */
+  async function reviewLegacyRecords() {
+    let reviewed = 0;
+    for (const record of records) {
+      if (record.manifestReview?.reviewedBy === "server") continue;
+      const quarantineFile = record.quarantineFile || ("skill-quarantine/" + record.archiveSha256 + ".zip");
+      let quarantined = null;
+      try {
+        quarantined = await readQuarantinedArchiveForReview({ archiveSha256: record.archiveSha256, quarantineFile });
+      } catch {
+        // The quarantined archive is gone: the record stays unreviewed and can
+        // neither be approved nor installed. It is never given a fake pass.
+        continue;
+      }
+      if (!quarantined) continue;
+      try {
+        record.manifestReview = normalizeManifestReview({
+          ...inspectSkillManifest(quarantined.buffer),
+          reviewedBy: "server",
+          archiveSha256: record.archiveSha256
+        });
+        record.reviewedAt = new Date().toISOString();
+        reviewed++;
+      } catch {
+        // A review that cannot be computed stays absent.
+      }
+    }
+    if (!reviewed) return;
+    try {
+      await persist();
+    } catch (error) {
+      console.error(`[skills] The server-side review of ${reviewed} upgraded Skill record(s) could not be saved (${error?.message || "unknown error"}); the records stay unreviewed.`);
+    }
   }
 
   function list({ limit = 50, offset = 0, state, q = "" } = {}) {
@@ -160,27 +207,63 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
     return { total: filtered.length, limit, offset, skills: filtered.slice(offset, offset + limit).map(item => ({ ...item, declaredCapabilities: [...item.declaredCapabilities] })) };
   }
 
-  async function register(input) {
+  async function register(request) {
     return enqueueMutation(async () => {
     if (records.length >= MAX_RECORDS) throw Object.assign(new Error("Skill inventory limit reached"), { statusCode: 409 });
-    if (!input || typeof input.name !== "string" || !input.name.trim() || input.name.trim().length > MAX_NAME)
+    if (!request || typeof request.name !== "string" || !request.name.trim() || request.name.trim().length > MAX_NAME)
       throw Object.assign(new Error("name must contain 1 to 100 characters"), { statusCode: 400 });
-    if (typeof input.archiveSha256 !== "string" || !/^[a-f0-9]{64}$/i.test(input.archiveSha256))
+    if (typeof request.archiveSha256 !== "string" || !/^[a-f0-9]{64}$/i.test(request.archiveSha256))
       throw Object.assign(new Error("archiveSha256 must be a SHA-256 hex digest"), { statusCode: 400 });
-    const name = input.name.trim();
-    if (records.some(item => item.name.toLowerCase() === name.toLowerCase() && item.archiveSha256 === input.archiveSha256.toLowerCase()))
-      throw Object.assign(new Error("Skill archive already registered"), { statusCode: 409 });
+    const name = request.name.trim();
+    // Phase 136: the Skill name is the identity of the Skill, so it is unique
+    // across the whole inventory regardless of letter case.
+    if (records.some(item => item.name.toLowerCase() === name.toLowerCase()))
+      throw Object.assign(new Error("Skill name already registered"), { statusCode: 409 });
+
+    // Phase 136: the client never decides where the archive lives and never
+    // decides the review outcome. Both are derived from the archive digest and
+    // computed by the server from the quarantined bytes themselves.
+    const archiveSha256 = request.archiveSha256.toLowerCase();
+    const quarantineFile = "skill-quarantine/" + archiveSha256 + ".zip";
+    const quarantined = await readQuarantinedArchiveForReview({ archiveSha256, quarantineFile });
+    let manifestReview = null;
+    if (quarantined) {
+      const buffer = quarantined.buffer;
+      try {
+        manifestReview = {
+          ...inspectSkillManifest(buffer),
+          reviewedBy: "server",
+          archiveSha256
+        };
+      } catch {
+        // A review that could not be computed is stored as "no review"; it is
+        // never replaced by a fabricated pass.
+        manifestReview = null;
+      }
+    }
+    const input = {
+      name,
+      version: request.version,
+      sourceLabel: request.sourceLabel,
+      archiveSha256,
+      quarantineFile,
+      archiveSizeBytes: quarantined ? quarantined.buffer.length : null,
+      archiveEntryCount: quarantined ? quarantined.archive.entryCount : null,
+      declaredUncompressedBytes: quarantined ? quarantined.archive.declaredUncompressedBytes : null,
+      declaredCapabilities: request.declaredCapabilities,
+      manifestReview
+    };
     const caps = Array.isArray(input.declaredCapabilities)
       ? input.declaredCapabilities.filter(x => typeof x === "string").slice(0, 20).map(x => x.slice(0, 80))
       : [];
     const record = {
       id: randomBytes(12).toString("hex"),
-      name,
+      name: input.name,
       version: typeof input.version === "string" ? input.version.slice(0, 40) : "",
       sourceLabel: typeof input.sourceLabel === "string" ? input.sourceLabel.slice(0, 100) : "",
       importedAt: new Date().toISOString(),
-      archiveSha256: input.archiveSha256.toLowerCase(),
-      quarantineFile: typeof input.quarantineFile === "string" ? input.quarantineFile : "",
+      archiveSha256: input.archiveSha256,
+      quarantineFile: input.quarantineFile,
       archiveSizeBytes: Number.isSafeInteger(input.archiveSizeBytes) ? input.archiveSizeBytes : null,
       archiveEntryCount: Number.isSafeInteger(input.archiveEntryCount) ? input.archiveEntryCount : null,
       declaredUncompressedBytes: Number.isSafeInteger(input.declaredUncompressedBytes) ? input.declaredUncompressedBytes : null,
@@ -203,6 +286,45 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
     if (!item) throw Object.assign(new Error("Skill not found"), { statusCode: 404 });
     if (!item.quarantineFile) throw Object.assign(new Error("Skill has no quarantined archive to inspect"), { statusCode: 409 });
     return item;
+  }
+
+  /**
+   * Phase 136: reads the archive a registration points at, using the same
+   * safety rules as readQuarantinedArchive. A missing archive is refused with
+   * 409 because a Skill without quarantined bytes cannot be reviewed; an
+   * archive that exists but cannot be reviewed safely yields no review at all
+   * instead of a fabricated one.
+   */
+  async function readQuarantinedArchiveForReview(item) {
+    const quarantineRoot = resolve(dataDir, "skill-quarantine");
+    const archivePath = resolve(dataDir, item.quarantineFile);
+    const expectedPath = resolve(quarantineRoot, item.archiveSha256 + ".zip");
+    if (archivePath !== expectedPath || !archivePath.startsWith(quarantineRoot + sep) || !archivePath.endsWith(".zip"))
+      throw Object.assign(new Error("Quarantined archive path is invalid"), { statusCode: 500 });
+    let rootInfo, archiveInfo;
+    try {
+      [rootInfo, archiveInfo] = await Promise.all([lstat(quarantineRoot), lstat(archivePath)]);
+    } catch {
+      throw Object.assign(new Error("A quarantined Skill archive is required to register a Skill"), { statusCode: 409 });
+    }
+    try {
+      if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory() ||
+          archiveInfo.isSymbolicLink() || !archiveInfo.isFile())
+        throw Object.assign(new Error("Quarantined archive filesystem type is unsafe"), { statusCode: 500 });
+      if (archiveInfo.size > MAX_ARCHIVE_BYTES)
+        throw Object.assign(new Error("Quarantined archive exceeds the inspection size limit"), { statusCode: 413 });
+      const buffer = await readFile(archivePath);
+      if (buffer.length > MAX_ARCHIVE_BYTES)
+        throw Object.assign(new Error("Quarantined archive exceeds the inspection size limit"), { statusCode: 413 });
+      const digest = createHash("sha256").update(buffer).digest("hex");
+      if (digest !== item.archiveSha256)
+        throw Object.assign(new Error("Quarantined archive integrity check failed"), { statusCode: 500 });
+      return { buffer, archive: inspectZipArchive(buffer) };
+    } catch {
+      // The archive exists but could not be reviewed. The record is stored
+      // without a review, so it can neither be approved nor installed.
+      return null;
+    }
   }
 
   async function readQuarantinedArchive(item) {
@@ -283,15 +405,16 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
   }
 
   async function importArchive(input, buffer) {
-    const manifestReview = inspectSkillManifest(buffer);
+    // Phase 136: the quarantine write and the review are one server-side
+    // operation. The registration itself reads the stored archive back and
+    // computes the review, so both import paths agree by construction.
     const archive = await saveQuarantinedArchive(dataDir, buffer);
     const record = await register({
       name: input.name, version: input.version, sourceLabel: input.sourceLabel,
-      archiveSha256: archive.sha256, quarantineFile: archive.quarantineFile,
+      archiveSha256: archive.sha256,
       archiveSizeBytes: archive.sizeBytes, archiveEntryCount: archive.entryCount,
       declaredUncompressedBytes: archive.declaredUncompressedBytes,
-      declaredCapabilities: input.declaredCapabilities,
-      manifestReview
+      declaredCapabilities: input.declaredCapabilities
     });
     return { ...record, archiveEntries: archive.entries };
   }
@@ -338,6 +461,13 @@ export function createSkillStore(dataDir, { fs: storageFs = { mkdir, readFile, w
     const target = input?.state;
     if (!STATES.has(target) || !TRANSITIONS[item.state].has(target))
       throw Object.assign(new Error("Invalid Skill state transition"), { statusCode: 409 });
+    // Phase 136: a Skill is approved only after the server itself reviewed
+    // the quarantined archive. A record without a server review stays in
+    // review, whatever the client asks for.
+    if (item.state === "pending_review" && target === "approved" &&
+        !(item.manifestReview && item.manifestReview.reviewedBy === "server")) {
+      throw Object.assign(new Error("A server-side static review is required before approving this Skill"), { statusCode: 409 });
+    }
     const old = { ...item, declaredCapabilities: [...item.declaredCapabilities] };
     item.state = target;
     item.reviewNote = typeof input.note === "string" ? input.note.slice(0, MAX_NOTE) : "";

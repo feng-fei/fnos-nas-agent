@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readUiSource } from "./helpers/ui-source.mjs";
 
-const html = await readFile(new URL("../apps/fnos-nas-agent/app/ui/index.html", import.meta.url), "utf8");
+const html = await readUiSource();
 
 test("mobile OAuth setup generates a server-validated command without accepting a code or token", () => {
   assert.match(html, /\/api\/agent\/trim-cli\/login-command/);

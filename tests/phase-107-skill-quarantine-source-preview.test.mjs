@@ -4,6 +4,7 @@ import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSkillStore } from "../apps/fnos-nas-agent/app/skills.mjs";
+import { readUiSource } from "./helpers/ui-source.mjs";
 
 function crc32(bytes) {
   let crc = 0xffffffff;
@@ -113,13 +114,17 @@ test("source preview verifies the quarantined archive hash and refuses tampered 
 });
 
 test("metadata-only Skills cannot be used to inspect filesystem paths", async () => {
+  // Phase 136, option (ii): the assertion moved forward to the registration
+  // boundary. A Skill without a quarantined archive is refused with 409, so a
+  // metadata-only Skill can never come into existence and the source listing
+  // and preview endpoints can never be reached with such a record.
   const dataDir = await mkdtemp(join(tmpdir(), "fnos-skill-preview-metadata-"));
   try {
     const store = createSkillStore(dataDir);
     await store.load();
-    const metadata = await store.register({ name: "metadata-only", archiveSha256: "a".repeat(64) });
-    await assert.rejects(store.listSourceFiles(metadata.id), { statusCode: 409 });
-    await assert.rejects(store.previewSourceFile(metadata.id, "SKILL.md"), { statusCode: 409 });
+    await assert.rejects(store.register({ name: "metadata-only", archiveSha256: "a".repeat(64) }), error =>
+      error?.statusCode === 409 && /quarantined Skill archive is required/i.test(error.message));
+    assert.equal(store.list().total, 0, "no metadata-only Skill is ever registered");
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }
@@ -127,7 +132,7 @@ test("metadata-only Skills cannot be used to inspect filesystem paths", async ()
 
 test("source listing and preview API require a session and the UI renders source as text", async () => {
   const server = await import("node:fs/promises").then(({ readFile }) => readFile(new URL("../apps/fnos-nas-agent/app/server.mjs", import.meta.url), "utf8"));
-  const html = await import("node:fs/promises").then(({ readFile }) => readFile(new URL("../apps/fnos-nas-agent/app/ui/index.html", import.meta.url), "utf8"));
+  const html = await readUiSource();
   const fileStart = server.indexOf("const skillSourceFilesMatch = url.pathname.match");
   const fileEnd = server.indexOf("const skillSourcePreviewMatch = url.pathname.match", fileStart);
   const previewStart = fileEnd;

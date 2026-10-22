@@ -5,7 +5,7 @@ import { statfs } from "node:fs/promises";
 import { readFile, writeFile, mkdir, rename, chmod, readdir, rm } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes, timingSafeEqual, createHash, scryptSync } from "node:crypto";
+import { randomBytes, timingSafeEqual, createHash, scrypt } from "node:crypto";
 import { createSkillStore, skillStates } from "./skills.mjs";
 import { MAX_ARCHIVE_BYTES } from "./skill-archives.mjs";
 import { createReadOnlyToolRegistry } from "./read-only-tools.mjs";
@@ -28,6 +28,7 @@ import { createActionApprovalService } from "./action-approval-service.mjs";
 import { createSerialWriteQueue } from "./serial-write-queue.mjs";
 import { createExecutionPolicy, EXECUTION_MODES } from "./execution-policy.mjs";
 import { APP_VERSION } from "./version.mjs";
+import { createOverviewService } from "./overview.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -135,12 +136,43 @@ async function loadSessions() {
     }
     if (sessions.size !== raw.length) await persistSessions();
   } catch (error) {
-    if (error.code !== "ENOENT") console.error("Session store could not be loaded; starting with no active sessions.");
+    if (error.code === "ENOENT") return;
+    // A damaged session file must not silently log every operator out without a
+    // trace. The file is quarantined and the service reports the degradation.
+    degradedState.sessions = true;
+    console.error("Session store could not be loaded; starting with no active sessions.");
+    try {
+      await rename(sessionFile, sessionFile + ".corrupt-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json");
+    } catch (renameError) {
+      console.error("The damaged session store could not be quarantined:", renameError?.message || renameError);
+    }
   }
+}
+// The agent is frequently published through the fnOS portal or another TLS
+// terminating reverse proxy. The browser then talks https to the proxy while the
+// agent only ever sees plain http, so the same-origin check has to compare
+// against the external origin. Forwarded headers are only honoured for a
+// loopback peer or when the operator opts in explicitly.
+const TRUST_PROXY = process.env.AGENT_TRUST_PROXY === "1";
+function isLoopbackPeer(req) {
+  const remote = req.socket?.remoteAddress || "";
+  return remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
+}
+function firstHeaderValue(value) {
+  if (typeof value !== "string") return "";
+  return value.split(",")[0].trim();
+}
+function externalOrigin(req) {
+  const trusted = TRUST_PROXY || isLoopbackPeer(req);
+  const forwardedProto = trusted ? firstHeaderValue(req.headers["x-forwarded-proto"]) : "";
+  const forwardedHost = trusted ? firstHeaderValue(req.headers["x-forwarded-host"]) : "";
+  const protocol = forwardedProto || (req.socket.encrypted ? "https" : "http");
+  const host = forwardedHost || req.headers.host || "";
+  return { origin: protocol + "://" + host, secure: protocol === "https" };
 }
 function sameOrigin(req) {
   if (!req.headers.origin || !req.headers.host) return false;
-  return req.headers.origin === (req.socket.encrypted ? "https://" : "http://") + req.headers.host;
+  return req.headers.origin === externalOrigin(req).origin;
 }
 async function rawBody(req, maxBytes) {
   const declared = Number(req.headers["content-length"] || 0);
@@ -154,6 +186,8 @@ async function rawBody(req, maxBytes) {
   return Buffer.concat(chunks);
 }
 async function jsonBody(req) {
+  const declared = Number(req.headers["content-length"] || 0);
+  if (Number.isFinite(declared) && declared > MAX_BODY) throw Object.assign(new Error("Payload too large"), { statusCode: 413 });
   const chunks = []; let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
@@ -163,15 +197,24 @@ async function jsonBody(req) {
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); }
   catch { throw Object.assign(new Error("Invalid JSON"), { statusCode: 400 }); }
 }
-function passwordValid(candidate) {
+// The key derivation is asynchronous on purpose. A synchronous scrypt blocks the
+// event loop for every unauthenticated caller and turns the login endpoint into
+// a CPU denial of service.
+function deriveKey(password, salt) {
+  return new Promise((resolve, reject) => {
+    scrypt(password, salt, 64, (error, key) => (error ? reject(error) : resolve(key)));
+  });
+}
+async function passwordValid(candidate) {
   if (!passwordRecord || typeof candidate !== "string") return false;
-  const actual = scryptSync(candidate, Buffer.from(passwordRecord.salt, "hex"), 64);
+  const actual = await deriveKey(candidate, Buffer.from(passwordRecord.salt, "hex"));
   const expected = Buffer.from(passwordRecord.hash, "hex");
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
-function makePasswordRecord(password) {
+async function makePasswordRecord(password) {
   const salt = randomBytes(16);
-  return { algorithm: "scrypt", salt: salt.toString("hex"), hash: scryptSync(password, salt, 64).toString("hex") };
+  const hash = await deriveKey(password, salt);
+  return { algorithm: "scrypt", salt: salt.toString("hex"), hash: hash.toString("hex") };
 }
 async function loadPassword() {
   if (!passwordFile) return;
@@ -212,8 +255,13 @@ async function ensureSetupCode() {
 }
 function setupCodeMatches(candidate) {
   if (!setupCode) return true;
-  if (typeof candidate !== "string" || candidate.length !== setupCode.length) return false;
-  return timingSafeEqual(Buffer.from(candidate, "utf8"), Buffer.from(setupCode, "utf8"));
+  if (typeof candidate !== "string") return false;
+  const provided = Buffer.from(candidate, "utf8");
+  const expected = Buffer.from(setupCode, "utf8");
+  // The encoded bytes are compared, not the character count: a multi-byte
+  // candidate would otherwise reach the comparison with a different length.
+  if (provided.length !== expected.length) return false;
+  return timingSafeEqual(provided, expected);
 }
 async function diskUsage(path, label) {
   try {
@@ -279,12 +327,80 @@ const taskManager = createTaskManager({ execute: (input, context) => agentCore.r
 
 // A state file that could not be restored leaves the service running in a degraded
 // state. The operator can see which part is degraded instead of guessing.
+const degradedState = { sessions: false };
 function degradedComponents() {
   const components = [];
   if (skillStore?.degraded?.() === true) components.push("skills");
   if (modelProviderStore?.degraded?.() === true) components.push("models");
   if (taskManager?.degraded?.() === true) components.push("tasks");
+  if (degradedState.sessions) components.push("sessions");
   return components;
+}
+
+// One place describes the service health. The health endpoint and the overview
+// snapshot must not drift apart.
+function healthSnapshot() {
+  return {
+    ok: true,
+    app: "fnos-nas-agent",
+    version: APP_VERSION,
+    executionEnabled: false,
+    executionMode: executionPolicy.mode(),
+    executionModeSource: executionPolicy.source(),
+    degraded: degradedComponents().length > 0,
+    degradedComponents: degradedComponents(),
+    authenticationConfigured: Boolean(passwordRecord)
+  };
+}
+
+// The mobile-first console needs every headline number in a single response
+// instead of six parallel API calls.
+const overviewService = createOverviewService({
+  health: () => healthSnapshot(),
+  executionPolicy,
+  taskManager,
+  skillStore,
+  modelProviderStore,
+  actionApprovals,
+  agentCore
+});
+
+// The user interface is split into an HTML shell, one stylesheet and two
+// scripts. Only a fixed set of extensions is served, and the file name may not
+// contain a path segment, so the route can never escape the ui directory.
+const UI_ASSET_TYPES = new Map([
+  [".css", "text/css; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".mjs", "text/javascript; charset=utf-8"],
+  [".svg", "image/svg+xml"],
+  [".png", "image/png"],
+  [".ico", "image/x-icon"],
+  [".webmanifest", "application/manifest+json"]
+]);
+
+async function serveUiAsset(res, url) {
+  if (!url.pathname.startsWith("/ui/")) return false;
+  let name = "";
+  try {
+    name = decodeURIComponent(url.pathname.slice("/ui/".length));
+  } catch {
+    return false;
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(name) || name.includes("..")) return false;
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0) return false;
+  const type = UI_ASSET_TYPES.get(name.slice(dot).toLowerCase());
+  if (!type) return false;
+  let body;
+  try {
+    // Binary assets (icons, images) must not be decoded as text.
+    body = await readFile(join(root, "ui", name));
+  } catch (error) {
+    if (error.code === "ENOENT" || error.code === "EISDIR") return false;
+    throw error;
+  }
+  reply(res, 200, body, type, { "cache-control": "no-cache" });
+  return true;
 }
 
 // A model request can hang for minutes; the task manager aborts it after this
@@ -307,6 +423,8 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/logout") return "logout";
   if (pathname === "/api/diagnostics") return "diagnostics";
   if (pathname === "/api/execution-mode") return "execution.mode";
+  if (pathname === "/api/overview") return "overview";
+  if (pathname === "/api/skills/transitions/batch") return "skills.transition";
   if (pathname === "/api/audit") return "audit.list";
   if (pathname === "/api/files/checksum") return "files.checksum";
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
@@ -338,13 +456,17 @@ function auditRoute(pathname, method) {
 }
 
 function limited(req) { return !authLimiter.allow(req.socket.remoteAddress || "unknown"); }
+// The overview snapshot is rebuilt on every call, so it carries its own budget.
+const overviewLimiter = createFixedWindowLimiter({ limit: 60, windowMs: 60_000, maxKeys: 1000 });
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", "http://localhost");
     const auditRouteName = auditRoute(url.pathname, req.method);
+    // The actor is resolved before the handler runs: a logout removes the
+    // session, so the audit event would otherwise lose the actor.
+    const auditedSession = sessionFor(req);
     if (auditLogger && auditRouteName) res.once("finish", () => {
       try {
-        const auditedSession = sessionFor(req);
         void auditLogger.record({
           method: req.method,
           route: auditRouteName,
@@ -355,18 +477,25 @@ const server = createServer(async (req, res) => {
       catch (error) { console.error("Audit record could not be queued:", error?.message || error); }
     });
     if (req.method === "GET" && url.pathname === "/api/health")
-      return reply(res, 200, {
-        ok: true,
-        app: "fnos-nas-agent",
-        version: APP_VERSION,
-        executionEnabled: false,
-        executionMode: executionPolicy.mode(),
-        executionModeSource: executionPolicy.source(),
-        degraded: degradedComponents().length > 0,
-        authenticationConfigured: Boolean(passwordRecord)
-      });
+      return reply(res, 200, healthSnapshot());
+    if (req.method === "GET" && url.pathname === "/api/overview") {
+      const overviewSession = sessionFor(req);
+      if (!overviewSession) return reply(res, 401, { error: "Unauthorized" });
+      if (!overviewLimiter.allow(overviewSession.key))
+        return reply(res, 429, { error: "Too many overview requests" }, "application/json; charset=utf-8", { "retry-after": "60" });
+      try {
+        return reply(res, 200, overviewService.snapshot());
+      } catch (error) {
+        console.error("Overview snapshot failed:", error?.message || error);
+        return reply(res, 500, { error: "Unable to build the overview snapshot" });
+      }
+    }
     if (req.method === "GET" && url.pathname === "/")
       return reply(res, 200, await readFile(join(root, "ui", "index.html"), "utf8"), "text/html; charset=utf-8");
+    if (req.method === "GET" && url.pathname.startsWith("/ui/")) {
+      if (await serveUiAsset(res, url)) return;
+      return reply(res, 404, { error: "Not found" });
+    }
     if (req.method === "GET" && url.pathname === "/api/session")
       return reply(res, 200, { authenticated: Boolean(sessionFor(req)), setupRequired: !passwordRecord, setupCodeRequired: Boolean(setupCode) && !isLoopbackRequest(req) });
     if (req.method === "POST" && url.pathname === "/api/setup") {
@@ -381,7 +510,7 @@ const server = createServer(async (req, res) => {
         return reply(res, 403, { error: "Setup code is invalid", setupCodeRequired: true });
       if (typeof body.password !== "string" || body.password.length < 10 || body.password.length > 128)
         return reply(res, 400, { error: "Password must contain 10 to 128 characters" });
-      const record = makePasswordRecord(body.password);
+      const record = await makePasswordRecord(body.password);
       try {
         await mkdir(dataDir, { recursive: true, mode: 0o700 });
         await writeFile(passwordFile, JSON.stringify(record) + "\n", { encoding: "utf8", mode: 0o600, flag: "wx" });
@@ -403,7 +532,7 @@ const server = createServer(async (req, res) => {
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
       const body = await jsonBody(req);
-      if (!passwordValid(body.password)) return reply(res, 401, { error: "Invalid password" });
+      if (!(await passwordValid(body.password))) return reply(res, 401, { error: "Invalid password" });
       const remember = body.remember === true;
       const ttl = remember ? REMEMBER_TTL : SESSION_TTL;
       const now = Date.now();
@@ -420,7 +549,7 @@ const server = createServer(async (req, res) => {
       }
       authLimiter.reset(req.socket.remoteAddress || "unknown");
       return reply(res, 200, { authenticated: true, remembered: remember }, "application/json; charset=utf-8", {
-        "set-cookie": `nas_agent_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(ttl / 1000)}${req.socket.encrypted ? "; Secure" : ""}`
+        "set-cookie": `nas_agent_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(ttl / 1000)}${externalOrigin(req).secure ? "; Secure" : ""}`
       });
     }
     if (req.method === "POST" && url.pathname === "/api/logout") {
@@ -428,7 +557,7 @@ const server = createServer(async (req, res) => {
       const active = sessionFor(req);
       if (active) { sessions.delete(active.key); await persistSessions(); }
       return reply(res, 200, { authenticated: false }, "application/json; charset=utf-8", {
-        "set-cookie": `nas_agent_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${req.socket.encrypted ? "; Secure" : ""}`
+        "set-cookie": `nas_agent_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${externalOrigin(req).secure ? "; Secure" : ""}`
       });
     }
     if (url.pathname === "/api/files") {
@@ -476,7 +605,7 @@ const server = createServer(async (req, res) => {
       if (!sessionFor(req)) return reply(res,401,{error:"Unauthorized"});
       if(req.method!=="GET")return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"GET"});
       try{return reply(res,200,await fileManager.preview(url.searchParams.get("path")||""));}
-      catch(e){const s=[400,403,404,413,415].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"Unable to preview file":e.message});}
+      catch(e){const s=[400,403,404,409,413,415].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"Unable to preview file":e.message});}
     }
     if (url.pathname === "/api/files/download") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
@@ -544,7 +673,7 @@ const server = createServer(async (req, res) => {
         if(!decision.allowed)return reply(res,decision.statusCode||403,{error:policyMessage(decision)});
       }
       try{return reply(res,200,await fileManager.operate(body));}
-      catch(e){const s=[400,403,404,409].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"File operation failed":e.message});}
+      catch(e){const s=[400,403,404,409,413,415,503,507].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"File operation failed":e.message});}
     }
     if (url.pathname === "/api/files/operations/batch") {
       if (req.method !== "POST") return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"POST"});
@@ -1000,7 +1129,7 @@ const server = createServer(async (req, res) => {
       if (!active) return reply(res, 401, { error: "Unauthorized" });
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
       if (!agentMessageLimiter.allow(active.key))
-        return reply(res, 429, { error: "消息过于频繁，请稍后再试。" }, "application/json; charset=utf-8", { "retry-after": "5" });
+        return reply(res, 429, { error: "消息过于频繁，请稍后再试。" }, "application/json; charset=utf-8", { "retry-after": "60" });
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
       const input = await jsonBody(req);
@@ -1019,9 +1148,10 @@ const server = createServer(async (req, res) => {
     }
     if (url.pathname === "/api/tasks/clear-history") {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
-      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
-      try { return reply(res, 200, await taskManager.clearTerminal()); }
+      try { return reply(res, 200, await taskManager.clearTerminal(active.key)); }
       catch { return reply(res, 500, { error: "Unable to clear task history" }); }
     }
     if (url.pathname === "/api/tasks/status") {
@@ -1030,13 +1160,14 @@ const server = createServer(async (req, res) => {
       return reply(res, 200, taskManager.stats());
     }
     if (url.pathname === "/api/tasks") {
-      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
       if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
       const requested = Number(url.searchParams.get("limit") || 20);
       const requestedOffset = Number(url.searchParams.get("offset") || 0);
       const status = url.searchParams.get("status") || undefined;
       const search = url.searchParams.get("q") || undefined;
-      const allowedStatuses = new Set(["queued", "running", "completed", "failed", "cancelled"]);
+      const allowedStatuses = new Set(["queued", "running", "awaiting-approval", "completed", "failed", "cancelled"]);
       if (status && !allowedStatuses.has(status)) return reply(res, 400, { error: "Invalid task status filter" });
       if (search && (search.length > 100 || /[\x00-\x1f\x7f]/.test(search)))
         return reply(res, 400, { error: "Invalid task search query" });
@@ -1044,16 +1175,19 @@ const server = createServer(async (req, res) => {
         return reply(res, 400, { error: "Invalid task pagination" });
       return reply(res, 200, taskManager.query({
         limit: Math.min(50, Math.max(1, Math.trunc(requested))),
-        offset: Math.trunc(requestedOffset), status, search
+        offset: Math.trunc(requestedOffset), status, search, sessionId: active.key
       }));
     }
     const cancelMatch = url.pathname.match(/^\/api\/tasks\/([a-f0-9-]{8,64})\/cancel$/i);
     if (cancelMatch) {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
-      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      const cancelSession = sessionFor(req);
+      if (!cancelSession) return reply(res, 401, { error: "Unauthorized" });
       if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
-      const result = taskManager.cancel(cancelMatch[1]);
+      const result = taskManager.cancel(cancelMatch[1], cancelSession.key);
       if (!result) return reply(res, 404, { error: "Task not found" });
+      // A cancelled task must not leave a confirmed destructive action behind.
+      if (result.cancelled) actionApprovals.revokeTask(cancelMatch[1]);
       if (result.cancelRequested) return reply(res, 202, {
         ...result,
         note: "Cancellation requested. The current tool will finish; no follow-up tool steps will be started."
@@ -1063,9 +1197,10 @@ const server = createServer(async (req, res) => {
     }
     const taskMatch = url.pathname.match(new RegExp("^/api/tasks/([a-f0-9-]{8,64})$", "i"));
     if (taskMatch) {
-      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      const taskSession = sessionFor(req);
+      if (!taskSession) return reply(res, 401, { error: "Unauthorized" });
       if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
-      const task = taskManager.get(taskMatch[1]);
+      const task = taskManager.get(taskMatch[1], taskSession.key);
       return task ? reply(res, 200, { task }) : reply(res, 404, { error: "Task not found" });
     }
     if (url.pathname === "/api/actions/pending") {
@@ -1085,10 +1220,16 @@ const server = createServer(async (req, res) => {
       await jsonBody(req);
       const [, actionId, decision] = actionDecisionMatch;
       if (decision === "deny") {
-        if (!actionApprovals.deny(actionId, active.key)) return reply(res, 404, { error: "Pending action not found or expired" });
+        const revoked = actionApprovals.revoke(actionId, active.key);
+        if (!revoked) return reply(res, 404, { error: "Pending action not found or expired" });
+        if (revoked.taskId) taskManager.resolveApproval(revoked.taskId, { status: "cancelled", error: "操作已被拒绝，任务未执行。" });
         return reply(res, 200, { denied: true, actionId });
       }
-      try { return reply(res, 200, { confirmed: true, ...await actionApprovals.confirm(actionId, active.key) }); }
+      try {
+        const confirmed = await actionApprovals.confirm(actionId, active.key);
+        if (confirmed?.action?.taskId) taskManager.resolveApproval(confirmed.action.taskId, { status: "completed", result: confirmed.result });
+        return reply(res, 200, { confirmed: true, ...confirmed });
+      }
       catch (error) {
         const status = [403, 404, 409, 429].includes(error?.statusCode) ? error.statusCode : 500;
         return reply(res, status, { error: status === 500 ? "Unable to execute confirmed action" : error.message });
@@ -1123,7 +1264,7 @@ const server = createServer(async (req, res) => {
       if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
         return reply(res, 415, { error: "Expected application/json" });
       if (!toolRunLimiter.allow(active.key))
-        return reply(res, 429, { error: "Too many tool runs; try again shortly." }, "application/json; charset=utf-8", { "retry-after": "5" });
+        return reply(res, 429, { error: "Too many tool runs; try again shortly." }, "application/json; charset=utf-8", { "retry-after": "60" });
       const args = await jsonBody(req);
       const tool = readOnlyTools.list().find(item => item.id === toolRunMatch[1]);
       if (!tool) return reply(res, 404, { error: "Unknown tool" });
@@ -1184,8 +1325,11 @@ function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   server.close(() => { void Promise.all([auditLogger?.flush(), taskManager.flush()]).finally(() => process.exit(0)); });
-  server.closeAllConnections?.();
-  setTimeout(() => process.exit(0), 5000).unref();
+  // Idle connections close right away; in-flight requests get a short grace
+  // period before the process is forced to exit.
+  server.closeIdleConnections?.();
+  setTimeout(() => server.closeAllConnections?.(), 3000).unref();
+  setTimeout(() => process.exit(0), 8000).unref();
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);

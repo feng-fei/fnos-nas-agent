@@ -5,6 +5,20 @@ function invalid(message, statusCode = 400, code = "SKILL_REMOTE_URL_INVALID") {
   return Object.assign(new Error(message), { statusCode, code });
 }
 
+/**
+ * Phase 136: a repository name is sometimes copied from a clone URL and keeps
+ * the ".git" suffix. The suffix is not part of the repository name, and the
+ * GitHub API would answer 404 for it, so it is removed before any request is
+ * built. The owner/repo shape is validated again afterwards.
+ */
+export function normalizeRepositoryName(owner, repo) {
+  if (typeof owner !== "string" || !/^[A-Za-z0-9_.-]{1,100}$/.test(owner)) return null;
+  if (typeof repo !== "string") return null;
+  const normalized = repo.replace(/\.git$/i, "");
+  if (!normalized || !/^[A-Za-z0-9_.-]{1,100}$/.test(normalized)) return null;
+  return { owner, repo: normalized };
+}
+
 export function validateGitHubArchiveUrl(value) {
   if (typeof value !== "string" || value.length > 2048)
     throw invalid("Provide a valid GitHub ZIP archive URL.");
@@ -42,7 +56,12 @@ export function validateGitHubArchiveUrl(value) {
   }
   if (!ref || ref.includes("..") || ref.startsWith("/") || ref.endsWith("/") || ref.includes("//"))
     throw invalid("GitHub archive ref contains invalid path segments.");
-  return { url: url.toString(), repository: owner + "/" + repo, refType, ref };
+  const normalized = normalizeRepositoryName(owner, repo);
+  if (!normalized) throw invalid("GitHub archive path contains invalid repository names.");
+  if (normalized.repo !== repo) {
+    url.pathname = url.pathname.replace(/^\/[^/]+\/[^/]+/, "/" + normalized.owner + "/" + normalized.repo);
+  }
+  return { url: url.toString(), repository: normalized.owner + "/" + normalized.repo, refType, ref };
 }
 
 export function validateGitHubRepositoryUrl(value) {
@@ -56,7 +75,14 @@ export function validateGitHubRepositoryUrl(value) {
   const match = url.pathname.match(/^\/([A-Za-z0-9_.-]{1,100})\/([A-Za-z0-9_.-]{1,100})\/?$/);
   if (!match || url.pathname.includes("..") || url.pathname.includes("\\"))
     throw invalid("Use the repository root URL: https://github.com/OWNER/REPOSITORY.");
-  return { url: "https://github.com/" + match[1] + "/" + match[2], repository: match[1] + "/" + match[2] };
+  // Phase 136: "https://github.com/OWNER/REPOSITORY.git" is a clone URL, not a
+  // repository name. The suffix is dropped before any API URL is built.
+  const normalized = normalizeRepositoryName(match[1], match[2]);
+  if (!normalized) throw invalid("Use the repository root URL: https://github.com/OWNER/REPOSITORY.");
+  return {
+    url: "https://github.com/" + normalized.owner + "/" + normalized.repo,
+    repository: normalized.owner + "/" + normalized.repo
+  };
 }
 
 function validDefaultBranch(value) {
@@ -258,7 +284,7 @@ export async function fetchGitHubSkillArchive(value, {
     if (Number.isFinite(declared) && declared > maxBytes) {
       await response.body?.cancel().catch(() => {});
       throw Object.assign(new Error("GitHub ZIP archive exceeds the 25 MiB import limit."), {
-        statusCode: 413, code: "SKILL_REMOTE_TOO_LARGE"
+        statusCode: 413, code: "SKILL_REMOTE_TOO_LARGE", bytesRead: 0
       });
     }
     const chunks = [];
@@ -270,7 +296,7 @@ export async function fetchGitHubSkillArchive(value, {
           size += buffer.length;
           if (size > maxBytes) {
             throw Object.assign(new Error("GitHub ZIP archive exceeds the 25 MiB import limit."), {
-              statusCode: 413, code: "SKILL_REMOTE_TOO_LARGE"
+              statusCode: 413, code: "SKILL_REMOTE_TOO_LARGE", bytesRead: size
             });
           }
           chunks.push(buffer);
@@ -278,8 +304,10 @@ export async function fetchGitHubSkillArchive(value, {
       }
     } catch (error) {
       if (error?.statusCode) throw error;
+      // Phase 136: report the bytes that were already transferred so that a
+      // failed download is charged to the batch budget.
       throw Object.assign(new Error("Unable to read the downloaded GitHub ZIP archive."), {
-        statusCode: 502, code: "SKILL_REMOTE_READ_FAILED"
+        statusCode: 502, code: "SKILL_REMOTE_READ_FAILED", bytesRead: size
       });
     }
     if (!size) throw Object.assign(new Error("GitHub returned an empty ZIP archive."), {

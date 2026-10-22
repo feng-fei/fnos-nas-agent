@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer as createTcpServer } from "node:net";
+import { makeZip, quarantineArchive, READ_ONLY_MANIFEST } from "./helpers/skill-archive.mjs";
 
 async function unusedPort() {
   const server = createTcpServer();
@@ -57,13 +58,17 @@ test("single Skill lifecycle transitions enforce review before enablement and pe
   assert.equal(login.status, 200);
   cookie = (login.headers.get("set-cookie") || "").split(";")[0];
 
+  // Phase 136: the server reviews the quarantined bytes itself, so the
+  // archive has to exist in the quarantine directory before the registration.
+  const digest = await quarantineArchive(dataDir, makeZip([{ name: "SKILL.md", data: READ_ONLY_MANIFEST }]));
   const registered = await request("/api/skills", {
     method: "POST",
-    body: JSON.stringify({ name: "Lifecycle Integration", version: "1.0.0", sourceLabel: "test", archiveSha256: "c".repeat(64), declaredCapabilities: [] })
+    body: JSON.stringify({ name: "Lifecycle Integration", version: "1.0.0", sourceLabel: "test", archiveSha256: digest, declaredCapabilities: [] })
   });
   assert.equal(registered.status, 201);
   const skill = (await registered.json()).skill;
   assert.equal(skill.state, "pending_review");
+  assert.equal(skill.manifestReview.reviewedBy, "server");
 
   const blockedEnable = await request(`/api/skills/${skill.id}/transition`, {
     method: "POST", body: JSON.stringify({ state: "enabled", note: "must review first" })

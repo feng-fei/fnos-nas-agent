@@ -126,17 +126,27 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       const reportProgress = typeof context?.reportProgress === "function" ? context.reportProgress : () => {};
       const shouldCancel = typeof context?.shouldCancel === "function" ? context.shouldCancel : () => false;
       const sessionId = typeof context?.sessionId === "string" ? context.sessionId : "";
+      // The queue aborts the task when it is cancelled or when its budget runs
+      // out. The signal is handed to the model request so that a pending HTTP
+      // call is aborted instead of running on for minutes.
+      const signal = context?.signal && typeof context.signal === "object" && typeof context.signal.aborted === "boolean"
+        ? context.signal
+        : null;
+      const cancelled = () => shouldCancel() || Boolean(signal && signal.aborted);
       reportProgress(5, "解析请求");
       if (!input || typeof input !== "object" || Array.isArray(input) || typeof input.text !== "string")
         throw Object.assign(new Error("A text field is required"), { statusCode: 400 });
       const text = input.text.trim();
       if (!text || text.length > MAX_USER_TEXT) throw Object.assign(new Error("Message must contain 1 to 2000 characters"), { statusCode: 400 });
       const history = normalizeConversationHistory(input.history);
-      const taskId = id();
+      // The queue task id is reused so that a pending destructive approval can be
+      // linked back to the task that requested it.
+      const taskId = typeof context?.taskId === "string" && context.taskId ? context.taskId : id();
       const createdAt = now();
       const direct = DIRECT_INTENTS.map(item => ({ item, match: item.pattern.exec(text) })).find(entry => entry.match);
       if (direct) {
         reportProgress(15, "已识别请求");
+        if (cancelled()) throw Object.assign(new Error("Task cancellation requested"), { code: "TASK_CANCELLED" });
         const results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] }, taskId, reportProgress, shouldCancel, sessionId);
         if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "rules", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "rules", message: direct.item.message, results };
@@ -152,9 +162,10 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
 
       let plan;
       reportProgress(15, "准备模型计划");
-      try { plan = await model.plan(text, tools.list(), history); }
+      try { plan = await model.plan(text, tools.list(), history, signal ? { signal } : {}); }
       catch (error) {
-        if (shouldCancel()) throw Object.assign(new Error("Task cancellation requested"), { code: "TASK_CANCELLED" });
+        if (cancelled() || error?.code === "MODEL_REQUEST_ABORTED")
+          throw Object.assign(new Error("Task cancellation requested"), { code: "TASK_CANCELLED" });
         // Only the error code and the upstream status are logged. The message itself
         // can carry an endpoint or a provider detail, so it never reaches the log.
         console.error("Model request failed:", error?.code || "UNKNOWN", error?.statusCode || "");
@@ -162,8 +173,11 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       }
       if (!plan) return { taskId, createdAt, completedAt: now(), status: "failed", mode: "model", message: "模型未生成有效计划，未执行工具。", results: [] };
       reportProgress(45, "模型计划已生成");
+      // A task that was cancelled or timed out while the model was thinking must
+      // never reach the tools: the user already saw the task as stopped.
+      if (cancelled()) throw Object.assign(new Error("Task cancellation requested"), { code: "TASK_CANCELLED" });
       try {
-        const results = await executePlan(plan, taskId, reportProgress, shouldCancel, sessionId);
+        const results = await executePlan(plan, taskId, reportProgress, cancelled, sessionId);
         if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "model", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "model", message: safeMessage(plan.message, "已完成请求。"), results };
       } catch (error) {

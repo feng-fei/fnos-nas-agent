@@ -88,6 +88,14 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
     }));
   }
 
+  function ownsTask(task, sessionId) {
+    // A task without a session (legacy history) stays visible; a task that belongs to
+    // another session is invisible and cannot be cancelled.
+    const scope = typeof sessionId === "string" ? sessionId : "";
+    if (!scope) return true;
+    return !task.sessionId || task.sessionId === scope;
+  }
+
   function logPersistFailure(error) {
     console.error(`[tasks] Task history could not be persisted: ${error?.message || "unknown error"}`);
   }
@@ -171,8 +179,10 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
       return;
     }
     for (const saved of parsed.tasks.slice(-historyLimit)) {
-      if (!saved || typeof saved.taskId !== "string" || !saved.taskId || !["queued", "running", "completed", "failed", "cancelled"].includes(saved.status)) continue;
-      const interrupted = saved.status === "queued" || saved.status === "running";
+      if (!saved || typeof saved.taskId !== "string" || !saved.taskId || !["queued", "running", "awaiting-approval", "completed", "failed", "cancelled"].includes(saved.status)) continue;
+      // A task that was waiting for a destructive confirmation cannot be resumed after a
+      // restart: the approval grant only lives in memory, so it counts as interrupted.
+      const interrupted = saved.status === "queued" || saved.status === "running" || saved.status === "awaiting-approval";
       const task = {
         taskId: saved.taskId,
         createdAt: typeof saved.createdAt === "string" ? saved.createdAt : now(),
@@ -207,6 +217,7 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
       const work = Promise.resolve().then(() => execute(task.input, Object.freeze({
         signal: controller.signal,
         sessionId: task.sessionId,
+        taskId: task.taskId,
         shouldCancel() { return task.cancelRequested === true; },
         reportProgress(value, stage = "") {
           if (task.status !== "running" || !Number.isFinite(value)) return false;
@@ -229,7 +240,27 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
         })])
         : work;
       guarded.then(
-        result => { task.cancelRequested = false; task.status = "completed"; task.progress = 100; task.stage = "已完成"; task.result = boundedTaskResult(result); },
+        result => {
+          task.cancelRequested = false;
+          const reported = typeof result?.status === "string" ? result.status : "";
+          if (reported === "awaiting-approval") {
+            // The task stays open until the operator confirms or denies the pending
+            // destructive action. It is not a terminal state, so it is not pruned.
+            task.status = "awaiting-approval";
+            task.stage = "等待确认";
+            task.progress = Math.min(task.progress, 99);
+            task.result = boundedTaskResult(result);
+            return;
+          }
+          if (reported === "failed") {
+            task.status = "failed";
+            task.stage = "执行失败";
+            task.error = typeof result?.message === "string" ? result.message.slice(0, 200) : "任务执行失败；未执行任意系统命令。";
+            task.result = boundedTaskResult(result);
+            return;
+          }
+          task.status = "completed"; task.progress = 100; task.stage = "已完成"; task.result = boundedTaskResult(result);
+        },
         error => {
           task.cancelRequested = false;
           if (error?.code === "TASK_CANCELLED") { task.status = "cancelled"; task.stage = "已取消"; task.error = "任务已取消；当前工具已结束，未继续执行后续步骤。"; }
@@ -238,7 +269,8 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
         }
       ).finally(() => {
         if (timer) clearTimeout(timer);
-        task.completedAt = now(); active--; prune(); void persist().catch(logPersistFailure); pump();
+        if (TERMINAL.has(task.status)) task.completedAt = now();
+        active--; prune(); void persist().catch(logPersistFailure); pump();
       });
     }
   }
@@ -253,16 +285,21 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
       const task = { taskId: id(), createdAt: now(), startedAt: null, completedAt: null, status: "queued", progress: 0, stage: "排队中", cancelRequested: false, sessionId, timeoutMs: taskTimeoutMs, timedOut: false, input, result: null, error: null };
       tasks.set(task.taskId, task); queue.push(task); void persist().catch(logPersistFailure); pump(); return publicTask(task);
     },
-    get(taskId) { const task = tasks.get(taskId); return task ? publicTask(task) : null; },
-    cancel(taskId) {
+    get(taskId, sessionId = "") { const task = tasks.get(taskId); if (!task || !ownsTask(task, sessionId)) return null; return publicTask(task); },
+    cancel(taskId, sessionId = "") {
       const task = tasks.get(taskId);
-      if (!task) return null;
+      if (!task || !ownsTask(task, sessionId)) return null;
       if (task.status === "running") {
         if (task.cancelRequested) return { cancelled: false, cancelRequested: true, task: publicTask(task) };
         task.cancelRequested = true;
         task.stage = "等待当前工具结束后停止";
         void persist().catch(logPersistFailure);
         return { cancelled: false, cancelRequested: true, task: publicTask(task) };
+      }
+      if (task.status === "awaiting-approval") {
+        task.status = "cancelled"; task.completedAt = now(); task.stage = "已取消"; task.error = "任务已取消；待确认的操作已撤销。";
+        prune(); void persist().catch(logPersistFailure);
+        return { cancelled: true, task: publicTask(task) };
       }
       if (task.status !== "queued") return { cancelled: false, task: publicTask(task) };
       const index = queue.findIndex(item => item.taskId === taskId);
@@ -272,19 +309,21 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
       prune(); void persist().catch(logPersistFailure);
       return { cancelled: true, task: publicTask(task) };
     },
-    list({ limit = 20, offset = 0, status } = {}) {
+    list({ limit = 20, offset = 0, status, sessionId = "" } = {}) {
       const bounded = Number.isInteger(limit) ? Math.min(50, Math.max(1, limit)) : 20;
       const skipped = Number.isInteger(offset) ? Math.min(10000, Math.max(0, offset)) : 0;
       return [...tasks.values()]
         .filter(task => !status || task.status === status)
+        .filter(task => ownsTask(task, sessionId))
         .sort((a,b) => b.createdAt.localeCompare(a.createdAt))
         .slice(skipped, skipped + bounded).map(publicTask);
     },
-    query({ limit = 20, offset = 0, status, search } = {}) {
+    query({ limit = 20, offset = 0, status, search, sessionId = "" } = {}) {
       const bounded = Number.isInteger(limit) ? Math.min(50, Math.max(1, limit)) : 20;
       const skipped = Number.isInteger(offset) ? Math.min(10000, Math.max(0, offset)) : 0;
       const needle = typeof search === "string" ? search.trim().slice(0, 100).toLocaleLowerCase() : "";
       const filtered = [...tasks.values()].filter(task => {
+        if (!ownsTask(task, sessionId)) return false;
         if (status && task.status !== status) return false;
         if (!needle) return true;
         return [task.taskId, task.status, task.stage, task.error, task.createdAt, task.completedAt]
@@ -293,9 +332,9 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
       return { total: filtered.length, limit: bounded, offset: skipped, status: status || null,
         search: needle || null, tasks: filtered.slice(skipped, skipped + bounded).map(publicTask) };
     },
-    async clearTerminal() {
+    async clearTerminal(sessionId = "") {
       await ready;
-      const removed = [...tasks.values()].filter(task => TERMINAL.has(task.status));
+      const removed = [...tasks.values()].filter(task => TERMINAL.has(task.status) && ownsTask(task, sessionId));
       for (const task of removed) tasks.delete(task.taskId);
       try { await persist(); }
       catch {
@@ -303,6 +342,22 @@ export function createTaskManager({ execute, now = () => new Date().toISOString(
         throw Object.assign(new Error("Unable to persist task history cleanup"), { statusCode: 500 });
       }
       return { removed: removed.length, retained: tasks.size };
+    },
+    resolveApproval(taskId, outcome = {}) {
+      // The operator confirmed or denied a pending destructive action. The task that
+      // requested it now reaches its real terminal state.
+      const task = tasks.get(taskId);
+      if (!task) return { updated: false, task: null };
+      if (task.status !== "awaiting-approval") return { updated: false, task: publicTask(task) };
+      const wanted = outcome?.status === "failed" ? "failed" : outcome?.status === "cancelled" ? "cancelled" : "completed";
+      task.status = wanted;
+      task.stage = wanted === "cancelled" ? "已取消" : wanted === "failed" ? "执行失败" : "已完成";
+      if (wanted === "completed") task.progress = 100;
+      task.completedAt = now();
+      if (outcome && typeof outcome.result !== "undefined") task.result = boundedTaskResult(outcome.result);
+      if (typeof outcome?.error === "string" && outcome.error) task.error = outcome.error.slice(0, 200);
+      prune(); void persist().catch(logPersistFailure);
+      return { updated: true, task: publicTask(task) };
     },
     stats() { return { queued: queue.length, running: active, retained: tasks.size, concurrency }; }
   });
