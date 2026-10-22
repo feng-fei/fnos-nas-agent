@@ -106,11 +106,38 @@ test("first-run setup stores only a salted password hash and protects session en
   const toolCatalogue = await tools.json();
   assert.equal(toolCatalogue.executionEnabled, false);
   assert.equal(toolCatalogue.readOnlyExecutionEnabled, true);
-  assert.deepEqual(toolCatalogue.tools.map(tool => tool.id), ["fnos.system.info","fnos.system.trim-version","fnos.system.kernel-version","fnos.system.hostname","fnos.system.uptime","fnos.system.all-volumes","fnos.system.volumes","fnos.file.ls","fnos.file.ls-dir","fnos.file.usage","fnos.app.list","fnos.docker.image-list","fnos.docker.stats","fnos.docker.container-list","fnos.docker.container-list-all","fnos.docker.compose-list","fnos.download.list","fnos.monitor.cpu","fnos.monitor.memory","fnos.monitor.network","fnos.monitor.disk","fnos.storage.pools","fnos.user.info","fnos.monitor.beep-supported","fnos.photos.folders","fnos.photos.search","system.status","storage.summary","system.process-summary","network.interfaces","files.list","files.preview","files.search","files.search-content","files.inspect","documents.index-status","documents.search","documents.index-refresh","files.create-folder","files.rename","files.move","files.upload","files.create-text","files.delete"]);
+  assert.deepEqual(toolCatalogue.tools.map(tool => tool.id), ["fnos.system.info","fnos.system.trim-version","fnos.system.kernel-version","fnos.system.hostname","fnos.system.uptime","fnos.system.all-volumes","fnos.system.volumes","fnos.file.ls","fnos.file.ls-dir","fnos.file.usage","fnos.app.list","fnos.docker.image-list","fnos.docker.stats","fnos.docker.container-list","fnos.docker.container-list-all","fnos.docker.compose-list","fnos.download.list","fnos.monitor.cpu","fnos.monitor.memory","fnos.monitor.network","fnos.monitor.disk","fnos.storage.pools","fnos.user.info","fnos.monitor.beep-supported","fnos.photos.folders","fnos.photos.search","system.status","storage.summary","system.process-summary","network.interfaces","files.list","files.preview","files.search","files.search-content","files.inspect","documents.index-status","documents.search","documents.index-refresh","health-checks.list","health-checks.create","health-checks.run","health-checks.update","health-checks.delete","files.create-folder","files.rename","files.move","files.upload","files.create-text","files.delete"]);
   assert.ok(toolCatalogue.tools.every(tool => ["read-only", "write", "destructive"].includes(tool.risk) && tool.inputSchema.additionalProperties === false));
   assert.equal(toolCatalogue.routineWriteExecutionEnabled, true);
   assert.equal(toolCatalogue.destructiveActionConfirmationEnabled, true);
-  assert.ok(toolCatalogue.tools.filter(tool => tool.risk === "write").every(tool => ["files.create-folder", "files.rename", "files.move", "files.upload", "files.create-text", "documents.index-refresh"].includes(tool.id)));
+  assert.ok(toolCatalogue.tools.filter(tool => tool.risk === "write").every(tool => ["files.create-folder", "files.rename", "files.move", "files.upload", "files.create-text", "documents.index-refresh", "health-checks.create", "health-checks.run", "health-checks.update", "health-checks.delete"].includes(tool.id)));
+  const createdSchedule = await fetch(baseUrl + "/api/health-checks", {
+    method: "POST", headers: { cookie, origin: baseUrl, "content-type": "application/json" },
+    body: JSON.stringify({ name: "API 系统巡检", type: "system", intervalMinutes: 5 })
+  });
+  assert.equal(createdSchedule.status, 201);
+  const createdCheck = (await createdSchedule.json()).check;
+  assert.equal(createdCheck.type, "system");
+  const listedSchedules = await fetch(baseUrl + "/api/health-checks", { headers: { cookie } });
+  assert.equal(listedSchedules.status, 200);
+  assert.ok((await listedSchedules.json()).checks.some(check => check.id === createdCheck.id));
+  const runSchedule = await fetch(baseUrl + "/api/health-checks/" + createdCheck.id + "/run", {
+    method: "POST", headers: { cookie, origin: baseUrl }
+  });
+  assert.equal(runSchedule.status, 200);
+  assert.equal((await runSchedule.json()).run.status, "ok");
+  const pausedSchedule = await fetch(baseUrl + "/api/health-checks/" + createdCheck.id, {
+    method: "PATCH", headers: { cookie, origin: baseUrl, "content-type": "application/json" },
+    body: JSON.stringify({ enabled: false })
+  });
+  assert.equal(pausedSchedule.status, 200);
+  assert.equal((await pausedSchedule.json()).check.enabled, false);
+  const removedSchedule = await fetch(baseUrl + "/api/health-checks/" + createdCheck.id, {
+    method: "DELETE", headers: { cookie, origin: baseUrl }
+  });
+  assert.equal(removedSchedule.status, 200);
+  assert.equal((await removedSchedule.json()).deleted, true);
+
 
   const pendingWithoutSession = await fetch(baseUrl + "/api/actions/pending");
   assert.equal(pendingWithoutSession.status, 401);

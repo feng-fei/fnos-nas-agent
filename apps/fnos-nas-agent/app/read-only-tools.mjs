@@ -81,6 +81,11 @@ const definitions = [
   { id: "documents.index-status", title: "本地文档库状态", description: "读取存放于应用私有数据目录的本地文档索引统计，不返回文档正文。", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
   { id: "documents.search", title: "搜索本地文档库", description: "在本地索引中按关键词检索文档，返回文件路径与经过打码的短摘要，不进行网络请求。", risk: "read-only", inputSchema: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 160 }, limit: { type: "integer", minimum: 1, maximum: 20 } }, required: ["query"], additionalProperties: false } },
   { id: "documents.index-refresh", title: "更新本地文档索引", description: "扫描授权存储卷中的受支持文本文件并更新应用私有文档索引；受条目、时间、单文件与总读取量限制。仅修改应用私有索引，不修改 NAS 原文件。", risk: "write", inputSchema: { type: "object", properties: { force: { type: "boolean" }, maxFiles: { type: "integer", minimum: 1, maximum: 500 } }, additionalProperties: false } },
+  { id: "health-checks.list", title: "定时巡检计划", description: "列出已保存的定时健康检查及有限执行历史。", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { id: "health-checks.create", title: "创建定时健康检查", description: "创建系统、存储、网络、Docker 或本地文档库定时巡检计划。仅计划持久化；执行时调用注册的只读工具。", risk: "write", inputSchema: { type: "object", properties: { name: { type: "string", minLength: 1, maxLength: 80 }, type: { type: "string", minLength: 1, maxLength: 20 }, intervalMinutes: { type: "integer", minimum: 5, maximum: 10080 }, enabled: { type: "boolean" } }, required: ["name","type","intervalMinutes"], additionalProperties: false } },
+  { id: "health-checks.run", title: "立即运行健康检查", description: "手动运行指定巡检计划，并保存经过摘要化的结果。不会执行 NAS 写操作。", risk: "write", inputSchema: { type: "object", properties: { checkId: { type: "string", minLength: 1, maxLength: 36 } }, required: ["checkId"], additionalProperties: false } },
+  { id: "health-checks.update", title: "更新定时健康检查", description: "暂停、恢复或调整已有巡检计划。", risk: "write", inputSchema: { type: "object", properties: { checkId: { type: "string", minLength: 1, maxLength: 36 }, name: { type: "string", minLength: 1, maxLength: 80 }, enabled: { type: "boolean" }, intervalMinutes: { type: "integer", minimum: 5, maximum: 10080 } }, required: ["checkId"], additionalProperties: false } },
+  { id: "health-checks.delete", title: "删除定时健康检查计划", description: "删除指定计划和该计划的有限巡检历史；不删除或修改 NAS 文件。", risk: "write", inputSchema: { type: "object", properties: { checkId: { type: "string", minLength: 1, maxLength: 36 } }, required: ["checkId"], additionalProperties: false } },
   {
     id: "files.create-folder", title: "创建文件夹", description: "在允许的存储卷内创建一个新文件夹；不覆盖已有内容。", risk: "write",
     inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, name: { type: "string", minLength: 1, maxLength: 255 } }, required: ["path", "name"], additionalProperties: false }
@@ -121,7 +126,7 @@ function validArgs(args, schema) {
   return true;
 }
 
-export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null, fileManager = null, documentIndex = null, trimCli = null, executionPolicy = null }) {
+export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null, fileManager = null, documentIndex = null, getScheduledHealthChecks = null, trimCli = null, executionPolicy = null }) {
   if (typeof getDiagnostics !== "function") throw new TypeError("getDiagnostics must be a function");
 
   function list() {
@@ -184,6 +189,18 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     if (id === "documents.index-refresh") {
       if (!documentIndex) throw Object.assign(new Error("Local document index requires a configured app data directory"), { statusCode: 503 });
       return documentIndex.refresh({ force: args.force ?? false, maxFiles: args.maxFiles ?? 500 });
+    }
+    if (id.startsWith("health-checks.")) {
+      const scheduler = typeof getScheduledHealthChecks === "function" ? getScheduledHealthChecks() : null;
+      if (!scheduler) throw Object.assign(new Error("Scheduled health checks require a configured app data directory"), { statusCode: 503 });
+      if (id === "health-checks.list") return scheduler.list();
+      if (id === "health-checks.create") return scheduler.create(args);
+      if (id === "health-checks.run") return scheduler.runNow(args.checkId);
+      if (id === "health-checks.update") {
+        const { checkId, ...update } = args;
+        return scheduler.update(checkId, update);
+      }
+      if (id === "health-checks.delete") return scheduler.remove(args.checkId);
     }
     if (id === "files.create-folder") {
       if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
