@@ -126,9 +126,11 @@ test("content search finds text matches within allowed roots and redacts credent
     const outside = join(temp, "outside");
     await mkdir(docs, { recursive: true });
     await mkdir(outside);
-    await writeFile(join(docs, "guide.md"), "存储方案：使用 5 GB 缓冲。\nAPI_KEY = \"super-secret-value\"\n");
+    await writeFile(join(docs, "guide.md"), "存储方案：使用 5 GB 缓冲。\nAPI_KEY = \"super-secret-value\"\nsession_token = \"session-token-secret-value\"\n");
     await writeFile(join(docs, ".env"), "APP_TOKEN=hidden-env-value\n");
     await writeFile(join(docs, "database-password.txt"), "password=hidden-password-value\n");
+    await mkdir(join(docs, "secrets"));
+    await writeFile(join(docs, "secrets", "notes.md"), "hidden-directory-secret-marker");
     await writeFile(join(docs, "binary.txt"), Buffer.from([0, 1, 2, 3]));
     await writeFile(join(outside, "external.md"), "外部目录中不应出现 TARGETWORD");
     await symlink(join(outside, "external.md"), join(docs, "external.md"));
@@ -145,6 +147,12 @@ test("content search finds text matches within allowed roots and redacts credent
     assert.equal(secret.entries.length, 1);
     assert.match(secret.entries[0].snippet, /已隐藏/);
     assert.doesNotMatch(JSON.stringify(secret), /super-secret-value/);
+    const token = await browser.searchContent(docs, "session_token");
+    assert.equal(token.entries.length, 1);
+    assert.doesNotMatch(JSON.stringify(token), /session-token-secret-value/);
+
+    const skippedDirectory = await browser.searchContent(docs, "hidden-directory-secret-marker");
+    assert.equal(skippedDirectory.entries.length, 0);
 
     const skippedSecret = await browser.searchContent(docs, "hidden-env-value");
     assert.equal(skippedSecret.entries.length, 0);

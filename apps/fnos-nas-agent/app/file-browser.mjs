@@ -29,11 +29,17 @@ const CONTENT_SKIP_NAMES = new Set([
   "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"
 ]);
 
+function isSensitiveContentName(name) {
+  const lower = String(name).toLowerCase();
+  return CONTENT_SKIP_NAMES.has(lower) ||
+    /^\.env(?:\.|$)/i.test(lower) ||
+    /(?:^|[._-])(?:credential|credentials|secret|secrets|password|passwd|token|private[-_]?key)(?:[._-]|$)/i.test(lower) ||
+    /\.(?:pem|key|p12|pfx|der|crt|cer|jks|keystore)$/i.test(lower);
+}
+
 function isContentSearchableName(name) {
   const lower = String(name).toLowerCase();
-  if (CONTENT_SKIP_NAMES.has(lower) || /^\.env(?:\.|$)/i.test(lower)) return false;
-  if (/(?:^|[._-])(?:credential|credentials|secret|secrets|password|passwd|token|private[-_]?key)(?:[._-]|$)/i.test(lower)) return false;
-  if (/\.(?:pem|key|p12|pfx|der|crt|cer|jks|keystore)$/i.test(lower)) return false;
+  if (isSensitiveContentName(lower)) return false;
   const dot = lower.lastIndexOf(".");
   if (dot >= 0 && CONTENT_TEXT_EXTENSIONS.has(lower.slice(dot))) return true;
   return ["readme", "license", "makefile", "dockerfile", "justfile"].includes(lower);
@@ -41,8 +47,8 @@ function isContentSearchableName(name) {
 
 function redactContentSnippet(value) {
   return String(value)
-    .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret(?:[_-]?key)?|password|passwd|authorization)\s*["']?\s*[:=]\s*["']?)[^"'\s,;}{]+/gi, "$1[已隐藏]")
-    .replace(/\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/g, "[已隐藏令牌]")
+    .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret(?:[_-]?key)?|aws_secret_access_key|password|passwd|authorization)\s*["']?\s*[:=]\s*["']?)[^"'\s,;}{]+/gi, "$1[已隐藏]")
+    .replace(/\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35})\b/g, "[已隐藏令牌]")
     .slice(0, 240);
 }
 
@@ -386,7 +392,7 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
           }
           const entry = scanned.entries[index];
           scannedEntries++;
-          if (entry.isSymbolicLink() || CONTENT_SKIP_DIRS.has(entry.name.toLowerCase())) continue;
+          if (entry.isSymbolicLink() || CONTENT_SKIP_DIRS.has(entry.name.toLowerCase()) || isSensitiveContentName(entry.name)) continue;
           const fullPath = resolve(currentPath, entry.name);
           if (!within(currentRoot, fullPath)) continue;
           let info;
