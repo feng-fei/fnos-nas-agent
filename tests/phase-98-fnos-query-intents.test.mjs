@@ -6,7 +6,8 @@ const definitions = [
   { id: "fnos.system.info", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
   { id: "fnos.file.usage", risk: "read-only", inputSchema: { type: "object", properties: { volumeId: { type: "integer", minimum: 1, maximum: 10000 } }, required: ["volumeId"], additionalProperties: false } },
   { id: "fnos.file.ls-dir", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["path"], additionalProperties: false } },
-  { id: "fnos.monitor.beep-supported", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } }
+  { id: "fnos.monitor.beep-supported", risk: "read-only", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { id: "files.search-content", risk: "read-only", inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, query: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["query"], additionalProperties: false } }
 ];
 
 function fixture() {
@@ -49,4 +50,13 @@ test("invalid volume identifiers fail tool schema validation without invoking a 
   const f = fixture();
   await assert.rejects(f.agent.run({ text: "查看存储卷容量 99999" }), { statusCode: 400 });
   assert.deepEqual(f.calls, []);
+});
+
+
+test("natural-language document content search routes to bounded read-only content search", async () => {
+  const f = fixture();
+  const result = await f.agent.run({ text: "搜索文件内容 报价" });
+  assert.equal(result.mode, "rules");
+  assert.equal(result.results[0].tool, "files.search-content");
+  assert.deepEqual(f.calls, [{ id: "files.search-content", args: { query: "报价", limit: 30 } }]);
 });

@@ -11,6 +11,46 @@ const MAX_SEARCH_RESULTS = 100;
 // every one of them is a denial of service vector, so a listing examines a bounded
 // number of entries and reports that it was truncated.
 const MAX_SCAN_ENTRIES = 2000;
+const MAX_CONTENT_SEARCH_VISITS = 2500;
+const MAX_CONTENT_SEARCH_DEPTH = 8;
+const MAX_CONTENT_SEARCH_RESULTS = 50;
+const MAX_CONTENT_FILE_BYTES = 256 * 1024;
+const MAX_CONTENT_TOTAL_BYTES = 2 * 1024 * 1024;
+const MAX_CONTENT_SEARCH_MS = 3000;
+const CONTENT_TEXT_EXTENSIONS = new Set([
+  ".txt", ".md", ".markdown", ".log", ".csv", ".tsv", ".json", ".jsonl",
+  ".yaml", ".yml", ".toml", ".ini", ".conf", ".cfg", ".xml", ".html", ".htm",
+  ".css", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".py", ".sh", ".bash",
+  ".zsh", ".sql", ".go", ".rs", ".java", ".c", ".h", ".cpp", ".hpp"
+]);
+const CONTENT_SKIP_DIRS = new Set([".git", "node_modules", ".ssh", ".gnupg"]);
+const CONTENT_SKIP_NAMES = new Set([
+  ".env", ".npmrc", ".pypirc", ".netrc", "_netrc",
+  "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"
+]);
+
+function isSensitiveContentName(name) {
+  const lower = String(name).toLowerCase();
+  return CONTENT_SKIP_NAMES.has(lower) ||
+    /^\.env(?:\.|$)/i.test(lower) ||
+    /(?:^|[._-])(?:credential|credentials|secret|secrets|password|passwd|token|private[-_]?key)(?:[._-]|$)/i.test(lower) ||
+    /\.(?:pem|key|p12|pfx|der|crt|cer|jks|keystore)$/i.test(lower);
+}
+
+function isContentSearchableName(name) {
+  const lower = String(name).toLowerCase();
+  if (isSensitiveContentName(lower)) return false;
+  const dot = lower.lastIndexOf(".");
+  if (dot >= 0 && CONTENT_TEXT_EXTENSIONS.has(lower.slice(dot))) return true;
+  return ["readme", "license", "makefile", "dockerfile", "justfile"].includes(lower);
+}
+
+function redactContentSnippet(value) {
+  return String(value)
+    .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret(?:[_-]?key)?|aws_secret_access_key|password|passwd|authorization)\s*["']?\s*[:=]\s*["']?)[^"'\s,;}{]+/gi, "$1[已隐藏]")
+    .replace(/\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35})\b/g, "[已隐藏令牌]")
+    .slice(0, 240);
+}
 
 function within(root, target) {
   const rel = relative(root, target);
@@ -231,5 +271,201 @@ export function createFileBrowser({ roots: suppliedRoots, env = process.env, fs 
     return { roots: roots.map(path => ({ name: basename(path), path })), path: start, query: queryValue.trim(), entries, scanned, truncated };
   }
 
-  return Object.freeze({ list, search });
+  async function readSearchableText(fdPath, name, expectedInfo) {
+    let handle = null;
+    let bytesRead = 0;
+    try {
+      handle = await fs.open(join(fdPath, name), constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
+      const before = await handle.stat({ bigint: true });
+      if (!before.isFile() ||
+          before.dev !== BigInt(expectedInfo.dev) ||
+          before.ino !== BigInt(expectedInfo.ino) ||
+          before.size > BigInt(MAX_CONTENT_FILE_BYTES)) {
+        return { text: null, bytesRead: 0 };
+      }
+      const expectedSize = Number(before.size);
+      const chunks = [];
+      let position = 0;
+      while (position < expectedSize) {
+        const buffer = Buffer.alloc(Math.min(16 * 1024, expectedSize - position));
+        const read = await handle.read(buffer, 0, buffer.length, position);
+        if (!read.bytesRead) break;
+        chunks.push(buffer.subarray(0, read.bytesRead));
+        position += read.bytesRead;
+      }
+      bytesRead = position;
+      const after = await handle.stat({ bigint: true });
+      if (position !== expectedSize ||
+          after.dev !== before.dev ||
+          after.ino !== before.ino ||
+          after.size !== before.size ||
+          after.mtimeNs !== before.mtimeNs ||
+          after.ctimeNs !== before.ctimeNs) {
+        return { text: null, bytesRead };
+      }
+      const data = Buffer.concat(chunks, position);
+      if (data.includes(0)) return { text: null, bytesRead };
+      try {
+        return { text: new TextDecoder("utf-8", { fatal: true }).decode(data), bytesRead };
+      } catch {
+        return { text: null, bytesRead };
+      }
+    } catch {
+      return { text: null, bytesRead };
+    } finally {
+      if (handle) await handle.close().catch(() => {});
+    }
+  }
+
+  async function searchContent(pathValue = "", queryValue, requestedLimit = 30) {
+    if (typeof pathValue !== "string" || pathValue.length > 2048 ||
+        typeof queryValue !== "string" || !queryValue.trim() || queryValue.length > 200) {
+      throw Object.assign(new Error("Invalid file content search query"), { statusCode: 400 });
+    }
+    const roots = await getRoots();
+    if (!roots.length) {
+      return { roots: [], path: null, query: queryValue.trim(), entries: [], scannedEntries: 0, scannedFiles: 0, bytesRead: 0, skippedLargeFiles: 0, truncated: false };
+    }
+    const requestedPath = pathValue.trim() ? resolve(pathValue) : roots[0];
+    let start;
+    try { start = await fs.realpath(requestedPath); }
+    catch { throw Object.assign(new Error("Search directory not found"), { statusCode: 404 }); }
+    const root = roots.find(candidate => within(candidate, start));
+    if (!root) throw Object.assign(new Error("Path is outside configured storage roots"), { statusCode: 403 });
+    const startInfo = await fs.lstat(start);
+    if (!startInfo.isDirectory() || startInfo.isSymbolicLink()) throw Object.assign(new Error("Search path is not a directory"), { statusCode: 400 });
+
+    const limit = Number.isInteger(requestedLimit) ? Math.max(1, Math.min(MAX_CONTENT_SEARCH_RESULTS, requestedLimit)) : 30;
+    const needle = queryValue.trim().toLocaleLowerCase();
+    const deadline = Date.now() + MAX_CONTENT_SEARCH_MS;
+    const queue = [{ path: start, depth: 0 }];
+    const entries = [];
+    let scannedEntries = 0;
+    let scannedFiles = 0;
+    let bytesRead = 0;
+    let skippedLargeFiles = 0;
+    let truncated = false;
+    let stop = false;
+
+    while (queue.length && !stop) {
+      if (Date.now() >= deadline || scannedEntries >= MAX_CONTENT_SEARCH_VISITS) {
+        truncated = true;
+        break;
+      }
+      if (entries.length >= limit) {
+        truncated = queue.length > 0;
+        break;
+      }
+      const current = queue.shift();
+      let currentPath;
+      try { currentPath = await fs.realpath(current.path); }
+      catch {
+        if (current.depth === 0) throw Object.assign(new Error("Directory changed while searching; retry the operation"), { statusCode: 409 });
+        continue;
+      }
+      if (currentPath !== current.path) {
+        if (current.depth === 0) throw Object.assign(new Error("Directory changed while searching; retry the operation"), { statusCode: 409 });
+        continue;
+      }
+      const currentRoot = roots.find(candidate => within(candidate, currentPath));
+      if (!currentRoot) {
+        if (current.depth === 0) throw Object.assign(new Error("Directory changed while searching; retry the operation"), { statusCode: 409 });
+        continue;
+      }
+      let currentInfo;
+      try { currentInfo = await fs.lstat(currentPath); } catch { continue; }
+      if (!currentInfo.isDirectory() || currentInfo.isSymbolicLink()) continue;
+
+      let handle = null;
+      let directoryTruncated = false;
+      try {
+        handle = await openValidatedDirectory(currentPath, currentInfo);
+        const fdPath = descriptorPath(handle);
+        const remaining = Math.max(0, Math.min(MAX_SCAN_ENTRIES, MAX_CONTENT_SEARCH_VISITS - scannedEntries));
+        const scanned = await readDirectoryEntries(fdPath, remaining);
+        directoryTruncated = scanned.truncated;
+        for (let index = 0; index < scanned.entries.length; index++) {
+          if (Date.now() >= deadline || scannedEntries >= MAX_CONTENT_SEARCH_VISITS) {
+            truncated = true;
+            stop = true;
+            break;
+          }
+          const entry = scanned.entries[index];
+          scannedEntries++;
+          if (entry.isSymbolicLink() || CONTENT_SKIP_DIRS.has(entry.name.toLowerCase()) || isSensitiveContentName(entry.name)) continue;
+          const fullPath = resolve(currentPath, entry.name);
+          if (!within(currentRoot, fullPath)) continue;
+          let info;
+          try { info = await fs.lstat(join(fdPath, entry.name)); } catch { continue; }
+          if (info.isSymbolicLink()) continue;
+          if (info.isDirectory()) {
+            if (current.depth < MAX_CONTENT_SEARCH_DEPTH) queue.push({ path: fullPath, depth: current.depth + 1 });
+            else if (current.depth === MAX_CONTENT_SEARCH_DEPTH) truncated = true;
+            continue;
+          }
+          if (!info.isFile() || !isContentSearchableName(entry.name)) continue;
+          if (info.size > MAX_CONTENT_FILE_BYTES) {
+            skippedLargeFiles++;
+            continue;
+          }
+          if (bytesRead + info.size > MAX_CONTENT_TOTAL_BYTES) {
+            truncated = true;
+            stop = true;
+            break;
+          }
+          scannedFiles++;
+          const readResult = await readSearchableText(fdPath, entry.name, info);
+          bytesRead += readResult.bytesRead;
+          if (typeof readResult.text !== "string") continue;
+          const lines = readResult.text.split(/\r?\n/);
+          for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            const line = lines[lineIndex];
+            if (!line.toLocaleLowerCase().includes(needle)) continue;
+            entries.push({
+              name: entry.name,
+              path: fullPath,
+              lineNumber: lineIndex + 1,
+              snippet: redactContentSnippet(line.trim()),
+              sizeBytes: info.size,
+              modifiedAt: info.mtime.toISOString()
+            });
+            break;
+          }
+          if (entries.length >= limit) {
+            truncated = index < scanned.entries.length - 1 || scanned.truncated || queue.length > 0;
+            stop = true;
+            break;
+          }
+        }
+      } catch (error) {
+        if (error?.statusCode === 409 || error?.statusCode === 503) throw error;
+      } finally {
+        if (handle) await handle.close().catch(() => {});
+      }
+      if (directoryTruncated) {
+        truncated = true;
+        stop = true;
+      }
+    }
+    return {
+      roots: roots.map(path => ({ name: basename(path), path })),
+      path: start,
+      query: queryValue.trim(),
+      entries,
+      scannedEntries,
+      scannedFiles,
+      bytesRead,
+      skippedLargeFiles,
+      truncated,
+      limits: {
+        entries: MAX_CONTENT_SEARCH_VISITS,
+        depth: MAX_CONTENT_SEARCH_DEPTH,
+        fileBytes: MAX_CONTENT_FILE_BYTES,
+        totalBytes: MAX_CONTENT_TOTAL_BYTES,
+        durationMs: MAX_CONTENT_SEARCH_MS
+      }
+    };
+  }
+
+  return Object.freeze({ list, search, searchContent });
 }

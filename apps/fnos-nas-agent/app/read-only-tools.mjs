@@ -71,6 +71,10 @@ const definitions = [
     inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, query: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 100 } }, required: ["query"], additionalProperties: false }
   },
   {
+    id: "files.search-content", title: "搜索文件内容", description: "在允许存储卷内搜索 UTF-8 文本内容；限制目录深度、扫描条目、单文件和总读取量，跳过符号链接及常见敏感凭据文件，并对结果片段打码。", risk: "read-only",
+    inputSchema: { type: "object", properties: { path: { type: "string", maxLength: 2048 }, query: { type: "string", minLength: 1, maxLength: 200 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["query"], additionalProperties: false }
+  },
+  {
     id: "files.create-folder", title: "创建文件夹", description: "在允许的存储卷内创建一个新文件夹；不覆盖已有内容。", risk: "write",
     inputSchema: { type: "object", properties: { path: { type: "string", minLength: 1, maxLength: 2048 }, name: { type: "string", minLength: 1, maxLength: 255 } }, required: ["path", "name"], additionalProperties: false }
   },
@@ -152,6 +156,10 @@ export function createReadOnlyToolRegistry({ getDiagnostics, fileBrowser = null,
     if (id === "files.search") {
       if (!fileBrowser || typeof fileBrowser.search !== "function") throw Object.assign(new Error("File search is unavailable"), { statusCode: 503 });
       return fileBrowser.search(args.path || "", args.query, args.limit ?? 50);
+    }
+    if (id === "files.search-content") {
+      if (!fileBrowser || typeof fileBrowser.searchContent !== "function") throw Object.assign(new Error("File content search is unavailable"), { statusCode: 503 });
+      return fileBrowser.searchContent(args.path || "", args.query, args.limit ?? 30);
     }
     if (id === "files.create-folder") {
       if (!fileManager) throw Object.assign(new Error("File manager is unavailable"), { statusCode: 503 });
