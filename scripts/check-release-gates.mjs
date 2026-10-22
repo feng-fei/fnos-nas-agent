@@ -559,4 +559,19 @@ assert.match(phase142Docs, /manifest/i);
 assert.match(phase136DocsIndex, /### Phase 142/);
 assert.match(readme, /Phase 142 — Official CLI Manifest Paths/);
 
+/* ---------------------------------------------- Phase 143 assertions -- */
+// The official CLI reports a profile that was never logged in with a
+// plain "run login first". That first-run answer must be classified as
+// a missing login, not as an unexpected server error.
+const phase143Health = await read("apps/fnos-nas-agent/app/trim-cli-health.mjs");
+const phase143Tests = await read("tests/phase-143-cli-login-required.test.mjs");
+const phase143Docs = await read("docs/phase-143-cli-login-required.md");
+assert.match(phase143Health, /kind: "login_required"/);
+assert.match(phase143Health, /session is required/);
+assert.match(phase143Health, /kind = "login_required"/);
+assert.match(phase143Tests, /login_required/);
+assert.match(phase143Docs, /login/i);
+assert.match(phase136DocsIndex, /### Phase 143/);
+assert.match(readme, /Phase 143 — Official CLI Login Guidance/);
+
 console.log("Release readiness gates passed: runtime dependency, CI matrix, packaging, and safety invariants.");

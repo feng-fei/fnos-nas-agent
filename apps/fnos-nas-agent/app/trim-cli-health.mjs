@@ -5,6 +5,11 @@ const FAILURE_RULES = [
     nextAction: "通过官方 CLI 交互式登录重新授权所需模块 scope；仅刷新 token 无法增加 scope。"
   },
   {
+    kind: "login_required", statusCode: 401, connectionStatus: "auth_required", authenticated: false,
+    message: "官方 CLI 尚未完成 OAuth 登录。",
+    nextAction: "先按「授权引导」页生成的命令在终端执行官方 CLI 的 login，完成浏览器授权后再运行连接检测。"
+  },
+  {
     kind: "auth_required", statusCode: 401, connectionStatus: "auth_required", authenticated: false,
     message: "官方 CLI 授权已失效或需要重新登录。",
     nextAction: "先在授权引导中尝试官方 CLI 的交互式 refresh；若仍失败，重新执行 login 并完成浏览器授权。"
@@ -79,6 +84,7 @@ export function classifyTrimCliFailure(error) {
     /network is unreachable|no route to host|could not resolve host|name or service not known|connection refused|connection reset by peer|failed to fetch|network error/.test(diagnostic)) kind = "network_error";
   else if (/\b(?:insufficient|missing|required|not granted|not authorized)\s+(?:oauth\s+)?scope\b|\bscope\b.{0,60}\b(?:insufficient|missing|required|not granted|not granted to this client)\b/.test(diagnostic)) kind = "scope_missing";
   else if (/\b(?:401|unauthorized|authentication required|not authenticated|login required|token expired|expired access token|refresh token.{0,30}(?:expired|invalid|failed)|authorization.{0,30}expired|please login)\b|登录已过期|需要重新登录/.test(diagnostic)) kind = "auth_required";
+  else if (/\b(?:run login first|login first|not logged in|no saved (?:proxy )?session|saved (?:proxy )?session is required|session is required|must (?:be )?logged in)\b|尚未登录|请先登录/.test(diagnostic)) kind = "login_required";
   else if (["429"].includes(code) || /\b429\b|rate limit exceeded|too many requests|请求频率过高/.test(diagnostic)) kind = "rate_limited";
   else if (/profile.{0,60}(?:not found|corrupt|invalid)|session store.{0,40}(?:unwritable|not writable|permission denied)|config(?:uration)? file.{0,40}permission denied/.test(diagnostic)) kind = "profile_unavailable";
   else kind = "unexpected";

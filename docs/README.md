@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 144 documents (131 phase documents and 12 non-phase documents, plus this file).
+This index lists 145 documents (132 phase documents and 12 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -534,6 +534,10 @@ This index lists 144 documents (131 phase documents and 12 non-phase documents, 
 ### Phase 142
 
 - [Phase 142 — Official CLI Manifest Paths](phase-142-official-cli-manifest-paths.md) — the binary path declared by the official package manifest is resolved against the package folder, so the official CLI can be installed.
+
+### Phase 143
+
+- [Phase 143 — Official CLI Login Guidance](phase-143-cli-login-required.md) — the official CLI answers a profile that was never logged in with a plain "run login first"; the console used to report it as an unexpected 502, and now it answers 401 with the exact login step.
 
 - [Phase 141 — Official Skill Identity](phase-141-official-skill-identity.md) — the official fnOS package identity follows the server side review instead of the name the operator typed.
 
