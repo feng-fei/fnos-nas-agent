@@ -1990,3 +1990,76 @@ async function refreshCurrentPage(){
 
 /* 启动：外壳已经就绪，这里开始拉取会话与首屏数据。 */
 init();
+
+
+/* ---------- Phase 186：文件查找重复 + 设备能力体检 ---------- */
+(function(){
+  const duplicateButton=document.querySelector("#file-duplicates");
+  const duplicateStatus=document.querySelector("#file-duplicates-status");
+  const duplicateResult=document.querySelector("#file-duplicates-result");
+  if(duplicateButton&&duplicateResult){
+    duplicateButton.addEventListener("click",async()=>{
+      duplicateButton.disabled=true;
+      duplicateResult.textContent="";
+      if(duplicateStatus)duplicateStatus.textContent="正在按大小与 SHA-256 比对当前目录…";
+      try{
+        const params=new URLSearchParams({limit:"200"});
+        if(currentFilePath)params.set("path",currentFilePath);
+        const response=await api("/api/files/duplicates?"+params.toString());
+        const data=await response.json();
+        if(!response.ok)throw Error(data.error||("扫描失败（HTTP "+response.status+"）"));
+        const groups=Array.isArray(data.groups)?data.groups:[];
+        if(!groups.length){
+          duplicateResult.textContent="当前目录没有内容相同的重复文件。";
+          if(duplicateStatus)duplicateStatus.textContent="已比对 "+(data.scanned||0)+" 个文件，没有可回收的重复空间。";
+        }else{
+          const lines=[];
+          let wasted=0;
+          groups.forEach((group,index)=>{
+            const size=Number(group.size)||0;
+            wasted+=Number(group.wastedBytes)||size*(group.paths.length-1);
+            lines.push("#"+(index+1)+"  "+formatBytes(size)+" × "+group.paths.length+" 个");
+            for(const filePath of group.paths)lines.push("    "+filePath);
+          });
+          duplicateResult.textContent=lines.join("\n");
+          if(duplicateStatus)duplicateStatus.textContent="发现 "+groups.length+" 组重复，可回收约 "+formatBytes(wasted)+"（只比对当前目录，不递归）。";
+        }
+        if(data.truncated&&duplicateStatus)duplicateStatus.textContent+=" 结果已截断，请缩小目录范围。";
+      }catch(error){
+        if(duplicateStatus)duplicateStatus.textContent=(error&&error.message)?error.message:"扫描失败";
+      }finally{
+        duplicateButton.disabled=false;
+      }
+    });
+  }
+
+  const capabilityStatus=document.querySelector("#capability-status");
+  const capabilityResult=document.querySelector("#capability-result");
+  async function loadDeviceCapability(profile){
+    if(!capabilityResult)return;
+    capabilityResult.textContent="";
+    if(capabilityStatus)capabilityStatus.textContent="正在读取本机环境…";
+    try{
+      const response=await api("/api/system/capabilities?profile="+encodeURIComponent(profile));
+      const data=await response.json();
+      if(!response.ok)throw Error(data.error||("读取失败（HTTP "+response.status+"）"));
+      const verdict=data.verdict==="ready"?"满足运行要求":data.verdict==="partial"?"部分满足":"不满足";
+      const lines=[verdict+"　"+String(data.profile||"")+"（"+String(data.passed)+"/"+String(data.total)+" 项通过）"];
+      for(const item of data.dimensions||[]){
+        const mark=item.passed===true?"✔":(item.passed===false?"✘":"?");
+        lines.push(mark+" "+item.label+"：需要 "+item.required+"，当前 "+item.actual);
+      }
+      if(data.recommendation)lines.push("结论："+data.recommendation);
+      if(data.note)lines.push(data.note);
+      capabilityResult.textContent=lines.join("\n");
+      if(capabilityStatus)capabilityStatus.textContent="";
+    }catch(error){
+      if(capabilityStatus)capabilityStatus.textContent=(error&&error.message)?error.message:"读取失败";
+    }
+  }
+  for(const button of document.querySelectorAll("[data-capability-profile]")){
+    button.addEventListener("click",()=>{
+      loadDeviceCapability(button.getAttribute("data-capability-profile")||"agent-host");
+    });
+  }
+})();

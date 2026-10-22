@@ -100,7 +100,7 @@ can only escalate to a human instead of proposing them.
 | F04 File type classification | Implemented | `files.inspect` | — |
 | F05 Search by time | Implemented | `files.search` filters | — |
 | F06 Search by size | Implemented | `files.inspect`, `files.search` | — |
-| F07 Duplicate file detection | Implemented | Phase 163 `detectDuplicates` | Two-stage size plus hash, bounded |
+| F07 Duplicate file detection | Implemented | Phase 163 `detectDuplicates`, Phase 184 scan route, Phase 186 UI entry | Two-stage size plus hash, bounded; single-directory scope by design |
 | F08 Temporary file identification | Implemented | `files.inspect` | — |
 | F09 Automatic archiving | Partly | Phase 163 `planArchive` | Produces a plan, never moves files |
 | F10 Batch rename | Open | — | — |
@@ -281,7 +281,7 @@ Missing capabilities are reported as unknown, never as a working feature.
 | --- | --- | --- | --- |
 | K01 Operations knowledge base | Partly | Documents under `docs/`, document index, `app/runbook-store.mjs` | No runbook authoring in the UI yet |
 | K02 Historical fault library | Partly | `app/runbook-store.mjs` search | Fault records are still written by hand |
-| K03 Device profile | Open | — | — |
+| K03 Device profile | Implemented | Phase 185 capability map, Phase 186 `device-capability.mjs`, `GET /api/system/capabilities` | Five dimensions only; instruction-set and free-space probing left out on purpose |
 | K04 Application profile | Partly | `app/ui/knowledge-panel.js` app inventory over the system snapshot | Profiles come from a fresh collection, not from a per-device record |
 | K05 User preferences | Open | — | — |
 | K06 Semantic retrieval | Partly | Term and bigram ranking | No embeddings |

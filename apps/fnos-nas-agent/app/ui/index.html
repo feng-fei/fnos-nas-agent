@@ -186,7 +186,22 @@
       </div>
     </section>
 
-    <!-- ============================ 文件管理 ============================ -->
+    <!-- ============================ 文件管理 ============================ -->        <details class="card card--flat">
+          <summary class="card__head">
+            <h3 class="card__title">设备能力体检</h3>
+            <p class="card__sub">逐维查看本机是否满足「本助手」或「本地模型」的运行条件；只读，不上传任何数据。</p>
+          </summary>
+          <div class="card__body">
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" type="button" data-capability-profile="agent-host">检查本助手运行条件</button>
+              <button class="btn btn--secondary" type="button" data-capability-profile="local-llm">检查本地模型条件</button>
+            </div>
+            <p class="field__hint" id="capability-status" role="status">点击任一按钮读取本机平台、架构、CPU 核心、内存与存储类型。</p>
+            <pre id="capability-result">尚未检查。</pre>
+          </div>
+        </details>
+
+
     <section class="page hidden" id="files-card" data-title="文件管理" data-sub="浏览、上传与整理 NAS 文件">
       <div class="page__head">
         <h2 class="page__title">文件管理</h2>
@@ -214,9 +229,21 @@
           </div>
           <div class="toolbar__spacer"></div>
           <div class="toolbar__group row row--wrap">
+            <button class="btn btn--secondary" id="file-duplicates" type="button">查找重复</button>
             <button class="btn btn--secondary" id="file-mkdir" type="button">新建文件夹</button>
           </div>
         </div>
+
+        <details class="card card--flat" open>
+          <summary class="card__head">
+            <h3 class="card__title">查找重复文件</h3>
+            <p class="card__sub">按大小与 SHA-256 比对当前目录中的文件；只读扫描，不会删除或移动任何文件。</p>
+          </summary>
+          <div class="card__body">
+            <p class="field__hint" id="file-duplicates-status" role="status">点击工具栏「查找重复」后在此显示结果。</p>
+            <pre id="file-duplicates-result">尚未扫描。</pre>
+          </div>
+        </details>
 
         <div class="card card--flat">
           <div class="card__body">

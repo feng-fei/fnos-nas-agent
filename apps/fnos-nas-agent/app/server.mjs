@@ -54,6 +54,8 @@ import { createWebFetcher } from "./web-fetch.mjs";
 import { createKnowledgeBase } from "./knowledge-base.mjs";
 import { buildDockerReport } from "./docker-advisor.mjs";
 import { runConnectivityPatrol } from "./network-diagnostics.mjs";
+import { createDuplicateScanner } from "./duplicate-scan.mjs";
+import { evaluateDeviceCapabilities, deviceEnvironment, DEVICE_PROFILES } from "./device-capability.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -67,6 +69,7 @@ const sessions = new Map();
 const authLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
 const modelActionLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
 const fileChecksumLimiter = createFixedWindowLimiter({ limit: 5, windowMs: 60_000, maxKeys: 1000 });
+const duplicateScanLimiter = createFixedWindowLimiter({ limit: 3, windowMs: 60_000, maxKeys: 1000 });
 const skillRemoteImportLimiter = createFixedWindowLimiter({ limit: 5, windowMs: 60_000, maxKeys: 1000 });
 const toolRunLimiter = createFixedWindowLimiter({ limit: 30, windowMs: 60_000, maxKeys: 1000 });
 const agentMessageLimiter = createFixedWindowLimiter({ limit: 20, windowMs: 60_000, maxKeys: 1000 });
@@ -335,6 +338,13 @@ async function readOnlyDiagnostics() {
 }
 const fileBrowser = createFileBrowser();
 const fileManager = createFileManager();
+const duplicateScanner = createDuplicateScanner({
+  listEntries: async (dir, limit) => {
+    const listing = await fileBrowser.list(dir, limit, 0, "name-asc", "", "file");
+    return (listing.entries || []).map((entry) => ({ path: entry.path, size: entry.sizeBytes }));
+  },
+  readHash: async (path) => (await fileManager.checksum(path)).sha256
+});
 const documentIndex = dataDir ? createLocalDocumentIndex({ dataDir, fileBrowser, fileManager }) : null;
 // The execution policy is the single gate for every mutating path.
 const executionPolicy = createExecutionPolicy({ dataDir });
@@ -672,6 +682,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/skills/transitions/batch") return "skills.transition";
   if (pathname === "/api/audit") return "audit.list";
   if (pathname === "/api/files/checksum") return "files.checksum";
+  if (pathname === "/api/files/duplicates") return "files.duplicates";
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
   if (/^\/api\/skills\/[a-f0-9]{24}\/source-files$/.test(pathname) || /^\/api\/skills\/[a-f0-9]{24}\/source-preview$/.test(pathname)) return "skills.list";
@@ -693,6 +704,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/agent/trace") return "agent.trace";
   if (pathname === "/api/mcp/status") return "mcp.status";
   if (pathname === "/api/system/snapshot") return "system.snapshot";
+  if (pathname === "/api/system/capabilities") return "system.capabilities";
   if (pathname === "/api/diagnostics/report") return "diagnostics.report";
   if (pathname === "/api/diagnostics/evidence") return "diagnostics.evidence";
   if (pathname === "/api/security/inspection") return "security.inspection";
@@ -877,6 +889,23 @@ const server = createServer(async (req, res) => {
       } catch (error) {
         const status = [400, 403, 404, 409, 413].includes(error?.statusCode) ? error.statusCode : 500;
         return reply(res, status, { error: status === 500 ? "Unable to calculate file checksum" : error.message });
+      }
+    }
+    if (url.pathname === "/api/files/duplicates") {
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const activeSession = sessionFor(req);
+      if (!activeSession) return reply(res, 401, { error: "Unauthorized" });
+      if (!duplicateScanLimiter.allow(activeSession.key))
+        return reply(res, 429, { error: "Duplicate scan is limited to 3 requests per minute." }, "application/json; charset=utf-8", { "retry-after": "60" });
+      const rawLimit = Number(url.searchParams.get("limit") || 200);
+      if (!Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 500)
+        return reply(res, 400, { error: "limit must be between 1 and 500" });
+      const requestedPath = url.searchParams.get("path") || "";
+      try {
+        return reply(res, 200, await duplicateScanner.scan({ dir: requestedPath, limit: rawLimit }));
+      } catch (error) {
+        const status = [400, 403, 404, 409, 413].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 500 ? "Unable to scan for duplicate files" : error.message });
       }
     }
     if (url.pathname === "/api/files/preview") {
@@ -1488,6 +1517,29 @@ const server = createServer(async (req, res) => {
       // measured is reported as "unknown", it is never presented as healthy.
       const snapshot = await buildSystemSnapshot({ collect: (sectionId) => systemCollector.collect(sectionId) });
       return reply(res, 200, snapshot);
+    }
+    if (url.pathname === "/api/system/capabilities") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const profile = url.searchParams.get("profile") || "agent-host";
+      if (!Object.prototype.hasOwnProperty.call(DEVICE_PROFILES, profile))
+        return reply(res, 400, { error: `Unknown profile: ${profile}` });
+      const report = evaluateDeviceCapabilities(
+        deviceEnvironment({
+          platform: process.platform,
+          arch: process.arch,
+          cpuCores: os.cpus().length,
+          totalMemoryBytes: os.totalmem(),
+          storageType: process.env.AGENT_STORAGE_TYPE || ""
+        }),
+        { profile }
+      );
+      return reply(res, 200, {
+        ...report,
+        note: report.dimensions.some((item) => item.id === "storage_type" && item.passed === null)
+          ? "系统盘类型无法从进程侧读取；可用 AGENT_STORAGE_TYPE=ssd|hdd 显式声明后再看结论。"
+          : ""
+      });
     }
     if (url.pathname === "/api/diagnostics/report") {
       const active = sessionFor(req);

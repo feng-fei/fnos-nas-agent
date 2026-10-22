@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 184 documents (169 phase documents and 14 non-phase documents, plus this file).
+This index lists 187 documents (172 phase documents and 14 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -678,6 +678,15 @@ This index lists 184 documents (169 phase documents and 14 non-phase documents, 
 
 ### Phase 180
 - [Phase 180 — Docker advisor](phase-180-docker-advisor.md) — Container advice was generic. This phase reads the collected container data and produces per-container findings with a reason, a severity and a next step, without touching Docker.
+### Phase 184
+- [Phase 184 — Duplicate file scan route](phase-184-files-duplicates.md) — The duplicate detector existed without a route. This phase exposes a bounded, rate-limited scan of the current directory and reports size groups, hashes and reclaimable space without touching any file.
+
+### Phase 185
+- [Phase 185 — Marvis runtime capability map](phase-185-marvis-runtime-capability-map.md) — Running the shipped Marvis on the NAS made its runtime capabilities observable. This phase maps the live JSBridge surface, records what was learned, and states which parts are worth porting and which are deliberately not.
+
+### Phase 186
+- [Phase 186 — Device capability check](phase-186-device-capability.md) — "Can this box run it?" was unanswerable. This phase judges five dimensions one by one, keeps unknown as unknown instead of guessing, and ships both the API and the two-button UI entry.
+
 ## This index
 
 - [Documentation index](README.md) — Complete list of documents in this directory, with a one-line summary for each.
