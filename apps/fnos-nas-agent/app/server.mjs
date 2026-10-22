@@ -11,6 +11,7 @@ import { MAX_ARCHIVE_BYTES } from "./skill-archives.mjs";
 import { createReadOnlyToolRegistry } from "./read-only-tools.mjs";
 import { createModelAdapter, modelConfiguration } from "./model-adapter.mjs";
 import { createModelProviderStore } from "./model-provider-store.mjs";
+import { createModelChatAdapter } from "./model-chat-adapter.mjs";
 import { listModelProviderPresets } from "./model-provider-presets.mjs";
 import { createAgentCore } from "./agent-core.mjs";
 import { normalizeConversationHistory } from "./conversation-context.mjs";
@@ -32,6 +33,56 @@ import { createExecutionPolicy, EXECUTION_MODES } from "./execution-policy.mjs";
 import { APP_VERSION } from "./version.mjs";
 import { isOfficialFnosPackage } from "./skill-official-package.mjs";
 import { createOverviewService } from "./overview.mjs";
+import { createToolRegistry } from "./tool-registry.mjs";
+import { readMcpConfig, createMcpManager } from "./mcp-servers.mjs";
+import { createMcpToolBridge } from "./mcp-tool-bridge.mjs";
+import { createToolTracer } from "./tool-trace.mjs";
+import { createToolCallObserver } from "./tool-call-observer.mjs";
+import { createStructuredLogger } from "./structured-logger.mjs";
+import { buildSystemSnapshot } from "./system-snapshot.mjs";
+import { buildDiagnosticReport } from "./diagnostics.mjs";
+import { runSecurityInspection, buildToolPermissionTable, summarizeAuditEntries } from "./security-audit.mjs";
+import { createUsageMeter, applyPrivacyMode, describeModelCapabilities } from "./model-usage.mjs";
+import { createSystemCollector, buildUsageEntry } from "./agent-insights.mjs";
+import { createRunbookStore } from "./runbook-store.mjs";
+import { buildEvidenceBundle, collectDiagnosticEvidence } from "./diagnostic-evidence.mjs";
+import { createWorkflowEngine } from "./workflow-engine.mjs";
+import { createDiagnosisHistory } from "./diagnosis-history.mjs";
+import { createVerifiedWritePipeline } from "./verified-write.mjs";
+import { createNetworkPolicy } from "./network-policy.mjs";
+import { createWebFetcher } from "./web-fetch.mjs";
+import { createKnowledgeBase } from "./knowledge-base.mjs";
+import { buildDockerReport } from "./docker-advisor.mjs";
+import { runConnectivityPatrol, analyzeThroughput } from "./network-diagnostics.mjs";
+// Phase 204–209 的纯函数层：解析、判定、计划都在这些模块里，server 只负责
+// 取一次只读事实、把结果回给调用方，不在这里写业务判断。
+import { summarizeStats, detectStatsAnomalies, buildStatsEvidence } from "./docker-stats.mjs";
+import { createDockerStatsCollector } from "./docker-stats-collector.mjs";
+import { parseProcNetDev, diffInterfaceCounters, buildThroughputInput } from "./network-collectors.mjs";
+import { parseLogLines as parseEvidenceLogLines, buildLogEvidence } from "./log-evidence.mjs";
+import { normalizeComposition, validateComposition, planCompositionRun } from "./skill-composition.mjs";
+import { normalizeTriggerRule, evaluateTriggers } from "./workflow-triggers.mjs";
+import { createDuplicateScanner } from "./duplicate-scan.mjs";
+import { evaluateDeviceCapabilities, deviceEnvironment, DEVICE_PROFILES } from "./device-capability.mjs";
+import { collectServiceStatus } from "./service-status.mjs";
+import { createSystemctlCollector, FNOS_SERVICE_UNITS } from "./service-status-collector.mjs";
+import { buildTrendVerdict } from "./capacity-forecast.mjs";
+// 部署前校验与证书体检都是纯函数：调用方把计划/证书记录交进来，本进程不读系统、
+// 不连 Docker、不发 TLS 握手，所以它们可以被反复调用而不会产生副作用。
+import { precheckDeploymentPlan } from "./deployment-precheck.mjs";
+import { parseCertificateRecord, summarizeCertificate } from "./certificate-check.mjs";
+import { createIdempotencyStore, normalizeIdempotencyKey } from "./idempotency.mjs";
+import { createCapacityHistory } from "./capacity-history.mjs";
+import { planBatchRename, applyBatchRenamePlan } from "./batch-rename.mjs";
+import { normalizeThermalReadings, summarizeThermals } from "./thermal-status.mjs";
+import { createThermalCollector } from "./thermal-collector.mjs";
+import { parseLogLines, summarizeEvents } from "./system-events.mjs";
+import { createLogTailCollector } from "./log-tail-collector.mjs";
+import { buildUpdateVerdict } from "./update-check.mjs";
+import { parseSmartInfo, parseSmartAttributes, summarizeSmartHealth } from "./smart-health.mjs";
+import { createSmartctlCollector } from "./smart-collector.mjs";
+import { createSystemToolDefinitions } from "./system-tools.mjs";
+import { createDeviceProfileStore, mergeProfile, profileFreshness } from "./device-profile.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || process.env.TRIM_SERVICE_PORT || 18787);
@@ -45,9 +96,13 @@ const sessions = new Map();
 const authLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
 const modelActionLimiter = createFixedWindowLimiter({ limit: 10, windowMs: 60_000, maxKeys: 1000 });
 const fileChecksumLimiter = createFixedWindowLimiter({ limit: 5, windowMs: 60_000, maxKeys: 1000 });
+const duplicateScanLimiter = createFixedWindowLimiter({ limit: 3, windowMs: 60_000, maxKeys: 1000 });
 const skillRemoteImportLimiter = createFixedWindowLimiter({ limit: 5, windowMs: 60_000, maxKeys: 1000 });
 const toolRunLimiter = createFixedWindowLimiter({ limit: 30, windowMs: 60_000, maxKeys: 1000 });
 const agentMessageLimiter = createFixedWindowLimiter({ limit: 20, windowMs: 60_000, maxKeys: 1000 });
+// The direct chat channel is a separate route. It has its own budget, because
+// a streamed answer costs far more than one plan request.
+const chatMessageLimiter = createFixedWindowLimiter({ limit: 30, windowMs: 60_000, maxKeys: 1000 });
 const MAX_SESSIONS = 1000;
 const skillStore = dataDir ? createSkillStore(dataDir) : null;
 const auditLogger = dataDir ? createAuditLogger({ dataDir }) : null;
@@ -79,6 +134,13 @@ function reply(res, status, body, type = "application/json; charset=utf-8", head
     "referrer-policy": "no-referrer", "cross-origin-resource-policy": "same-origin", ...headers
   });
   res.end(type.startsWith("application/json") ? JSON.stringify(body) : body);
+}
+// Reads a numeric query parameter. A value that is not a number falls back to
+// the default, and the value is clamped into the allowed range.
+function numberParam(value, fallback, max) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return Math.min(parsed, max);
 }
 function cookies(header = "") {
   const result = Object.create(null);
@@ -303,6 +365,13 @@ async function readOnlyDiagnostics() {
 }
 const fileBrowser = createFileBrowser();
 const fileManager = createFileManager();
+const duplicateScanner = createDuplicateScanner({
+  listEntries: async (dir, limit) => {
+    const listing = await fileBrowser.list(dir, limit, 0, "name-asc", "", "file");
+    return (listing.entries || []).map((entry) => ({ path: entry.path, size: entry.sizeBytes }));
+  },
+  readHash: async (path) => (await fileManager.checksum(path)).sha256
+});
 const documentIndex = dataDir ? createLocalDocumentIndex({ dataDir, fileBrowser, fileManager }) : null;
 // The execution policy is the single gate for every mutating path.
 const executionPolicy = createExecutionPolicy({ dataDir });
@@ -329,6 +398,73 @@ scheduledHealthChecks = dataDir ? createScheduledHealthChecks({
   runTool: (toolId, args) => readOnlyTools.invoke(toolId, args)
 }) : null;
 const modelProviderStore = dataDir ? createModelProviderStore({ dataDir }) : null;
+// The direct chat channel is separate from the planner. The planner returns a
+// JSON plan, the chat channel streams the answer of the model token by token.
+const modelChatAdapter = modelProviderStore ? createModelChatAdapter({ providerStore: modelProviderStore }) : null;
+// The usage meter counts the calls of the chat channel. A record holds the
+// counters and the model names only: neither the prompt nor the answer of the
+// operator is ever stored.
+const usageMeter = createUsageMeter({ maxEntries: 500 });
+// The runbook store keeps the operating knowledge of the operator: the
+// procedures that the agent may reuse. It is a plain store, it never acts.
+const runbookStore = createRunbookStore(dataDir ? { dataDir } : {});
+// The diagnosis history keeps the conclusions of the operator: a symptom, the
+// causes that were named and the corrections that were made later. It is an
+// in-process notebook, it never changes anything on the machine.
+const diagnosisHistory = createDiagnosisHistory({ maxEntries: 200 });
+// The verified write pipeline defines the order of a write path: preview,
+// approval, apply, verify. No action is registered yet: the server refuses to
+// offer a write path it cannot verify.
+const verifiedWritePipeline = createVerifiedWritePipeline({});
+// The network policy is closed by default: an empty allow list refuses every
+// URL. The operator has to open it explicitly with AGENT_NETWORK_ALLOW_LIST.
+const networkPolicy = createNetworkPolicy({
+  allowList: String(process.env.AGENT_NETWORK_ALLOW_LIST || "")
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean),
+  denyList: String(process.env.AGENT_NETWORK_DENY_LIST || "")
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean)
+});
+// The fetcher asks the policy before every request and before every redirect
+// hop. With a closed policy it never opens a connection.
+const webFetcher = createWebFetcher({ policy: networkPolicy });
+// The knowledge base keeps what was verified once. Every fact it stores carries
+// the time it was collected: a stored value is never reported as the current
+// state, the live read always wins. It lives in memory like the diagnosis
+// history, it never acts on the machine.
+const knowledgeBase = createKnowledgeBase({});
+// Privacy mode is a read-only report flag: it says how many cloud calls the
+// meter saw. It is not a gate, the gate would have to live in the adapter.
+const privacyModeEnabled = /^(1|true|on|yes)$/i.test(String(process.env.AGENT_PRIVACY_MODE || ""));
+
+// Records one call of the chat channel in the usage meter. Only the counters
+// are kept: neither the prompt nor the answer is stored.
+function recordChatUsage({ messages = [], completionText = "", outcome = "ok", latencyMs = 0 } = {}) {
+  try {
+    const status = modelChatAdapter?.status?.() || {};
+    const provider = status.providerName || status.providerId || "unknown";
+    const promptText = Array.isArray(messages)
+      ? messages.map(item => (typeof item?.content === "string" ? item.content : "")).join("\n")
+      : "";
+    const entry = buildUsageEntry({
+      provider,
+      model: typeof status.model === "string" ? status.model : "",
+      endpoint: "",
+      outcome,
+      promptText,
+      completionText,
+      latencyMs,
+      privacyMode: privacyModeEnabled
+    });
+    if (entry) usageMeter.record(entry);
+  } catch (error) {
+    // The meter is an observation, it never breaks a chat turn.
+    console.error(`[usage] Could not record the model call: ${error?.message || "unknown error"}`);
+  }
+}
 const modelAdapter = createModelAdapter({
   configProvider: () => {
     const managed = modelProviderStore?.runtimeConfig();
@@ -336,9 +472,328 @@ const modelAdapter = createModelAdapter({
   },
   fallbackConfigProvider: () => modelProviderStore?.runtimeFallbackConfigs() || []
 });
-const actionApprovals = createActionApprovalService({ tools: readOnlyTools });
-const agentCore = createAgentCore({ tools: readOnlyTools, model: modelAdapter, requestApproval: action => actionApprovals.request(action) });
-const taskManager = createTaskManager({ execute: (input, context) => agentCore.run(input, context), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "", taskTimeoutMs: taskTimeoutMsFromEnv() });
+// The tool catalogue is a registry. The built-in fnOS tools are one source of
+// it, an MCP server is another one. The registry keeps the origin of every
+// tool visible and it applies the global execution policy to the tools of a
+// foreign source as well.
+const toolTracer = createToolTracer({ dataDir });
+// Every tool call ends in exactly one observer record. The record holds
+// metadata only: the arguments are reduced to a fingerprint, the result and the
+// error message never reach it.
+const toolObserver = createToolCallObserver({ trace: toolTracer, logger: createStructuredLogger({ level: "info" }) });
+const mcpConfig = dataDir ? await readMcpConfig(dataDir) : { servers: [], errors: [] };
+const mcpManager = createMcpManager({ servers: mcpConfig.servers, timeoutMs: 8_000 });
+// The MCP servers are contacted once at start. A server that does not answer
+// is reported in /api/mcp/status, it never blocks the built-in tools.
+await mcpManager.warmup();
+// The MCP tools are published through the bridge of Phase 153. The bridge
+// gives every foreign tool a namespaced identifier, maps it to a risk level
+// and keeps the approval of the product in force before the call leaves the
+// process.
+const mcpBridge = createMcpToolBridge({
+  policy: executionPolicy,
+  // No approval hook is given to the bridge on purpose. A foreign tool that is
+  // not read-only has to travel through the approval queue of the product, so
+  // the bridge may never approve a call on its own.
+  requestApproval: null
+});
+for (const entry of mcpManager.entries()) {
+  try { mcpBridge.registerServer({ name: entry.id, tools: entry.tools, client: entry.client }); }
+  catch (error) { mcpConfig.errors.push({ id: entry.id, error: error?.message || "The MCP server could not be bridged" }); }
+}
+const mcpToolSource = {
+  id: "mcp",
+  kind: "mcp",
+  label: "MCP 工具",
+  // A foreign tool that is not read-only is published as destructive. The
+  // product then asks the operator for a confirmation before the call, exactly
+  // like a destructive action of the built-in tools.
+  list: () => mcpBridge.listBridgedTools().map(tool =>
+    tool.risk === "read-only" ? tool : { ...tool, risk: "destructive" }),
+  invoke: (toolId, args, options) => mcpBridge.invoke(toolId, args, options)
+};
+// Phase 203：已经采集到的只读事实同时作为 Agent 工具暴露。没有这一步，模型
+// 只能在页面上看到「服务状态 / 磁盘健康 / 温度」，问它却答不上来。
+// 七个工具全部 risk: "read-only"，只读采集器、不写任何状态；采集器没启用时
+// 返回 null，由模块归一成 collector-unavailable（没测到 ≠ 正常）。
+const systemToolDefinitions = createSystemToolDefinitions({
+  services: () => collectServiceStatus({ units: FNOS_SERVICE_UNITS, run: serviceStatusCollector }),
+  smart: async () => {
+    if (!smartCollector) return null;
+    const collected = await smartCollector();
+    return {
+      devices: (Array.isArray(collected?.devices) ? collected.devices : []).map((entry) => {
+        const health = summarizeSmartHealth({
+          info: parseSmartInfo(entry.text),
+          attributes: parseSmartAttributes(entry.text)
+        });
+        return { device: entry.device, verdict: health.verdict, findings: health.findings };
+      }),
+      notes: collected?.notes ?? []
+    };
+  },
+  thermal: () => {
+    if (!thermalCollector) return null;
+    const collected = thermalCollector();
+    const normalized = normalizeThermalReadings(collected.readings);
+    return summarizeThermals(normalized.readings);
+  },
+  events: () => {
+    if (!logTailCollector) return null;
+    const collected = logTailCollector();
+    const parsed = parseLogLines(collected?.text ?? "");
+    return summarizeEvents(parsed.events, { limit: 20 });
+  },
+  snapshot: () => buildSystemSnapshot({ collect: (sectionId) => systemCollector.collect(sectionId) }),
+  capabilities: () => evaluateDeviceCapabilities(
+    deviceEnvironment({
+      platform: process.platform,
+      arch: process.arch,
+      cpuCores: os.cpus().length,
+      totalMemoryBytes: os.totalmem(),
+      storageType: process.env.AGENT_STORAGE_TYPE || ""
+    }),
+    { profile: "agent-host" }
+  ),
+  // 趋势与 /api/system/capacity-forecast 走同一条路：读快照→采样→按盘算趋势。
+  forecast: async (args = {}) => {
+    const parsedHorizon = Number.parseInt(String(args.horizonDays ?? ""), 10);
+    const horizonDays = Number.isSafeInteger(parsedHorizon) ? Math.min(Math.max(parsedHorizon, 1), 365) : 30;
+    const diskSnapshot = await buildSystemSnapshot({ collect: (sectionId) => systemCollector.collect(sectionId) });
+    const storage = diskSnapshot.sections.find((section) => section.id === "storage");
+    const disks = [];
+    for (const disk of Array.isArray(storage?.values?.disks) ? storage.values.disks : []) {
+      const name = typeof disk?.name === "string" ? disk.name : "";
+      if (!name) continue;
+      const usedBytes = typeof disk.usedBytes === "number" ? disk.usedBytes : null;
+      const totalBytes = typeof disk.totalBytes === "number" ? disk.totalBytes : null;
+      if (usedBytes === null && totalBytes === null) continue;
+      disks.push({ name, usedBytes, totalBytes });
+    }
+    const at = new Date().toISOString();
+    const sampling = disks.length
+      ? capacityHistory.append({ at, disks: disks.map((disk) => ({ name: disk.name, totalBytes: disk.totalBytes, usedBytes: disk.usedBytes })) })
+      : { appended: false, reason: "no-disk-data", records: capacityHistory.read().records };
+    const records = Array.isArray(sampling.records) ? sampling.records : [];
+    return {
+      generatedAt: at,
+      horizonDays,
+      storageStatus: typeof storage?.status === "string" ? storage.status : "unknown",
+      sampling: { appended: sampling.appended === true, reason: sampling.reason ?? null, storedRecords: records.length },
+      disks: disks.slice(0, MAX_TREND_DISKS).map((disk) => {
+        const series = [];
+        for (const record of records) {
+          const hit = record.disks.find((item) => item.name === disk.name);
+          if (!hit || hit.usedBytes === null) continue;
+          series.push({ at: record.at, diskUsedBytes: hit.usedBytes, diskTotalBytes: hit.totalBytes });
+        }
+        return { disk: disk.name, sampleCount: series.length, ...buildTrendVerdict(series, { horizonDays }) };
+      })
+    };
+  }
+});
+const systemToolSource = {
+  id: "system",
+  kind: "builtin",
+  label: "系统只读事实",
+  list: () => systemToolDefinitions.map(({ invoke: _invoke, ...definition }) => definition),
+  invoke: (toolId, args) => {
+    const definition = systemToolDefinitions.find((entry) => entry.id === toolId);
+    return definition ? definition.invoke(args) : { ok: false, reason: "unknown-tool" };
+  }
+};
+const toolRegistry = createToolRegistry({
+  sources: [
+    {
+      id: "builtin",
+      kind: "builtin",
+      label: "内置 fnOS 工具",
+      list: () => readOnlyTools.list(),
+      invoke: (toolId, args, options) => readOnlyTools.invoke(toolId, args, options)
+    },
+    systemToolSource,
+    mcpToolSource
+  ],
+  executionPolicy,
+  tracer: toolTracer,
+  observer: toolObserver
+});
+const actionApprovals = createActionApprovalService({ tools: toolRegistry });
+// The workflow engine runs a prepared plan of read-only tools. It never
+// approves anything itself: the approval and the tool execution are injected
+// from the outside, and the built-in plans only use read-only tools.
+const workflowEngine = createWorkflowEngine({});
+registerBuiltInWorkflows(workflowEngine);
+
+// The plans that ship with the service. Every step uses a read-only tool: a
+// workflow may look at the machine, it never changes it.
+function registerBuiltInWorkflows(engine) {
+  const plans = [
+    {
+      id: "storage-health",
+      name: "存储与网络体检",
+      steps: [
+        { id: "storage", tool: "storage.summary", args: {} },
+        { id: "processes", tool: "system.process-summary", args: {}, dependsOn: ["storage"] },
+        { id: "network", tool: "network.interfaces", args: {}, dependsOn: ["storage"], notify: true }
+      ]
+    },
+    {
+      id: "file-hygiene",
+      name: "文件与文档卫生检查",
+      steps: [
+        { id: "inspect", tool: "files.inspect", args: {} },
+        { id: "documents", tool: "documents.index-status", args: {}, dependsOn: ["inspect"], notify: true }
+      ]
+    }
+  ];
+  for (const plan of plans) {
+    try { engine.registerWorkflow(plan); } catch { /* a duplicate plan is not fatal */ }
+  }
+}
+// The system snapshot is collected from the official CLI and from the local
+// process. The collector never decides what is healthy, it only reports what
+// it could measure.
+const systemCollector = createSystemCollector({ trimCli, fileManager });
+
+// Reads systemd unit state for the fixed whitelist above. Opt out with
+// FNOS_AGENT_SERVICE_COLLECTOR=off (the route then reports every unit as
+// unknown, which is what "not measured" should look like).
+const serviceStatusCollector = process.env.FNOS_AGENT_SERVICE_COLLECTOR === "off" ? null : createSystemctlCollector({});
+
+// Disk usage history for the trend forecast. Samples are written next to the
+// other agent data, one record per hour at most, capped at 720 records.
+const capacityHistory = createCapacityHistory({ dataDir });
+// Phase 208：设备档案与用户偏好。只存「这台机器是什么、机主偏好什么」，
+// 不存凭据；序列号写盘前只保留后 4 位。
+const deviceProfiles = createDeviceProfileStore({ dataDir });
+
+// Phase 204：容器实时统计只采一次快照（--no-stream），固定 argv、带超时。
+// 采集器可用环境变量关掉；关掉后路由返回 collector-disabled，不伪造数据。
+const dockerStatsCollector = process.env.FNOS_AGENT_DOCKER_STATS_COLLECTOR === "off"
+  ? null
+  : createDockerStatsCollector();
+const DOCKER_STATS_HISTORY_LIMIT = 200;
+const dockerStatsHistory = [];
+
+// Phase 206：触发规则来自 dataDir 下的 JSON 文件（[{...rule}]）。判定结果只
+// 返回给调用方，本进程不自动执行 workflow：是否真的跑，交给操作员决定。
+const triggerRulesPath = dataDir ? join(dataDir, "workflow-triggers.json") : "";
+async function loadTriggerRules() {
+  if (!triggerRulesPath) return { rules: [], note: "no-data-dir" };
+  try {
+    const raw = await readFile(triggerRulesPath, "utf8");
+    const parsed = JSON.parse(raw);
+    const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.triggers) ? parsed.triggers : null;
+    if (!list) return { rules: [], note: "rules-invalid" };
+    const rules = [];
+    const notes = [];
+    for (const [index, entry] of list.entries()) {
+      const normalized = normalizeTriggerRule(entry);
+      if (normalized.ok === true) rules.push(normalized.rule);
+      else notes.push(`invalid-rule:${index}:${normalized.reason}`);
+    }
+    return { rules, note: notes.join(",") };
+  } catch (error) {
+    if (error?.code === "ENOENT") return { rules: [], note: "no-rules-file" };
+    return { rules: [], note: "rules-unreadable" };
+  }
+}
+const MAX_TREND_DISKS = 4;
+const MAX_BATCH_RENAME_APPLY = 50;
+
+// 幂等键只用于「同一请求重放时不要重复执行」：校验类接口本身没有副作用，
+// 所以这里保存的只是结果快照；键缺失就不参与，不会偷偷替调用方去重。
+const idempotencyStore = createIdempotencyStore({ maxRecords: 200 });
+const MAX_IDEMPOTENT_RESULT_BYTES = 8192;
+
+function beginIdempotent(req, pathname, body) {
+  const header = req.headers["x-idempotency-key"];
+  if (typeof header !== "string" || header.trim() === "") return { key: null, decision: null };
+  const key = normalizeIdempotencyKey(header);
+  if (!key) return { key: "invalid", decision: { decision: "reject", reason: "invalid-key" } };
+  return { key, decision: idempotencyStore.begin({ key, action: pathname, params: body ?? null }) };
+}
+
+function idempotentOutcome(res, reply, entry) {
+  if (!entry.decision) return null;
+  const { decision } = entry.decision;
+  if (decision === "conflict")
+    return reply(res, 409, { error: "Idempotency key reused with a different request", code: "idempotency-conflict" });
+  if (decision === "in-progress")
+    return reply(res, 409, { error: "A request with this idempotency key is still running", code: "idempotency-in-progress" });
+  if (decision === "reject") {
+    const capacity = entry.decision.reason === "capacity";
+    return reply(res, capacity ? 429 : 400, {
+      error: capacity ? "Too many idempotent requests in flight" : "Idempotency key rejected",
+      code: `idempotency-${entry.decision.reason}`
+    });
+  }
+  if (decision === "replay") return reply(res, 200, { ...entry.decision.result, replay: true });
+  return null;
+}
+
+function rememberIdempotent(entry, payload) {
+  if (!entry.key || !entry.decision || entry.decision.decision !== "execute") return;
+  let stored = payload;
+  try {
+    if (JSON.stringify(payload).length > MAX_IDEMPOTENT_RESULT_BYTES) stored = { ok: false, note: "result-too-large-to-replay" };
+  } catch {
+    stored = { ok: false, note: "result-not-serialisable" };
+  }
+  idempotencyStore.complete({ key: entry.key, result: stored });
+}
+
+// 温度与日志都是只读采样：读不到时接口如实报 unknown，绝不会被当成健康。
+// 需要排查环境问题时可以用 FNOS_AGENT_THERMAL_COLLECTOR=off / FNOS_AGENT_LOG_COLLECTOR=off 关掉。
+const thermalCollector = process.env.FNOS_AGENT_THERMAL_COLLECTOR === "off" ? null : createThermalCollector({});
+const logTailCollector = process.env.FNOS_AGENT_LOG_COLLECTOR === "off" ? null : createLogTailCollector({});
+
+// smartctl 需要读裸设备，商店版应用通常没有这个权限，所以默认关闭、只在显式开启时
+// 尝试；采不到就报 unknown，不会让页面显示成「磁盘健康」。
+const smartCollector = process.env.FNOS_AGENT_SMART_COLLECTOR === "on" ? createSmartctlCollector({}) : null;
+
+// Reads the docker inventory the advisor analyses. A read that fails leaves the
+// section empty and the report says the section is unknown: a missing answer is
+// never turned into a healthy one. The collector only reads, it never changes a
+// container.
+async function readDockerInventory() {
+  if (!trimCli || typeof trimCli.runReadOnly !== "function") return {};
+  const read = async id => {
+    try {
+      const result = await trimCli.runReadOnly(id);
+      return result?.data ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const pickList = (data, keys) => {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    for (const key of keys) {
+      if (Array.isArray(data[key])) return data[key];
+    }
+    return [];
+  };
+  const [containers, images] = await Promise.all([
+    read("docker.container.ls-all"),
+    read("docker.image.ls")
+  ]);
+  return {
+    containers: pickList(containers, ["containers", "items"]),
+    images: pickList(images, ["images", "items"]),
+    // The allowlist has no volume or network listing, so those sections stay
+    // empty and the advisor reports them as unknown instead of guessing.
+    volumes: [],
+    networks: [],
+    // Resource samples and log lines are not collected by the read-only
+    // inventory: the advisor reports those sections as unknown instead of
+    // inventing a number.
+    memoryLimitMb: null
+  };
+}
+
+const agentCore = createAgentCore({ tools: toolRegistry, model: modelAdapter, requestApproval: action => actionApprovals.request(action) });const taskManager = createTaskManager({ execute: (input, context) => agentCore.run(input, context), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "", taskTimeoutMs: taskTimeoutMsFromEnv() });
 
 // A state file that could not be restored leaves the service running in a degraded
 // state. The operator can see which part is degraded instead of guessing.
@@ -442,6 +897,11 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/skills/transitions/batch") return "skills.transition";
   if (pathname === "/api/audit") return "audit.list";
   if (pathname === "/api/files/checksum") return "files.checksum";
+  if (pathname === "/api/files/duplicates") return "files.duplicates";
+  if (pathname === "/api/files/rename-plan") return "files.rename-plan";
+  if (pathname === "/api/files/rename-apply") return "files.rename-apply";
+  if (pathname === "/api/deploy/precheck") return "deploy.precheck";
+  if (pathname === "/api/network/certificate-check") return "network.certificate-check";
   if (pathname.startsWith("/api/files")) return pathname === "/api/files" ? "files.list" : "files.manage";
   if (pathname === "/api/skills") return method === "GET" ? "skills.list" : method === "POST" ? "skills.register" : "other_api";
   if (/^\/api\/skills\/[a-f0-9]{24}\/source-files$/.test(pathname) || /^\/api\/skills\/[a-f0-9]{24}\/source-preview$/.test(pathname)) return "skills.list";
@@ -458,6 +918,54 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/agent/trim-cli/test") return "agent.trim-cli-test";
   if (pathname === "/api/agent/trim-cli/login-command") return "agent.trim-cli-login-command";
   if (pathname === "/api/agent/message") return "agent.message";
+  if (pathname === "/api/chat/message") return "chat.message";
+  if (pathname === "/api/chat/status") return "chat.status";
+  if (pathname === "/api/agent/trace") return "agent.trace";
+  if (pathname === "/api/mcp/status") return "mcp.status";
+  if (pathname === "/api/system/snapshot") return "system.snapshot";
+  if (pathname === "/api/system/capabilities") return "system.capabilities";
+  if (pathname === "/api/system/services") return "system.services";
+  if (pathname === "/api/system/capacity-forecast") return "system.capacity-forecast";
+  if (pathname === "/api/system/thermal") return "system.thermal";
+  if (pathname === "/api/system/events") return "system.events";
+  if (pathname === "/api/system/smart") return "system.smart";
+  if (pathname === "/api/system/device-profiles") return "system.device-profiles";
+  if (pathname.startsWith("/api/system/device-profiles/")) {
+    if (method === "PUT") return "system.device-profile.write";
+    if (method === "DELETE") return "system.device-profile.delete";
+    return "system.device-profile";
+  }
+  if (pathname === "/api/system/update-check") return "system.update-check";
+  if (pathname === "/api/diagnostics/report") return "diagnostics.report";
+  if (pathname === "/api/diagnostics/evidence") return "diagnostics.evidence";
+  if (pathname === "/api/security/inspection") return "security.inspection";
+  if (pathname === "/api/models/usage") return "models.usage";
+  if (pathname === "/api/workflows") return method === "GET" ? "workflows.list" : "workflows.run";
+  if (pathname.startsWith("/api/workflows/")) return "workflows.events";
+  if (pathname === "/api/runbooks") return method === "GET" ? "runbooks.list" : method === "POST" ? "runbooks.write" : "other_api";
+  if (pathname === "/api/runbooks/stats") return "runbooks.stats";
+  if (pathname.startsWith("/api/runbooks/")) return method === "DELETE" ? "runbooks.delete" : "runbooks.read";
+  if (pathname === "/api/diagnoses") return "diagnoses.list";
+  if (pathname === "/api/diagnoses/stats") return "diagnoses.stats";
+  if (pathname.startsWith("/api/diagnoses/")) return pathname.endsWith("/corrections") ? "diagnoses.correct" : "diagnoses.read";
+  if (pathname === "/api/write-actions") return "write.actions.list";
+  if (pathname === "/api/network/policy") return "network.policy";
+  if (pathname === "/api/network/check") return "network.check";
+  if (pathname === "/api/network/diagnostics") return "network.diagnostics";
+  if (pathname === "/api/network/interfaces") return "network.interfaces";
+  if (pathname === "/api/docker/stats") return "docker.stats";
+  if (pathname === "/api/diagnostics/log-evidence") return "diagnostics.log-evidence";
+  if (pathname === "/api/compositions/validate") return "compositions.validate";
+  if (pathname === "/api/compositions/plan") return "compositions.plan";
+  if (pathname === "/api/workflows/triggers/evaluate") return "workflows.triggers";
+  if (pathname === "/api/web/fetch") return "web.fetch";
+  if (pathname === "/api/knowledge") return "knowledge.list";
+  if (pathname === "/api/knowledge/stats") return "knowledge.stats";
+  if (pathname === "/api/knowledge/conflicts") return "knowledge.conflicts";
+  if (pathname === "/api/knowledge/preview") return "knowledge.preview";
+  if (pathname === "/api/knowledge/commit") return "knowledge.commit";
+  if (pathname.startsWith("/api/knowledge/")) return pathname.endsWith("/reference") ? "knowledge.reference" : "knowledge.read";
+  if (pathname === "/api/docker/advice") return "docker.advice";
   if (pathname === "/api/tasks/clear-history") return "tasks.clear";
   if (pathname === "/api/health-checks") return method === "GET" ? "health-checks.list" : method === "POST" ? "health-checks.create" : "other_api";
   if (/^\/api\/health-checks\/[a-f0-9-]{36}\/run$/i.test(pathname)) return "health-checks.run";
@@ -465,11 +973,12 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/tasks/status") return "tasks.status";
   if (pathname === "/api/tasks") return "tasks.list";
   if (/^\/api\/tasks\/[a-f0-9-]{8,64}\/cancel$/i.test(pathname)) return "tasks.cancel";
+  if (/^\/api\/tasks\/[a-f0-9-]{8,64}\/events$/i.test(pathname)) return "tasks.events";
   if (/^\/api\/tasks\/[a-f0-9-]{8,64}$/i.test(pathname)) return "tasks.get";
   if (pathname === "/api/actions/pending") return "actions.pending";
   if (/^\/api\/actions\/[a-f0-9-]{8,64}\/(?:confirm|deny)$/i.test(pathname)) return "actions.confirm";
   if (pathname === "/api/tools") return "tools.list";
-  if (/^\/api\/tools\/[a-z][a-z0-9.-]{0,63}\/run$/.test(pathname)) return "tools.run";
+  if (/^\/api\/tools\/[a-z][a-z0-9.:_-]{0,127}\/run$/.test(pathname)) return "tools.run";
   return "other_api";
 }
 
@@ -619,6 +1128,23 @@ const server = createServer(async (req, res) => {
         return reply(res, status, { error: status === 500 ? "Unable to calculate file checksum" : error.message });
       }
     }
+    if (url.pathname === "/api/files/duplicates") {
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const activeSession = sessionFor(req);
+      if (!activeSession) return reply(res, 401, { error: "Unauthorized" });
+      if (!duplicateScanLimiter.allow(activeSession.key))
+        return reply(res, 429, { error: "Duplicate scan is limited to 3 requests per minute." }, "application/json; charset=utf-8", { "retry-after": "60" });
+      const rawLimit = Number(url.searchParams.get("limit") || 200);
+      if (!Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 500)
+        return reply(res, 400, { error: "limit must be between 1 and 500" });
+      const requestedPath = url.searchParams.get("path") || "";
+      try {
+        return reply(res, 200, await duplicateScanner.scan({ dir: requestedPath, limit: rawLimit }));
+      } catch (error) {
+        const status = [400, 403, 404, 409, 413].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 500 ? "Unable to scan for duplicate files" : error.message });
+      }
+    }
     if (url.pathname === "/api/files/preview") {
       if (!sessionFor(req)) return reply(res,401,{error:"Unauthorized"});
       if(req.method!=="GET")return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"GET"});
@@ -692,6 +1218,105 @@ const server = createServer(async (req, res) => {
       }
       try{return reply(res,200,await fileManager.operate(body));}
       catch(e){const s=[400,403,404,409,413,415,503,507].includes(e?.statusCode)?e.statusCode:500;return reply(res,s,{error:s===500?"File operation failed":e.message});}
+    }
+    if (url.pathname === "/api/files/rename-plan") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      // 只规划、不落盘：规划器是纯函数，所以这个接口可以放心地在预览阶段反复调用。
+      const body = await jsonBody(req);
+      const plan = planBatchRename(body?.entries, body?.rule, { maxEntries: MAX_BATCH_RENAME_APPLY });
+      return reply(res, 200, plan);
+    }
+    if (url.pathname === "/api/files/rename-apply") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const body = await jsonBody(req);
+      // 批量改名会一次动很多文件，所以必须由前端显式带上 confirm；客户端的一个
+      // 布尔值不是授权决定，这里只是防止误触，真正的闸门仍是执行策略与逐条校验。
+      if (body?.confirm !== true) return reply(res, 400, { error: "Batch rename requires confirm: true" });
+      const decision = executionPolicy.evaluate({ risk: "write", approved: false });
+      if (!decision.allowed) return reply(res, decision.statusCode || 403, { error: policyMessage(decision) });
+      const plan = planBatchRename(body?.entries, body?.rule, { maxEntries: MAX_BATCH_RENAME_APPLY });
+      if (plan.ok !== true) return reply(res, 409, { error: "Plan has conflicts or errors; nothing was renamed", plan });
+      try {
+        const result = await applyBatchRenamePlan(plan, {
+          rename: async (from, to) => {
+            const target = to.split("/").pop() || "";
+            await fileManager.operate({ action: "rename", path: from, name: target });
+          }
+        });
+        return reply(res, result.failed ? 409 : 200, { ok: result.failed === null, plan: plan.summary, result });
+      } catch (error) {
+        const status = [400, 403, 404, 409, 413, 415, 503, 507].includes(error?.statusCode) ? error.statusCode : 500;
+        return reply(res, status, { error: status === 500 ? "Batch rename failed" : error.message });
+      }
+    }
+    if (url.pathname === "/api/deploy/precheck") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const body = await jsonBody(req);
+      const entry = beginIdempotent(req, url.pathname, body);
+      const early = idempotentOutcome(res, reply, entry);
+      if (early) return early;
+      // 只看计划本身：本接口不读宿主状态、不连 Docker、不落盘，也不会去部署。
+      const plan = body && typeof body === "object" && body.plan !== undefined ? body.plan : body;
+      let result;
+      try {
+        result = precheckDeploymentPlan(plan, { generate: body?.generate === true });
+      } catch (error) {
+        if (entry.key) idempotencyStore.fail({ key: entry.key });
+        return reply(res, 400, { error: error?.message || "Invalid deployment plan" });
+      }
+      const payload = {
+        ok: result.verdict !== "blocked",
+        verdict: result.verdict,
+        findings: result.findings,
+        serviceCount: result.serviceCount,
+        notes: result.notes
+      };
+      rememberIdempotent(entry, payload);
+      return reply(res, 200, payload);
+    }
+    if (url.pathname === "/api/network/certificate-check") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const body = await jsonBody(req);
+      const entry = beginIdempotent(req, url.pathname, body);
+      const early = idempotentOutcome(res, reply, entry);
+      if (early) return early;
+      // 证书由调用方交进来（或由别的采集器取到后交进来）：本进程不做 TLS 握手，
+      // 也不读系统证书库，所以「读不到」只能是 unknown，不会被说成 ok。
+      const record = parseCertificateRecord(body?.record);
+      let summary;
+      try {
+        summary = summarizeCertificate(record, { now: body?.now, hostname: body?.hostname, warnDays: body?.warnDays });
+      } catch (error) {
+        if (entry.key) idempotencyStore.fail({ key: entry.key });
+        return reply(res, 400, { error: error?.message || "Invalid certificate request" });
+      }
+      const payload = {
+        ok: summary.verdict === "ok",
+        verdict: summary.verdict,
+        summary,
+        record: record
+          ? { subject: record.subject, issuer: record.issuer, notBefore: record.notBefore, notAfter: record.notAfter, parsed: record.parsed }
+          : null
+      };
+      rememberIdempotent(entry, payload);
+      return reply(res, 200, payload);
     }
     if (url.pathname === "/api/files/operations/batch") {
       if (req.method !== "POST") return reply(res,405,{error:"Method not allowed"},"application/json; charset=utf-8",{allow:"POST"});
@@ -1164,6 +1789,874 @@ const server = createServer(async (req, res) => {
       }
       return reply(res, 202, { task });
     }
+    if (url.pathname === "/api/chat/message") {
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!modelChatAdapter) return reply(res, 503, { error: "模型直聊通道不可用：未配置应用数据目录。" });
+      if (!chatMessageLimiter.allow(active.key))
+        return reply(res, 429, { error: "消息过于频繁，请稍后再试。" }, "application/json; charset=utf-8", { "retry-after": "60" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      if (!input || typeof input !== "object" || Array.isArray(input) || !Array.isArray(input.messages))
+        return reply(res, 400, { error: "Chat message must contain a messages array" });
+      // The stream is the answer of this route, so the headers are written
+      // before the provider is called. The upstream error is reported inside
+      // the stream, the HTTP status stays 200 for a started stream.
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+      });
+      res.write("retry: 2000\n\n");
+      const controller = new AbortController();
+      req.on("close", () => { if (!controller.signal.aborted) controller.abort(); });
+      const write = (type, payload) => {
+        try { res.write(`event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`); } catch { /* the client is gone */ }
+      };
+      const startedAt = Date.now();
+      try {
+        const text = await modelChatAdapter.chat({
+          messages: input.messages,
+          signal: controller.signal,
+          onDelta: chunk => { write("delta", { text: chunk }); }
+        });
+        recordChatUsage({ messages: input.messages, completionText: typeof text === "string" ? text : "", outcome: "ok", latencyMs: Date.now() - startedAt });
+        write("done", { text: typeof text === "string" ? text : "" });
+      } catch (error) {
+        const status = Number.isInteger(error?.statusCode) ? error.statusCode : 502;
+        recordChatUsage({ messages: input.messages, completionText: "", outcome: "error", latencyMs: Date.now() - startedAt });
+        write("error", {
+          code: typeof error?.code === "string" ? error.code : "MODEL_CHAT_UPSTREAM_ERROR",
+          message: typeof error?.message === "string" ? error.message : "模型直聊失败。",
+          statusCode: status
+        });
+      }
+      try { res.end(); } catch { /* already closed */ }
+      return undefined;
+    }
+    if (url.pathname === "/api/chat/status") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      if (!modelChatAdapter) return reply(res, 503, { error: "模型直聊通道不可用：未配置应用数据目录。" });
+      return reply(res, 200, modelChatAdapter.status());
+    }
+    if (url.pathname === "/api/system/snapshot") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // The snapshot is a read-only measurement. A section that could not be
+      // measured is reported as "unknown", it is never presented as healthy.
+      const snapshot = await buildSystemSnapshot({ collect: (sectionId) => systemCollector.collect(sectionId) });
+      return reply(res, 200, snapshot);
+    }
+    if (url.pathname === "/api/system/capabilities") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const profile = url.searchParams.get("profile") || "agent-host";
+      if (!Object.prototype.hasOwnProperty.call(DEVICE_PROFILES, profile))
+        return reply(res, 400, { error: `Unknown profile: ${profile}` });
+      const report = evaluateDeviceCapabilities(
+        deviceEnvironment({
+          platform: process.platform,
+          arch: process.arch,
+          cpuCores: os.cpus().length,
+          totalMemoryBytes: os.totalmem(),
+          storageType: process.env.AGENT_STORAGE_TYPE || ""
+        }),
+        { profile }
+      );
+      return reply(res, 200, {
+        ...report,
+        note: report.dimensions.some((item) => item.id === "storage_type" && item.passed === null)
+          ? "系统盘类型无法从进程侧读取；可用 AGENT_STORAGE_TYPE=ssd|hdd 显式声明后再看结论。"
+          : ""
+      });
+    }
+    if (url.pathname === "/api/system/services") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // 只读：固定 argv 的 `systemctl show`，unit 名单在服务端常量里，请求方
+      // 不能指定要查哪个 unit，否则这里就变成读任意系统对象的口子。
+      // 采集器起不来（无 systemctl / 无权限）时每条都是 unknown，不会被当成健康。
+      const report = await collectServiceStatus({ units: FNOS_SERVICE_UNITS, run: serviceStatusCollector });
+      return reply(res, 200, report);
+    }
+    if (url.pathname === "/api/system/capacity-forecast") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // 每次读取都顺带采样一次：采样是去重的（同小时只留一条），所以刷新页
+      // 不会把序列刷乱；没有磁盘数据可采时照样返回趋势，只是不新增采样点。
+      const parsedHorizon = Number.parseInt(url.searchParams.get("horizonDays") || "", 10);
+      const horizonDays = Number.isSafeInteger(parsedHorizon) ? Math.min(Math.max(parsedHorizon, 1), 365) : 30;
+      const snapshot = await buildSystemSnapshot({ collect: (sectionId) => systemCollector.collect(sectionId) });
+      const storage = snapshot.sections.find((section) => section.id === "storage");
+      const disks = [];
+      for (const disk of Array.isArray(storage?.values?.disks) ? storage.values.disks : []) {
+        const name = typeof disk?.name === "string" ? disk.name : "";
+        if (!name) continue;
+        const usedBytes = typeof disk.usedBytes === "number" ? disk.usedBytes : null;
+        const totalBytes = typeof disk.totalBytes === "number" ? disk.totalBytes : null;
+        if (usedBytes === null && totalBytes === null) continue;
+        disks.push({ name, usedBytes, totalBytes });
+      }
+      const at = new Date().toISOString();
+      const sampling = disks.length
+        ? capacityHistory.append({ at, disks: disks.map((disk) => ({ name: disk.name, totalBytes: disk.totalBytes, usedBytes: disk.usedBytes })) })
+        : { appended: false, reason: "no-disk-data", records: capacityHistory.read().records };
+      const records = Array.isArray(sampling.records) ? sampling.records : [];
+      const trends = disks.slice(0, MAX_TREND_DISKS).map((disk) => {
+        const series = [];
+        for (const record of records) {
+          const hit = record.disks.find((item) => item.name === disk.name);
+          if (!hit || hit.usedBytes === null) continue;
+          series.push({ at: record.at, diskUsedBytes: hit.usedBytes, diskTotalBytes: hit.totalBytes });
+        }
+        return { disk: disk.name, sampleCount: series.length, ...buildTrendVerdict(series, { horizonDays }) };
+      });
+      return reply(res, 200, {
+        generatedAt: at,
+        horizonDays,
+        storageStatus: typeof storage?.status === "string" ? storage.status : "unknown",
+        sampling: {
+          appended: sampling.appended === true,
+          reason: sampling.reason ?? null,
+          storedRecords: records.length
+        },
+        disks: trends,
+        note: trends.length
+          ? "趋势只来自本机历次采样的磁盘用量；样本不足时只报当前用量，不给预测。"
+          : "这次没有读到磁盘用量，趋势无法计算；系统快照的存储段可能是 unknown。"
+      });
+    }
+    if (url.pathname === "/api/system/thermal") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // 只读：/sys/class/thermal 下的固定 zone，请求方不能指定读哪个文件。
+      // 读不到就是 unknown——「没测到」不等于「温度正常」。
+      let collected = null;
+      let collectorNote = "";
+      if (!thermalCollector) {
+        collectorNote = "collector-disabled";
+      } else {
+        try {
+          collected = thermalCollector();
+        } catch {
+          collectorNote = "collector-failed";
+        }
+      }
+      const normalized = collected
+        ? normalizeThermalReadings(collected.readings)
+        : { readings: [], dropped: [], notes: [] };
+      const summary = summarizeThermals(normalized.readings);
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        verdict: summary.verdict,
+        counts: summary.counts,
+        hottest: summary.hottest,
+        readings: normalized.readings,
+        dropped: normalized.dropped,
+        notes: [
+          ...(collected?.notes ?? []),
+          ...normalized.notes,
+          ...summary.notes,
+          ...(collectorNote ? [collectorNote] : [])
+        ],
+        note: summary.verdict === "unknown"
+          ? "没有读到可信温度；这不代表设备温度正常，只代表这次没测到。"
+          : "温度来自 /sys/class/thermal 的只读读数；65℃ 预警、80℃ 危险，阈值未按机型标定。"
+      });
+    }
+    // Phase 208：设备档案与用户偏好。读接口给出 freshness（unknown 不等于新鲜），
+    // 写接口只接受白名单字段，序列号落盘前只留后 4 位，凭据键一律删掉。
+    if (url.pathname === "/api/system/device-profiles") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const stored = await deviceProfiles.list();
+      const list = Array.isArray(stored) ? stored : Array.isArray(stored?.profiles) ? stored.profiles : [];
+      const profiles = list.map((profile) => ({
+        ...profile,
+        freshness: profileFreshness(profile)
+      }));
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        profiles,
+        state: await deviceProfiles.state(),
+        note: "档案只记录机主描述过的硬件与偏好；freshness=unknown 表示没有可信时间，不代表新鲜。"
+      });
+    }
+    const deviceProfileMatch = url.pathname.match(/^\/api\/system\/device-profiles\/([a-z0-9][a-z0-9._-]{0,63})$/);
+    if (deviceProfileMatch) {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      const profileId = deviceProfileMatch[1];
+      if (req.method === "GET") {
+        const found = await deviceProfiles.get(profileId);
+        if (found.ok !== true) return reply(res, 404, { error: "Unknown device profile" });
+        return reply(res, 200, { profile: { ...found.profile, freshness: profileFreshness(found.profile) } });
+      }
+      if (req.method === "PUT") {
+        if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+        if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+          return reply(res, 415, { error: "Expected application/json" });
+        const body = await jsonBody(req);
+        const existing = await deviceProfiles.get(profileId);
+        const merged = mergeProfile(existing.ok === true ? existing.profile : null, { ...(body ?? {}), id: profileId });
+        if (merged.ok === false) return reply(res, 400, { error: merged.reason });
+        const written = await deviceProfiles.put(merged.profile);
+        if (written.ok !== true) return reply(res, 409, { error: written.reason });
+        return reply(res, 200, {
+          profile: { ...written.profile, freshness: profileFreshness(written.profile) },
+          changedFields: merged.changedFields,
+          droppedFields: merged.droppedFields
+        });
+      }
+      if (req.method === "DELETE") {
+        if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+        const removed = await deviceProfiles.remove(profileId);
+        if (removed.ok !== true) return reply(res, 404, { error: "Unknown device profile" });
+        return reply(res, 200, { removed: true, id: profileId });
+      }
+      return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, PUT, DELETE" });
+    }
+    if (url.pathname === "/api/system/events") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const parsedLimit = Number.parseInt(url.searchParams.get("limit") || "", 10);
+      const limit = Number.isSafeInteger(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 20;
+      let collected = null;
+      let collectorNote = "";
+      if (!logTailCollector) {
+        collectorNote = "collector-disabled";
+      } else {
+        try {
+          collected = logTailCollector();
+        } catch {
+          collectorNote = "collector-failed";
+        }
+      }
+      const parsed = parseLogLines(collected?.text ?? "");
+      const summary = summarizeEvents(parsed.events, { limit });
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        verdict: summary.verdict,
+        counts: summary.counts,
+        repeated: summary.repeated,
+        dropped: parsed.dropped,
+        sources: collected?.sources ?? [],
+        notes: [
+          ...(collected?.notes ?? []),
+          ...parsed.notes,
+          ...summary.notes,
+          ...(collectorNote ? [collectorNote] : [])
+        ],
+        note: summary.verdict === "unknown"
+          ? "没有读到系统日志；这不代表没有错误事件，只代表这次没取到日志。"
+          : "只解析日志尾部最近 64 KiB；日志按时间顺序，repeated 是归一化后的重复计数。"
+      });
+    }
+    if (url.pathname === "/api/system/smart") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      let collected = null;
+      let collectorNote = "";
+      if (!smartCollector) {
+        collectorNote = "collector-disabled";
+      } else {
+        try {
+          collected = await smartCollector();
+        } catch {
+          collectorNote = "collector-failed";
+        }
+      }
+      const devices = (Array.isArray(collected?.devices) ? collected.devices : []).map((entry) => {
+        const health = summarizeSmartHealth({
+          info: parseSmartInfo(entry.text),
+          attributes: parseSmartAttributes(entry.text)
+        });
+        return { device: entry.device, verdict: health.verdict, findings: health.findings, notes: health.notes };
+      });
+      // 汇总只按最坏结论走：任何一块盘 failed 就是 failed；全部 ok 才敢说 ok。
+      const verdict = devices.some((item) => item.verdict === "failed")
+        ? "failed"
+        : devices.some((item) => item.verdict === "warning")
+          ? "warning"
+          : devices.length > 0 && devices.every((item) => item.verdict === "ok")
+            ? "ok"
+            : "unknown";
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        verdict,
+        devices,
+        notes: [...(collected?.notes ?? []), ...(collectorNote ? [collectorNote] : [])],
+        note: smartCollector
+          ? "SMART 只读采集（smartctl -H -A）；未识别或不支持的盘按 unknown 处理。"
+          : "SMART 采集默认关闭：它需要 smartctl 与裸设备读权限。需要时用 FNOS_AGENT_SMART_COLLECTOR=on 打开。"
+      });
+    }
+    if (url.pathname === "/api/system/update-check") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // 纯比较：不联网、不下载、不读远端。latest 由调用方给出（例如自己查到的
+      // 发布版本），缺省就报 unknown——绝不把「没查」当成「已是最新」。
+      const latest = (url.searchParams.get("latest") || "").slice(0, 64);
+      const channel = url.searchParams.get("channel") || undefined;
+      let verdict;
+      try {
+        verdict = buildUpdateVerdict({ current: APP_VERSION, latest, channel });
+      } catch (error) {
+        return reply(res, 400, { error: String(error?.message || "invalid version query").slice(0, 200) });
+      }
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        installedVersion: APP_VERSION,
+        ...verdict,
+        note: "本接口只做版本比较，不联网、不下载；latest 缺省时结论是 unknown，不是 up-to-date。"
+      });
+    }
+    if (url.pathname === "/api/diagnostics/report") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const symptom = typeof input?.symptom === "string" ? input.symptom.slice(0, 2000) : "";
+      // The operator may bring evidence of their own. The evidence the server
+      // collects is added to it: the audit log, the tool trace, the health
+      // checks. The collector only reads whitelisted fields, so no prompt, no
+      // credential and no stack trace reaches the report.
+      const supplied = Array.isArray(input?.evidence) ? input.evidence.slice(0, 50) : [];
+      const bundle = buildEvidenceBundle({
+        auditEntries: auditLogger ? await auditLogger.read({ limit: 500 }) : [],
+        traceEntries: toolTracer.list(),
+        healthChecks: scheduledHealthChecks ? scheduledHealthChecks.list() : [],
+        snapshots: [],
+        symptom
+      });
+      const evidence = [
+        ...supplied.map(item => ({ source: "operator", detail: typeof item?.detail === "string" ? item.detail : "" })).filter(item => item.detail),
+        ...bundle.evidence
+      ].slice(0, 200);
+      // The report is a read-only diagnosis: it names the most likely causes
+      // and the checks that would confirm them. It never performs a change.
+      const report = buildDiagnosticReport({ symptom, evidence, causes: [], now: new Date().toISOString() });
+      // The conclusion is written into the history: a diagnosis that is never
+      // remembered cannot be corrected later. Only the symptom, the causes and
+      // the evidence references are kept, the evidence text is not copied.
+      let historyId = "";
+      try {
+        const record = diagnosisHistory.record({
+          symptom: symptom || "未描述症状",
+          causes: Array.isArray(report.causes) ? report.causes.slice(0, 10).map(cause => String(cause?.title || cause?.cause || cause || "")) : [],
+          evidenceRefs: evidence.slice(0, 20).map(item => String(item?.source || "") + ":" + String(item?.detail || "").slice(0, 120))
+        });
+        historyId = record?.entry?.id || "";
+      } catch (error) {
+        console.error(`[history] Could not record the diagnosis: ${error?.message || "unknown error"}`);
+      }
+      return reply(res, 200, {
+        ...report,
+        evidenceSummary: bundle.stats,
+        evidenceTruncated: bundle.truncated,
+        historyId
+      });
+    }
+    if (url.pathname === "/api/diagnostics/evidence") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const symptom = url.searchParams.get("symptom") || "";
+      // The snapshot is measured only when it is asked for: the collection
+      // costs commands on the machine.
+      const snapshots = url.searchParams.get("snapshot") === "1"
+        ? await buildSystemSnapshot({ collect: (sectionId) => systemCollector.collect(sectionId) })
+        : [];
+      const evidence = collectDiagnosticEvidence({
+        auditEntries: auditLogger ? await auditLogger.read({ limit: 500 }) : [],
+        traceEntries: toolTracer.list(),
+        healthChecks: scheduledHealthChecks ? scheduledHealthChecks.list() : [],
+        snapshots,
+        now: new Date().toISOString()
+      });
+      return reply(res, 200, { evidence, count: evidence.length });
+    }
+    if (url.pathname === "/api/diagnoses" || url.pathname === "/api/diagnoses/stats") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      if (url.pathname === "/api/diagnoses/stats") return reply(res, 200, diagnosisHistory.stats());
+      const symptom = url.searchParams.get("symptom") || "";
+      return reply(res, 200, diagnosisHistory.list({
+        symptom,
+        limit: numberParam(url.searchParams.get("limit"), 50, 200),
+        offset: numberParam(url.searchParams.get("offset"), 0, 100000)
+      }));
+    }
+    if (url.pathname.startsWith("/api/diagnoses/")) {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      const rest = url.pathname.slice("/api/diagnoses/".length);
+      const diagnosisId = decodeURIComponent(rest.endsWith("/corrections") ? rest.slice(0, -"/corrections".length) : rest);
+      if (!diagnosisHistory.get(diagnosisId)) return reply(res, 404, { error: "Not found" });
+      if (rest.endsWith("/corrections")) {
+        // A correction is a write: it needs a session, the same origin and a
+        // JSON body. The original conclusion is kept, the correction is
+        // appended as a traceable event.
+        if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+        if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+        if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+          return reply(res, 415, { error: "Expected application/json" });
+        const input = await jsonBody(req);
+        const outcome = typeof input?.outcome === "string" ? input.outcome : "";
+        if (!outcome) return reply(res, 400, { error: "An outcome is required" });
+        const result = diagnosisHistory.applyCorrection(diagnosisId, {
+          outcome,
+          note: typeof input?.note === "string" ? input.note : "",
+          correctedBy: typeof input?.correctedBy === "string" ? input.correctedBy : ""
+        });
+        if (!result?.corrected) return reply(res, result?.code === "not-found" ? 404 : 400, { error: result?.reason || "Rejected", code: result?.code || "rejected" });
+        return reply(res, 200, { entry: result.entry });
+      }
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, diagnosisHistory.get(diagnosisId));
+    }
+    if (url.pathname === "/api/write-actions") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // The list is empty on purpose: the server offers no write path it
+      // cannot preview, approve and verify.
+      const actions = verifiedWritePipeline.listActions();
+      return reply(res, 200, { actions, registered: actions.length });
+    }
+    if (url.pathname === "/api/network/policy") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // The settings are readable so the operator can see that the egress is
+      // closed. The check itself never opens a connection.
+      const settings = networkPolicy.settings();
+      return reply(res, 200, {
+        settings,
+        open: Array.isArray(settings.allowList) && settings.allowList.length > 0
+      });
+    }
+    if (url.pathname === "/api/network/diagnostics") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      // The server performs no network I/O itself. A GET returns a patrol in
+      // which every check is unknown, a POST analyses the probes that were
+      // measured elsewhere (by a read-only command the operator ran). Neither
+      // form turns a missing measurement into a healthy one.
+      if (req.method === "GET") return reply(res, 200, runConnectivityPatrol({}));
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      if (!input || typeof input !== "object" || Array.isArray(input)) return reply(res, 400, { error: "An object of probe data is required" });
+      return reply(res, 200, runConnectivityPatrol(input));
+    }
+    // Phase 204：容器实时统计。采集器失败或关闭时如实说「没测到」，不补零。
+    if (url.pathname === "/api/docker/stats") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      let collected = null;
+      let collectorNote = "";
+      if (!dockerStatsCollector) collectorNote = "collector-disabled";
+      else {
+        try {
+          collected = await dockerStatsCollector();
+        } catch {
+          collectorNote = "collector-failed";
+        }
+      }
+      const fresh = Array.isArray(collected?.samples) ? collected.samples : [];
+      if (fresh.length) {
+        dockerStatsHistory.push(...fresh.map((sample) => ({ ...sample, at: collected.collectedAt })));
+        while (dockerStatsHistory.length > DOCKER_STATS_HISTORY_LIMIT) dockerStatsHistory.shift();
+      }
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        samples: fresh.length,
+        summary: summarizeStats(dockerStatsHistory),
+        anomalies: detectStatsAnomalies(dockerStatsHistory),
+        evidence: buildStatsEvidence(dockerStatsHistory),
+        dropped: collected?.dropped ?? [],
+        notes: [...(collected?.notes ?? []), ...(collectorNote ? [collectorNote] : [])],
+        note: fresh.length
+          ? "样本来自 docker stats --no-stream；CPU% 未按核数归一化，阈值只做参考。"
+          : "这次没有取到容器统计；这不代表容器健康，只代表没测到。"
+      });
+    }
+    // Phase 205：接口吞吐。读 /proc/net/dev 两次取 1 秒窗口的差分，是唯一一次
+    // 本进程发起的只读采样；采不到就是 collector-disabled/failed。
+    if (url.pathname === "/api/network/interfaces") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      let firstText = "";
+      try {
+        firstText = await readFile("/proc/net/dev", "utf8");
+      } catch {
+        return reply(res, 200, {
+          generatedAt: new Date().toISOString(),
+          verdict: "unknown",
+          interfaces: [],
+          notes: ["collector-disabled"],
+          note: "这台机器没有 /proc/net/dev（不是 Linux），接口吞吐无法测量。"
+        });
+      }
+      const first = parseProcNetDev(firstText);
+      const startedAt = Date.now();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      try {
+        const second = parseProcNetDev(await readFile("/proc/net/dev", "utf8"));
+        const windowMs = Date.now() - startedAt;
+        const diffs = diffInterfaceCounters(first, second, { elapsedMs: windowMs });
+        const throughput = analyzeThroughput(buildThroughputInput({ diffs, windowMs }));
+        return reply(res, 200, {
+          generatedAt: new Date().toISOString(),
+          windowMs,
+          verdict: throughput.verdict ?? "unknown",
+          interfaces: diffs?.interfaces ?? diffs ?? [],
+          throughput,
+          note: "吞吐来自 1 秒窗口的计数器差分；窗口内没有流量就报 0，不补零也不猜。"
+        });
+      } catch {
+        return reply(res, 200, {
+          generatedAt: new Date().toISOString(),
+          verdict: "unknown",
+          interfaces: first.interfaces,
+          notes: ["collector-failed"],
+          note: "第二次读 /proc/net/dev 失败，这次没有可信吞吐。"
+        });
+      }
+    }
+    // Phase 207：日志证据化。只解析日志尾部，证据里不带原文，避免把整行日志
+    // 搬进模型上下文。
+    if (url.pathname === "/api/diagnostics/log-evidence") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      let collected = null;
+      let collectorNote = "";
+      if (!logTailCollector) collectorNote = "collector-disabled";
+      else {
+        try {
+          collected = logTailCollector();
+        } catch {
+          collectorNote = "collector-failed";
+        }
+      }
+      const parsedLines = parseEvidenceLogLines(collected?.text ?? "");
+      const entries = Array.isArray(parsedLines?.entries)
+        ? parsedLines.entries
+        : Array.isArray(parsedLines)
+          ? parsedLines
+          : [];
+      const evidence = buildLogEvidence(entries);
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        sources: collected?.sources ?? [],
+        parsed: entries.length,
+        dropped: parsedLines?.dropped ?? [],
+        evidence,
+        notes: [...(collected?.notes ?? []), ...(parsedLines?.notes ?? []), ...(collectorNote ? [collectorNote] : [])],
+        note: evidence.evidence?.length
+          ? "证据只保留类别、级别与计数，不携带原始日志行。"
+          : "这次没有读到可疑日志行；这不等于系统没有错误。"
+      });
+    }
+    // Phase 209：技能组合的校验与运行计划。这里只判不跑：计划里的 destructive
+    // 步骤仍然要走审批，路由不会代替操作员执行任何技能。
+    if (url.pathname === "/api/compositions/validate" || url.pathname === "/api/compositions/plan") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      if (!input || typeof input !== "object" || Array.isArray(input)) return reply(res, 400, { error: "A composition object is required" });
+      const normalized = normalizeComposition(input.composition ?? input);
+      if (normalized.ok === false) return reply(res, 400, { error: normalized.reason });
+      const skills = Array.isArray(input.skills) ? input.skills : [];
+      if (url.pathname === "/api/compositions/validate") {
+        return reply(res, 200, {
+          generatedAt: new Date().toISOString(),
+          composition: normalized.composition,
+          report: validateComposition(normalized.composition, { skills })
+        });
+      }
+      const plan = planCompositionRun(normalized.composition, {
+        resolveSkill: (skillId) => skills.find((skill) => skill?.id === skillId) ?? null,
+        facts: input.facts && typeof input.facts === "object" ? input.facts : {}
+      });
+      return reply(res, 200, { generatedAt: new Date().toISOString(), composition: normalized.composition, plan });
+    }
+    // Phase 206：触发判定。规则来自 dataDir/workflow-triggers.json，事实由调用方
+    // 传入；本路由只回「哪些该触发」，不会自动执行 workflow。
+    if (url.pathname === "/api/workflows/triggers/evaluate") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const body = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+      const loaded = Array.isArray(body.rules) ? { rules: body.rules, note: "" } : await loadTriggerRules();
+      const state = body.state && typeof body.state === "object" ? body.state : {};
+      const facts = body.facts && typeof body.facts === "object" ? body.facts : {};
+      const evaluated = evaluateTriggers(loaded.rules, facts, { now: Date.now(), state });
+      return reply(res, 200, {
+        generatedAt: new Date().toISOString(),
+        ruleCount: loaded.rules.length,
+        ...evaluated,
+        notes: [...(loaded.note ? [loaded.note] : []), ...(Array.isArray(evaluated.notes) ? evaluated.notes : [])],
+        note: "判定结果不会自动执行；要跑 workflow 请调用 POST /api/workflows/:id/run 并走审批。"
+      });
+    }
+    if (url.pathname === "/api/network/check") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const url = typeof input?.url === "string" ? input.url : "";
+      if (!url) return reply(res, 400, { error: "A url is required" });
+      // A check never opens a connection: it only asks the policy.
+      const decision = await networkPolicy.isUrlAllowed(url);
+      return reply(res, 200, { decision });
+    }
+    if (url.pathname === "/api/web/fetch") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const url = typeof input?.url === "string" ? input.url : "";
+      if (!url) return reply(res, 400, { error: "A url is required" });
+      // The policy is closed by default, so this route normally refuses. It
+      // never falls back to a direct request.
+      const result = await webFetcher.fetchEvidence(url, { fetchedAt: new Date().toISOString() });
+      if (!result.ok) {
+        const status = result.error?.code === "invalid-url" ? 400 : result.error?.code === "network-url-not-allowed" ? 403 : 502;
+        return reply(res, status, { error: result.error?.message || "Fetch failed", code: result.error?.code || "fetch-failed", reason: result.error?.reason || "" });
+      }
+      return reply(res, 200, { evidence: result.evidence, truncated: result.truncated === true });
+    }
+    if (url.pathname === "/api/security/inspection") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const auditEntries = auditLogger ? await auditLogger.read({ limit: 500 }) : [];
+      const toolCatalog = toolRegistry.list();
+      const storageRoots = fileManager ? await fileManager.getRoots() : [];
+      const inspection = runSecurityInspection({
+        toolCatalog,
+        auditEntries,
+        config: { listenAddress: String(process.env.AGENT_HOST || "127.0.0.1") },
+        scheduledChecks: scheduledHealthChecks ? scheduledHealthChecks.list() : [],
+        storageRoots
+      });
+      return reply(res, 200, {
+        ...inspection,
+        toolPermissions: buildToolPermissionTable(toolCatalog),
+        auditSummary: summarizeAuditEntries(auditEntries)
+      });
+    }
+    if (url.pathname === "/api/models/usage") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const summary = applyPrivacyMode(usageMeter.summary(), { privacyMode: privacyModeEnabled });
+      return reply(res, 200, {
+        summary,
+        byModel: usageMeter.byModel(),
+        privacy: {
+          enabled: privacyModeEnabled,
+          // The flag is a report flag. It does not block a cloud request, the
+          // gate would have to live in the adapter of the provider.
+          enforced: false,
+          note: "隐私模式当前只统计云端调用，不拦截已发出的请求。"
+        },
+        capabilities: modelProviderStore ? describeModelCapabilities(modelProviderStore.runtimeConfig?.() || {}) : null
+      });
+    }
+    if (url.pathname === "/api/workflows") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method === "GET") return reply(res, 200, { workflows: workflowEngine.listWorkflows() });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const workflowId = typeof input?.workflowId === "string" ? input.workflowId : "";
+      if (!workflowId) return reply(res, 400, { error: "A workflow id is required" });
+      // The engine asks for a tool: the server owns the catalogue and the
+      // policy. The engine itself cannot execute anything.
+      const result = await workflowEngine.runWorkflow(workflowId, {
+        sessionId: active.key,
+        invokeTool: async ({ tool, args }) => { await toolRegistry.invoke(tool, args || {}); },
+        requestApproval: async () => ({ approved: false, reason: "工作流不自行批准任何步骤" }),
+        notify: () => {}
+      });
+      if (!result.started) return reply(res, result.reason === "locked" ? 409 : 404, { error: result.reason === "locked" ? "The workflow is already running" : "Unknown workflow", reason: result.reason });
+      return reply(res, 200, result);
+    }
+    if (url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/events")) {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const workflowId = decodeURIComponent(url.pathname.slice("/api/workflows/".length, -"/events".length));
+      if (!workflowEngine.getWorkflow(workflowId)) return reply(res, 404, { error: "Unknown workflow" });
+      return reply(res, 200, { workflowId, events: workflowEngine.workflowEvents(workflowId) });
+    }
+    if (url.pathname === "/api/runbooks/stats") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, runbookStore.stats());
+    }
+    if (url.pathname === "/api/runbooks") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method === "GET") {
+        const query = url.searchParams.get("q") || "";
+        if (query) return reply(res, 200, runbookStore.search(query, { limit: numberParam(url.searchParams.get("limit"), 20, 100) }));
+        return reply(res, 200, runbookStore.list({
+          tag: url.searchParams.get("tag") || "",
+          limit: numberParam(url.searchParams.get("limit"), 50, 200),
+          offset: numberParam(url.searchParams.get("offset"), 0, 100000)
+        }));
+      }
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      // The store redacts the entry before it is written: a credential that
+      // slipped into the text is replaced, the original text is never stored.
+      const result = await runbookStore.put(input || {});
+      if (!result.written) {
+        const conflict = result.code === "duplicate-entry";
+        return reply(res, conflict ? 409 : 400, { error: result.reason || "Rejected", code: result.code || "rejected" });
+      }
+      return reply(res, 201, { entry: result.entry, redactedFields: result.redactedFields || [] });
+    }
+    if (url.pathname.startsWith("/api/runbooks/")) {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      const runbookId = decodeURIComponent(url.pathname.slice("/api/runbooks/".length));
+      if (req.method === "GET") {
+        const entry = runbookStore.get(runbookId);
+        if (!entry) return reply(res, 404, { error: "Not found" });
+        return reply(res, 200, entry);
+      }
+      if (req.method !== "DELETE") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET, DELETE" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      const result = await runbookStore.remove(runbookId);
+      if (!result.removed) {
+        const missing = result.code === "not-found";
+        return reply(res, missing ? 404 : 400, { error: result.reason || "Rejected", code: result.code || "rejected" });
+      }
+      return reply(res, 200, { removed: true, id: result.id });
+    }
+    if (url.pathname === "/api/knowledge/stats") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, knowledgeBase.stats());
+    }
+    if (url.pathname === "/api/knowledge/conflicts") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      return reply(res, 200, knowledgeBase.conflicts());
+    }
+    // A write is always two steps: the preview shows what would be stored and
+    // which fields were redacted, the commit stores exactly that preview. A
+    // single call can never write.
+    if (url.pathname === "/api/knowledge/preview") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const operation = typeof input?.operation === "string" ? input.operation : "write";
+      const result = knowledgeBase.preview(operation, input?.input ?? input ?? {});
+      if (!result.ok) return reply(res, 400, { error: result.message || "Rejected", code: result.code || "rejected", reasons: result.reasons || [] });
+      return reply(res, 200, result);
+    }
+    if (url.pathname === "/api/knowledge/commit") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const previewId = typeof input?.previewId === "string" ? input.previewId : "";
+      if (!previewId) return reply(res, 400, { error: "A previewId is required" });
+      const result = knowledgeBase.commit(previewId);
+      if (result.ok === false) return reply(res, 400, { error: result.message || "Rejected", code: result.code || "rejected" });
+      return reply(res, 201, result);
+    }
+    if (url.pathname === "/api/knowledge") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const query = {
+        keyword: url.searchParams.get("q") || "",
+        tag: url.searchParams.get("tag") || "",
+        category: url.searchParams.get("category") || "",
+        source: url.searchParams.get("source") || ""
+      };
+      const anyQuery = Object.values(query).some(Boolean);
+      if (anyQuery) {
+        return reply(res, 200, knowledgeBase.search(query, { limit: numberParam(url.searchParams.get("limit"), 20, 50) }));
+      }
+      return reply(res, 200, knowledgeBase.list({
+        limit: numberParam(url.searchParams.get("limit"), 20, 50),
+        offset: numberParam(url.searchParams.get("offset"), 0, 100000),
+        includeArchived: url.searchParams.get("archived") === "1"
+      }));
+    }
+    if (url.pathname.startsWith("/api/knowledge/")) {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const rest = decodeURIComponent(url.pathname.slice("/api/knowledge/".length));
+      if (rest.endsWith("/reference")) {
+        const entryId = rest.slice(0, -"/reference".length);
+        // A reference never reports a stored value as the current state: it
+        // carries the collection time next to every fact.
+        const result = knowledgeBase.reference(entryId);
+        if (result.ok === false) return reply(res, 404, { error: result.message || "Not found", code: result.code || "not-found" });
+        return reply(res, 200, result);
+      }
+      const entry = knowledgeBase.get(rest);
+      if (!entry) return reply(res, 404, { error: "Not found" });
+      return reply(res, 200, entry);
+    }
+    if (url.pathname === "/api/docker/advice") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // Every section is read-only and every unmeasured section stays unknown.
+      const inventory = await readDockerInventory();
+      return reply(res, 200, buildDockerReport(inventory));
+    }
     if (url.pathname === "/api/health-checks") {
       const active = sessionFor(req);
       if (!active) return reply(res, 401, { error: "Unauthorized" });
@@ -1264,6 +2757,47 @@ const server = createServer(async (req, res) => {
       if (!result.cancelled) return reply(res, 409, { error: "Task is already terminal or cannot be cancelled.", task: result.task });
       return reply(res, 200, result);
     }
+    const taskEventsMatch = url.pathname.match(new RegExp("^/api/tasks/([a-f0-9-]{8,64})/events$", "i"));
+    if (taskEventsMatch) {
+      const taskSession = sessionFor(req);
+      if (!taskSession) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      if (typeof taskManager.subscribe !== "function") return reply(res, 501, { error: "Task events are not available" });
+      const task = taskManager.get(taskEventsMatch[1], taskSession.key);
+      if (!task) return reply(res, 404, { error: "Task not found" });
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+      });
+      res.write("retry: 2000\n\n");
+      let closed = false;
+      const keepAlive = setInterval(() => {
+        try { res.write(": keep-alive\n\n"); } catch { /* the client is gone */ }
+      }, 15_000);
+      let unsubscribe = null;
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(keepAlive);
+        try { if (typeof unsubscribe === "function") unsubscribe(); } catch { /* already unsubscribed */ }
+        try { res.end(); } catch { /* already closed */ }
+      };
+      const send = event => {
+        try { res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`); } catch { /* the client is gone */ }
+        // A final event ends the stream.
+        if (event.type === "done" || event.type === "error") close();
+      };
+      unsubscribe = taskManager.subscribe(taskEventsMatch[1], send);
+      if (typeof unsubscribe !== "function") {
+        send({ type: "error", at: new Date().toISOString(), data: { message: "事件流已满，请稍后重试。" } });
+        close();
+        return undefined;
+      }
+      res.on("close", close);
+      return undefined;
+    }
     const taskMatch = url.pathname.match(new RegExp("^/api/tasks/([a-f0-9-]{8,64})$", "i"));
     if (taskMatch) {
       const taskSession = sessionFor(req);
@@ -1304,12 +2838,37 @@ const server = createServer(async (req, res) => {
         return reply(res, status, { error: status === 500 ? "Unable to execute confirmed action" : error.message });
       }
     }
+    if (url.pathname === "/api/mcp/status") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const status = mcpManager.status();
+      return reply(res, 200, {
+        servers: status.servers,
+        errors: [...mcpConfig.errors.map(item => ({ error: item.error })), ...status.errors],
+        sources: toolRegistry.sources()
+      });
+    }
+    if (url.pathname === "/api/agent/trace") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      const requested = Number(url.searchParams.get("limit"));
+      const limit = Number.isInteger(requested) && requested > 0 ? Math.min(requested, 500) : 100;
+      // The trace only holds metadata. Arguments, results and error messages
+      // never reach this endpoint. The observer adds the live view of the last
+      // calls: one terminal record per call, including the calls that the
+      // execution policy denied.
+      return reply(res, 200, {
+        summary: toolTracer.summary(),
+        entries: toolTracer.list().slice(-limit),
+        observer: { summary: toolObserver.summary(), records: toolObserver.listRecords(limit) }
+      });
+    }
     if (url.pathname === "/api/tools") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
       if (req.method === "GET") {
         let cliAvailable = false;
         try { cliAvailable = (await trimCli.status()).available; } catch { /* unavailable providers stay disabled in the UI */ }
-        const tools = readOnlyTools.list().map(tool =>
+        const tools = toolRegistry.list().map(tool =>
           tool.id.startsWith("fnos.") ? { ...tool, providerAvailable: cliAvailable } : tool
         );
         return reply(res, 200, {
@@ -1319,12 +2878,13 @@ const server = createServer(async (req, res) => {
           readOnlyExecutionEnabled: true,
           routineWriteExecutionEnabled: executionPolicy.mode() === "normal",
           destructiveActionConfirmationEnabled: true,
-          trimCliProviderAvailable: cliAvailable
+          trimCliProviderAvailable: cliAvailable,
+          toolSources: toolRegistry.sources()
         });
       }
       return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
     }
-    const toolRunMatch = url.pathname.match(/^\/api\/tools\/([a-z][a-z0-9.-]{0,63})\/run$/);
+    const toolRunMatch = url.pathname.match(/^\/api\/tools\/([a-z][a-z0-9.:_-]{0,127})\/run$/);
     if (toolRunMatch) {
       if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
       const active = sessionFor(req);
@@ -1335,7 +2895,7 @@ const server = createServer(async (req, res) => {
       if (!toolRunLimiter.allow(active.key))
         return reply(res, 429, { error: "Too many tool runs; try again shortly." }, "application/json; charset=utf-8", { "retry-after": "60" });
       const args = await jsonBody(req);
-      const tool = readOnlyTools.list().find(item => item.id === toolRunMatch[1]);
+      const tool = toolRegistry.list().find(item => item.id === toolRunMatch[1]);
       if (!tool) return reply(res, 404, { error: "Unknown tool" });
       const decision = executionPolicy.evaluate({ risk: tool.risk, approved: false });
       if (!decision.allowed) {
@@ -1350,7 +2910,7 @@ const server = createServer(async (req, res) => {
         }
         return reply(res, decision.statusCode || 403, { error: policyMessage(decision) });
       }
-      try { return reply(res, 200, { tool: toolRunMatch[1], result: await readOnlyTools.invoke(toolRunMatch[1], args) }); }
+      try { return reply(res, 200, { tool: toolRunMatch[1], result: await toolRegistry.invoke(toolRunMatch[1], args) }); }
       catch (error) {
         const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
         return reply(res, status, { error: status === 500 ? "Tool execution failed" : error.message });

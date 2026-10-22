@@ -1,6 +1,7 @@
 import { inflateRawSync } from "node:zlib";
 import { inspectZipArchive } from "./skill-archives.mjs";
 import { inspectSkillSource } from "./skill-source-review.mjs";
+import { MANIFEST_COMMAND_RULES } from "./dangerous-command-rules.mjs";
 
 const MANIFEST_LIMIT = 64 * 1024;
 const MAX_DESCRIPTION = 1000;
@@ -131,10 +132,12 @@ export function inspectSkillManifest(buffer) {
   if ([...content].some(char => { const code = char.charCodeAt(0); return code <= 8 || code === 11 || code === 12 || (code >= 14 && code <= 31); })) findings.push("control-characters-in-manifest");
   if (!fields.name) findings.push("missing-name-field");
   if (!fields.description) findings.push("missing-description-field");
-  if (/(?:\bsudo\b|\brm\s+-rf\b|\bcurl\b.{0,80}\|\s*(?:ba)?sh\b|\bwget\b.{0,80}\|\s*(?:ba)?sh\b|\bchmod\s+777\b|\bbase64\s+-d\b|\bnc\s+-e\b|\b(?:python|node)\s+-c\b|\/dev\/tcp\/)/i.test(content)) {
-    findings.push("potentially-dangerous-command-text");
+  // Phase 145: both manifest text rules now come from the shared dangerous
+  // command rule pack. The identifiers, the combined regular expressions,
+  // and the finding order are unchanged.
+  for (const rule of MANIFEST_COMMAND_RULES) {
+    if (rule.pattern.test(content)) findings.push(rule.id);
   }
-  if (/(?:\bexec\b|\bspawn\b|\bchild_process\b|\beval\s*\()/i.test(content)) findings.push("execution-related-text");
   return reviewResult({
     status: findings.length ? "needs_review" : "manifest_parsed",
     manifestFound: true, entryPath: entry.name, name: fields.name || null,

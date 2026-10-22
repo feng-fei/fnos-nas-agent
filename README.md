@@ -20,6 +20,46 @@ Core development is active. The repository currently includes:
 - Reviewers can browse quarantined Skill file paths and preview supported UTF-8 source/config text in memory (64 KiB per file), without extracting or executing imported content.
 - GitHub Skill source labels retain the repository and branch/tag ref when importing a specific archive.
 - Privacy-conscious audit records that omit prompts, task inputs, credentials, and raw exceptions.
+- A registrable tool registry: the built-in fnOS tools, Skill tools and MCP server tools share one catalogue, and every tool keeps the origin it was registered with.
+- An MCP client over the stdio transport with a declarative server configuration; a server that fails is reported and never blocks the built-in tools.
+- A Skill package parser that reads the canonical package layout in memory and reports every deviation as a named finding, without extracting or executing anything.
+- A dangerous command rule pack that judges shell, PowerShell, Python and Node.js constructs identically in the manifest review, the source review and the command scanner.
+- Tool call observability: every invocation is traced with its identity, timing, outcome and a fixed error classification, and a structured JSON logger drops secret-looking fields.
+- A Marvis style conversation window with bubbles, a multi-line composer, tool cards, an inline approval, a stop button and a streamed progress.
+- A direct chat channel: the model answers in plain text over a streamed HTTP response, under the same origin, session, rate limit and endpoint whitelist rules as the rest of the product.
+- A dual-mode chat window: the operator switches between the task mode and the direct chat mode, and the direct mode streams a plain text answer instead of creating a NAS task.
+- A model settings surface: an API key is shown as a fingerprint, the password never comes back in clear text while it is edited, and a failed save names the field that caused it.
+- A tool call observer: the built-in catalogue, the agent plan and the external MCP tools all leave a trace entry, so a real run produces the same evidence the tests do.
+- An MCP tool bridge: a tool of a foreign server enters the catalogue under a namespaced identifier (`mcp__server__tool`), the risk comes from the tool name alone, an unknown name is treated as destructive, and a write or destructive tool needs a one time approval while the read-only mode and the kill switch still cover it (Phases 147, 148, 153).
+- A migration record that maps every migrated Marvis capability to its implementation, its phase and its file, next to the naming and risk rules of the bridge, the red lines of the round and the limits that are still open (Phase 156).
+- A read-only observation surface: the system snapshot reports the real state of the machine and marks an unmeasured section as unknown, the security inspection turns the audit log into a report, the model usage counts the requests and tokens without keeping a prompt, and the diagnostic report ranks the likely causes and filters every destructive suggestion (Phases 160–166).
+- An MCP stdio entry point: an external client can discover the read-only tool catalogue over JSON-RPC 2.0, under the same tool contract and risk rules as the HTTP side (Phases 164, 166).
+- A verified write pipeline: a write action is registered with its target and its approval level, runs its steps in order, keeps a record of what happened and can undo the actions of the same run (Phase 171).
+- A closed-by-default network policy: every outbound URL is judged before the request and before every redirect hop, so an unknown destination is never contacted (Phase 172).
+- A diagnosis history that keeps the past reports, groups them by conclusion and absorbs a human correction (Phase 173).
+- An observation panel on the overview page: the workflow plans, the runbooks and the last diagnostic evidence are shown side by side, read-only (Phase 174).
+- A controlled web fetch: only the allowed content types are read, the body is capped, the raw page is never returned and the credentials in a URL are removed from the error (Phase 175).
+- Read-only exits for the diagnosis history, the write action registry, the network policy and the controlled fetch, all behind the same session and origin rules (Phase 176).
+- A source-aware knowledge base: every entry keeps its source, its collection time and its open conflicts, and the panel cites the entry it shows instead of presenting a stored fact as the live state (Phase 177).
+- Structured network diagnostics: link state, latency samples and DNS answers become a verdict with explicit gaps, so "the network is slow" is answerable without guesswork (Phase 178).
+- A knowledge panel with a read-only application inventory and a notification centre that merges exceptions, approvals and finished tasks, hiding credentials before display (Phase 179).
+- Per-container Docker advice with a reason, a severity and a next step, produced from collected data without touching Docker (Phase 180).
+- A Skill archive structure verdict stored next to the source review: references, scripts and tests are counted, an incomplete package is never recorded as complete, and a hand-edited verdict can never claim the server reviewed it (Phase 187).
+- Disk capacity trends: samples are de-duplicated per hour, capped and stored atomically, and a fill date is only predicted when the growth rate and the sample count support it (Phase 188/191).
+- A batch rename that plans first: four modes, four conflict classes checked before anything moves, and an ordered rollback if a step fails halfway (Phase 189/191).
+- Service state read through one fixed command shape: a server-side unit whitelist, `systemctl show` with fixed argv and no shell, and `unknown` whenever the collector cannot measure — never a guessed `running` (Phase 190/191).
+- Device temperature from `/sys/class/thermal`: strict milli-Celsius parsing, per-sensor de-duplication, and `unknown` instead of `0 °C` when nothing credible was measured (Phase 193/196/197).
+- System events from the log tail: kmsg, journalctl-short and `LEVEL:` lines are normalised, repeats are grouped, and the log is graded ok/warning/critical — with dropped lines accounted for exactly (Phase 194/196/197).
+- SMART health that never guesses: the ATA attribute table is parsed for reallocated/pending/offline sectors, CRC errors and temperature; a disc that cannot be read is `unknown`, and `smartctl` stays off unless `FNOS_AGENT_SMART_COLLECTOR=on` (Phase 192/197).
+- An upgrade check that does not phone home: strict SemVer comparison against a version the caller supplies, `unknown` when either side cannot be parsed, and downgrades are never offered (Phase 195/197).
+- System facts as tools: services, SMART, thermal, events, the snapshot, the capability map and the capacity forecast are defined once and reachable both as HTTP routes and as registry tools, so the agent, the tool panel and the MCP bridge see the same contract (Phase 203/210).
+- Docker samples with a stated gap: `docker stats --no-stream` is parsed into usage and bottleneck verdicts, and a disabled or failing collector reports `unknown` instead of a healthy-looking zero (Phase 204/210).
+- Network throughput from `/proc/net/dev` with incremental sampling: a missing counter is `unknown`, never zero traffic (Phase 205/210).
+- Workflow trigger evaluation that only judges: threshold, event and timer rules produce the workflows that would fire, the invalid rules are listed by name, and nothing is executed (Phase 206/210).
+- Log evidence instead of log dumps: the tail is compressed into categories, severities and counts with a redacted summary, and the original line never leaves the server (Phase 207/210).
+- Device profiles that the owner writes: credentials are dropped before writing, a serial number keeps only its last four characters, and freshness is `unknown` when no trustworthy time exists (Phase 208/210).
+- Skill composition: a composition is normalised, validated across seven error classes, topologically ordered and planned without running anything, and its permissions can only escalate (Phase 209/210).
+- An audit whitelist that keeps up with the routes: every name returned by the route table is whitelisted, so a new route records its own name instead of collapsing to `other_api`, and a static test fails the build when the two drift apart (Phase 210).
 
 **Runtime and validation:** Node.js 26.x is the supported development and CI runtime. GitHub Actions builds an unsigned x86 CI test FPK, inspects the archive, verifies SHA-256 and release-manifest consistency, and uploads the artifact for 14 days. A separate job creates GitHub build-provenance attestation only for verified `main` builds; pull requests do not receive OIDC/attestation permissions. CI success does not mean the package has been installed or validated on a real fnOS NAS; lifecycle acceptance remains a separate manual staging gate.
 
@@ -114,6 +154,65 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Model action rate limiting](docs/phase-76-model-action-rate-limit.md)
 - [Mobile upload progress](docs/phase-77-mobile-upload-progress.md)
 - [Mobile upload cancellation](docs/phase-78-cancel-file-upload.md)
+- [Phase 144 — Skill Package Format](docs/phase-144-skill-package-format.md)
+- [Phase 145 — Dangerous Command Rule Pack](docs/phase-145-dangerous-command-rules.md)
+- [Phase 146 — Tool Call Observability](docs/phase-146-tool-trace.md)
+- [Phase 146 — Task Event Stream](docs/phase-146-task-events.md)
+- [Phase 147 — Registrable Tool Registry](docs/phase-147-tool-registry.md)
+- [Phase 148 — MCP Client](docs/phase-148-mcp-client.md)
+- [Phase 149 — Marvis Style Conversation Window](docs/phase-149-chat-window.md)
+- [Phase 150 — Model Chat Adapter](docs/phase-150-model-chat-adapter.md)
+- [Phase 151 — Direct Chat Channel over HTTP](docs/phase-151-direct-chat-http.md)
+- [Phase 151 — Dual-mode Chat Window](docs/phase-151-chat-direct-mode.md)
+- [Phase 153 — MCP Tool Bridge](docs/phase-153-mcp-tool-bridge.md)
+- [Phase 154 — Model Settings UI](docs/phase-154-model-settings-ui.md)
+- [Phase 155 — Tool Call Observer](docs/phase-155-tool-call-observer.md)
+- [Phase 156 — Marvis Migration Integration](docs/phase-156-marvis-migration-integration.md)
+- [Phase 157 — UI Integration Verification](docs/phase-157-ui-integration.md)
+- [Phase 158 — Windows Absolute Path Guard](docs/phase-158-windows-absolute-path.md)
+- [Phase 160 — Security Audit Report](docs/phase-160-security-audit.md)
+- [Phase 161 — System Snapshot](docs/phase-161-system-snapshot.md)
+- [Phase 162 — Diagnostics](docs/phase-162-diagnostics.md)
+- [Phase 163 — Duplicate Detector](docs/phase-163-duplicate-detector.md)
+- [Phase 164 — MCP Server](docs/phase-164-mcp-server.md)
+- [Phase 165 — Model Usage](docs/phase-165-model-usage.md)
+- [Phase 166 — Agent Insights](docs/phase-166-agent-insights.md)
+- [Phase 167 — Diagnostic Evidence](docs/phase-167-diagnostic-evidence.md)
+- [Phase 168 — Workflow Engine](docs/phase-168-workflow-engine.md)
+- [Phase 169 — Runbook Store](docs/phase-169-runbook-store.md)
+- [Phase 170 — Observation Routes](docs/phase-170-observation-routes.md)- [Phase 171 — Verified Write Pipeline](docs/phase-171-verified-write.md)
+- [Phase 172 — Network Egress Policy](docs/phase-172-network-policy.md)
+- [Phase 173 — Diagnosis History](docs/phase-173-diagnosis-history.md)
+- [Phase 174 — Observation Panel](docs/phase-174-observation-panel.md)
+- [Phase 175 — Controlled Web Fetch](docs/phase-175-web-fetch.md)
+- [Phase 176 — Diagnosis and Policy Routes](docs/phase-176-diagnosis-and-policy-routes.md)
+- [Phase 177 — Knowledge Base](docs/phase-177-knowledge-base.md)
+- [Phase 178 — Network Diagnostics](docs/phase-178-network-diagnostics.md)
+- [Phase 179 — Knowledge Panel and Notifications](docs/phase-179-knowledge-and-notifications.md)
+- [Phase 180 — Docker Advisor](docs/phase-180-docker-advisor.md)
+- [Phase 187 — Skill Package Review](docs/phase-187-skill-package-review.md)
+- [Phase 188 — Capacity Trend Forecast](docs/phase-188-capacity-forecast.md)
+- [Phase 189 — Batch Rename Planner](docs/phase-189-batch-rename.md)
+- [Phase 190 — Service Status Parsing](docs/phase-190-service-status.md)
+- [Phase 191 — Runtime Wiring](docs/phase-191-runtime-wiring.md)
+- [Phase 192 — SMART Health](docs/phase-192-smart-health.md)
+- [Phase 193 — Thermal Status](docs/phase-193-thermal-status.md)
+- [Phase 194 — System Events](docs/phase-194-system-events.md)
+- [Phase 195 — Update Check](docs/phase-195-update-check.md)
+- [Phase 196 — Collectors](docs/phase-196-collectors.md)
+- [Phase 197 — Device Diagnosis](docs/phase-197-device-diagnosis.md)
+- [Phase 198 — Certificate Check](docs/phase-198-certificate-check.md)
+- [Phase 199 — Idempotency](docs/phase-199-idempotency.md)
+- [Phase 201 — Deployment Precheck](docs/phase-201-deployment-precheck.md)
+- [Phase 202 — Deploy, Certificate and Idempotency Wiring](docs/phase-202-deploy-cert-wiring.md)
+- [Phase 203 — System Read-only Tool Definitions](docs/phase-203-system-tools.md)
+- [Phase 204 — Docker Stats Parsing](docs/phase-204-docker-stats.md)
+- [Phase 205 — Network Collectors](docs/phase-205-network-collectors.md)
+- [Phase 206 — Workflow Triggers](docs/phase-206-workflow-triggers.md)
+- [Phase 207 — Log Evidence](docs/phase-207-log-evidence.md)
+- [Phase 208 — Device Profiles](docs/phase-208-device-profile.md)
+- [Phase 209 — Skill Composition](docs/phase-209-skill-composition.md)
+- [Phase 210 — Wiring 203–209 and the Audit Whitelist](docs/phase-210-wiring.md)
 
 - [Phase 94 — Model Catalog HTTP Integration](docs/phase-94-model-catalog-http.md)
 - [Phase 95 — Searchable Model Catalog Picker](docs/phase-95-model-catalog-search.md)
@@ -187,6 +286,20 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 141 — Official Skill Identity](docs/phase-141-official-skill-identity.md)
 - [Phase 142 — Official CLI Manifest Paths](docs/phase-142-official-cli-manifest-paths.md)
 - [Phase 143 — Official CLI Login Guidance](docs/phase-143-cli-login-required.md)
+- [Phase 144 — Skill Package Format](docs/phase-144-skill-package-format.md)
+- [Phase 145 — Dangerous Command Rule Pack](docs/phase-145-dangerous-command-rules.md)
+- [Phase 146 — Tool Call Observability](docs/phase-146-tool-trace.md)
+- [Phase 146 — Task Event Stream](docs/phase-146-task-events.md)
+- [Phase 147 — Registrable Tool Registry](docs/phase-147-tool-registry.md)
+- [Phase 148 — MCP Client](docs/phase-148-mcp-client.md)
+- [Phase 149 — Marvis Style Conversation Window](docs/phase-149-chat-window.md)
+- [Phase 150 — Model Chat Adapter](docs/phase-150-model-chat-adapter.md)
+- [Phase 151 — Direct Chat Channel over HTTP](docs/phase-151-direct-chat-http.md)
+- [Phase 151 — Dual-mode Chat Window](docs/phase-151-chat-direct-mode.md)
+- [Phase 153 — MCP Tool Bridge](docs/phase-153-mcp-tool-bridge.md)
+- [Phase 154 — Model Settings UI](docs/phase-154-model-settings-ui.md)
+- [Phase 155 — Tool Call Observer](docs/phase-155-tool-call-observer.md)
+- [Phase 156 — Marvis Migration Integration](docs/phase-156-marvis-migration-integration.md)
 - [Documentation index](docs/README.md)
 
 ## License

@@ -81,15 +81,25 @@ async function refreshModels(){
    const p=document.createElement("p");p.className="muted";p.textContent="尚未添加模型服务商。填写上方表单即可添加。";host.append(p);return;
   }
   for(const item of data.providers){
-   const card=document.createElement("div");card.className="card";
+   // The card carries the classes of the model settings stylesheet, so the
+   // Marvis look applies to the real page as well.
+   const card=document.createElement("div");card.className="card model-settings__card";
    const labels=[item.isDefault?"当前默认":item.enabled?"已启用":"已停用",item.fallback?"备用模型":""].filter(Boolean).join(" · ");
-   const heading=document.createElement("strong");heading.textContent=item.name+" · "+labels;card.append(heading);
-   const meta=document.createElement("p");meta.className="muted";meta.textContent="模型："+item.model+"；API Key："+(item.hasApiKey?"已加密保存":"未配置")+"；Endpoint："+item.endpoint;card.append(meta);
+   const heading=document.createElement("strong");heading.className="model-settings__card-title";heading.textContent=item.name+" · "+labels;card.append(heading);
+   const meta=document.createElement("p");meta.className="muted model-settings__card-meta";meta.textContent="模型："+item.model+"；API Key："+(item.hasApiKey?"已加密保存":"未配置")+"；Endpoint："+item.endpoint;card.append(meta);
+   const helpers=window.ModelSettings;
+   if(helpers){
+    const credential=helpers.describeCredentialState({hasKey:item.hasApiKey===true,lastTestOk:Boolean(item.lastTest&&item.lastTest.ok),lastTestAt:item.lastTest&&item.lastTest.at});
+    const credentialLine=document.createElement("p");
+    credentialLine.className="model-settings__card-credential model-settings__card-credential--"+(credential.keyTone||"muted");
+    credentialLine.textContent=credential.keyLabel;
+    card.append(credentialLine);
+   }
    if(item.lastTest){
-    const last=document.createElement("p");last.className=item.lastTest.ok?"muted":"error";
+    const last=document.createElement("p");last.className=item.lastTest.ok?"muted model-settings__card-test":"error model-settings__card-test model-settings__card-test--failed";
     last.textContent=(item.lastTest.ok?"最近连接测试成功：":"最近连接测试失败：")+item.lastTest.message+(item.lastTest.at?"（"+formatDateTime(item.lastTest.at)+"）":"")+(Number.isSafeInteger(item.lastTest.durationMs)?" · 耗时 "+formatDurationMs(item.lastTest.durationMs):"")+(Number.isInteger(item.lastTest.statusCode)?" · HTTP "+item.lastTest.statusCode:"");card.append(last);
    }else{
-    const last=document.createElement("p");last.className="muted";last.textContent="尚未测试连接。";card.append(last);
+    const last=document.createElement("p");last.className="muted model-settings__card-test";last.textContent="尚未测试连接。";card.append(last);
    }
    const actions=document.createElement("div");
    const edit=document.createElement("button");edit.type="button";edit.textContent="编辑";
@@ -106,6 +116,7 @@ async function refreshModels(){
     document.querySelector("#model-provider-clear-key").checked=false;
     document.querySelector("#model-provider-preset").value="";
     document.querySelector("#model-provider-preset-help").textContent="正在编辑已有服务商；留空 API Key 可以保留原值。";
+    document.querySelector("#model-provider-key").dataset.hasStoredKey=String(Boolean(item.hasApiKey));
     document.querySelector("#model-provider-save").textContent="保存修改";
     document.querySelector("#model-provider-error").textContent="";
     document.querySelector("#model-provider-name").focus();
@@ -210,7 +221,62 @@ async function refreshModels(){
   const p=document.createElement("p");p.className="error";p.textContent=errorText(error,"检查 Agent 私有数据目录配置。");host.append(p);
  }
 }
-document.querySelector("#model-provider-form").addEventListener("submit",async event=>{
+/* --- Phase 154: Marvis style form helpers ---------------------------- */
+const MODEL_FIELD_IDS={name:"#model-provider-name",baseUrl:"#model-provider-endpoint",apiKey:"#model-provider-key",modelId:"#model-provider-model",presetId:"#model-provider-preset"};
+function showModelProviderFieldErrors(errors){
+ const map=errors||{};
+ for(const [field,selector] of Object.entries(MODEL_FIELD_IDS)){
+  const element=document.querySelector(selector);if(!element)continue;
+  const message=map[field]||"";
+  // The shared style marks the field container, the fallback rule of the
+  // model settings stylesheet marks the control itself. Both are set, so the
+  // error is visible in either style.
+  const container=element.closest(".field")||element.parentElement||element;
+  container.classList.toggle("field--invalid",Boolean(message));
+  element.classList.toggle("field--invalid",Boolean(message));
+  element.setAttribute("aria-invalid",message?"true":"false");
+  let hint=container.querySelector(".field__error");
+  if(!hint){hint=document.createElement("p");hint.className="field__error error";container.append(hint);}
+  hint.textContent=message;
+ }
+}
+function renderModelProviderWizard(){
+ const host=document.querySelector("#model-provider-wizard");if(!host)return;
+ const helpers=window.ModelSettings;if(!helpers){return;}
+ const id=document.querySelector("#model-provider-id").value;
+ const storedKey=Boolean(document.querySelector("#model-provider-key").dataset.hasStoredKey);
+ const values={
+  presetId:document.querySelector("#model-provider-preset").value,
+  name:document.querySelector("#model-provider-name").value,
+  baseUrl:document.querySelector("#model-provider-endpoint").value,
+  apiKey:document.querySelector("#model-provider-key").value,
+  modelId:document.querySelector("#model-provider-model").value
+ };
+ const steps=helpers.buildProviderWizardSteps(values,{requireApiKey:!id||!storedKey,hasStoredKey:storedKey});
+ const summary=helpers.summarizeWizard(steps);
+ host.replaceChildren();
+ const title=document.createElement("p");title.className="model-settings__wizard-title";
+ title.textContent="配置向导："+(steps[summary.stepIndex]?steps[summary.stepIndex].title:"确认保存")+"（第 "+(summary.stepIndex+1)+"/"+summary.totalSteps+" 步）";
+ host.append(title);
+ const list=document.createElement("ol");list.className="model-settings__wizard-steps";
+ for(const step of steps){
+  const item=document.createElement("li");
+  // The class names are the ones of the model settings stylesheet, so the
+  // state of a step is visible.
+  item.className="model-settings__wizard-step"+(step.valid?" model-settings__wizard-step--done":" model-settings__wizard-step--current");
+  item.textContent=step.title+(step.valid?" ✓":"");
+  list.append(item);
+ }
+ host.append(list);
+}
+const modelProviderForm=document.querySelector("#model-provider-form");
+// The module of the model settings publishes itself when it is ready. The
+// wizard is drawn again at that moment, so the first screen is never empty.
+if(typeof window!=="undefined")window.addEventListener("model-settings-ready",()=>renderModelProviderWizard());
+renderModelProviderWizard();
+if(modelProviderForm){
+ modelProviderForm.addEventListener("input",()=>{showModelProviderFieldErrors({});renderModelProviderWizard();});
+ modelProviderForm.addEventListener("submit",async event=>{
  event.preventDefault();
  const error=document.querySelector("#model-provider-error"),save=document.querySelector("#model-provider-save");
  error.textContent="";save.disabled=true;
@@ -225,6 +291,20 @@ document.querySelector("#model-provider-form").addEventListener("submit",async e
    enabled:document.querySelector("#model-provider-enabled").checked,
    fallback:document.querySelector("#model-provider-fallback").checked
   };
+  // Phase 154: the field level check of Marvis. It runs before the request, so
+  // a wrong endpoint or a missing key is reported on the field itself.
+  const helpers=window.ModelSettings;
+  if(helpers){
+   const storedKey=Boolean(document.querySelector("#model-provider-key").dataset.hasStoredKey);
+   const check=helpers.validateProviderForm({
+    name:body.name,baseUrl:body.endpoint,apiKey,modelId:body.model,
+    presetId:document.querySelector("#model-provider-preset").value
+   },{requireApiKey:!id||!storedKey,hasStoredKey:storedKey});
+   if(!check.valid){
+    showModelProviderFieldErrors(check.errors);
+    throw Object.assign(new Error("请先修正表单中标红的字段。"),{statusCode:400});
+   }
+  }
   if(apiKey)body.apiKey=apiKey;
   if(clearApiKey)body.clearApiKey=true;
   const response=await api(id?"/api/models/"+encodeURIComponent(id):"/api/models",{method:id?"PUT":"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
@@ -233,7 +313,8 @@ document.querySelector("#model-provider-form").addEventListener("submit",async e
   error.textContent="模型配置已安全保存。";
  }catch(error){document.querySelector("#model-provider-error").textContent=errorText(error,"保存模型配置失败");}
  finally{save.disabled=false;}
-});
+ });
+}
 let modelBatchTestOffset = 0;
 async function runModelProviderBatchTest(){
  const button=document.querySelector("#model-provider-test-batch");
@@ -368,10 +449,131 @@ document.querySelector("#agent-clear-context").addEventListener("click",async()=
   showToast("对话上下文已清空。","ok");
 });
 
-function renderAgentTurn(label, body){
- const host=document.querySelector("#agent-history");const card=document.createElement("div");card.className="card";
- const title=document.createElement("strong");title.textContent=label;card.append(title);
- const content=document.createElement("pre");content.textContent=body;card.append(content);host.append(card);
+/* ---------------------------------------------------------------- chat window */
+const CHAT_TERMINAL_STATUS=new Set(["completed","failed","cancelled"]);
+const CHAT_STREAM_EVENT_TYPES=["progress","tool","approval","done","error"];
+let chatActiveTaskId="";
+const chatApprovalNodes=new Map();
+function chatTimeText(){return formatDateTime(new Date().toISOString());}
+function chatScrollToBottom(){const host=document.querySelector("#agent-history");if(host)host.scrollTop=host.scrollHeight;}
+function chatPart(bubble,selector){return bubble&&bubble.querySelector?bubble.querySelector(selector):null;}
+function chatSetStatus(text){const el=document.querySelector("#agent-stream-status");if(el)el.textContent=text;}
+function chatSetStopVisible(taskId){
+ const button=document.querySelector("#agent-stop");if(!button)return;
+ chatActiveTaskId=taskId||"";
+ button.hidden=!taskId;
+ button.disabled=!taskId;
+}
+function chatAutoGrowInput(field){
+ if(!field)return;
+ field.style.height="auto";
+ const full=field.scrollHeight||0;
+ field.style.height=Math.min(full,400)+"px";
+ field.style.overflowY=full>400?"auto":"hidden";
+}
+function chatRenderInline(target,text){
+ const parts=String(text===null||text===undefined?"":text).split(/`([^`\n]+)`/g);
+ for(let i=0;i<parts.length;i++){
+  if(i%2===1){const code=document.createElement("code");code.className="chat__code-inline";code.textContent=parts[i];target.append(code);}
+  else if(parts[i])target.append(document.createTextNode(parts[i]));
+ }
+}
+function chatCodeBlock(source){
+ const pre=document.createElement("pre");pre.className="chat__code";
+ const code=document.createElement("code");code.textContent=source;pre.append(code);
+ return pre;
+}
+function chatRenderMarkdown(source){
+ const fragment=document.createDocumentFragment();
+ const lines=String(source===null||source===undefined?"":source).split(/\r?\n/);
+ let paragraph=[],codeLines=null;
+ const flushParagraph=()=>{if(!paragraph.length)return;const p=document.createElement("p");chatRenderInline(p,paragraph.join("\n"));fragment.append(p);paragraph=[];};
+ for(const line of lines){
+  if(codeLines){if(/^\s*```\s*$/.test(line)){fragment.append(chatCodeBlock(codeLines.join("\n")));codeLines=null;}else codeLines.push(line);continue;}
+  if(/^\s*```/.test(line)){flushParagraph();codeLines=[];continue;}
+  if(!line.trim()){flushParagraph();continue;}
+  paragraph.push(line);
+ }
+ if(codeLines)fragment.append(chatCodeBlock(codeLines.join("\n")));
+ flushParagraph();
+ return fragment;
+}
+function renderAgentTurn(role, body, meta){
+ const host=document.querySelector("#agent-history");if(!host)return null;
+ const info=meta&&typeof meta==="object"?meta:{};
+ const isUser=role==="user"||role==="你";
+ const bubble=document.createElement("div");
+ bubble.className="chat__bubble "+(isUser?"chat__bubble--user":"chat__bubble--agent");
+ if(info.taskId)bubble.dataset.taskId=String(info.taskId);
+ const time=document.createElement("div");time.className="chat__time";time.textContent=chatTimeText();
+ const content=document.createElement("div");content.className="chat__content";
+ content.append(chatRenderMarkdown(body===null||body===undefined?"":body));
+ const tools=document.createElement("div");tools.className="chat__tools";
+ const approvals=document.createElement("div");approvals.className="chat__approval";
+ bubble.append(time,content,tools,approvals);
+ host.append(bubble);chatScrollToBottom();
+ return bubble;
+}
+function chatSetTurnContent(bubble,body){
+ const content=chatPart(bubble,".chat__content");if(!content)return;
+ content.replaceChildren(chatRenderMarkdown(body===null||body===undefined?"":body));
+ chatScrollToBottom();
+}
+function chatSetTurnMeta(bubble,text){
+ if(!bubble)return;
+ const previous=bubble.querySelector("[data-chat-meta]");if(previous)previous.remove();
+ const meta=document.createElement("p");meta.className="muted";meta.dataset.chatMeta="1";meta.textContent=text;
+ bubble.append(meta);chatScrollToBottom();
+}
+function chatToolCard(item,index){
+ const details=document.createElement("details");details.className="chat__tool";
+ const summary=document.createElement("summary");summary.className="chat__tool__summary";
+ const name=item&&item.tool?String(item.tool):(item&&item.name?String(item.name):"未命名工具");
+ summary.textContent="工具 "+(index+1)+" · "+name;
+ const body=document.createElement("pre");body.className="chat__tool__body";
+ let serialized="";
+ try{serialized=formatOutputJson(item?item.result:null);}catch{serialized="结果无法显示。";}
+ if(!serialized)serialized="（无返回内容）";
+ body.textContent=serialized.length>8000?serialized.slice(0,8000)+"\n…（结果已截断）":serialized;
+ details.append(summary,body);
+ return details;
+}
+function chatRenderToolCards(host,results){
+ if(!host)return;
+ host.replaceChildren();
+ const list=Array.isArray(results)?results:[];
+ for(let i=0;i<list.length;i++)host.append(chatToolCard(list[i],i));
+ chatScrollToBottom();
+}
+function chatEnsureProgress(bubble){
+ if(!bubble)return null;
+ let progress=chatPart(bubble,".chat__progress");
+ if(progress)return progress;
+ progress=document.createElement("div");progress.className="chat__progress";
+ const bar=document.createElement("progress");bar.max=100;bar.value=0;bar.setAttribute("aria-label","任务进度");
+ const label=document.createElement("span");label.className="muted";label.textContent="正在处理…";
+ progress.append(bar,label);bubble.append(progress);
+ return progress;
+}
+function chatUpdateProgress(bubble,payload){
+ const progress=chatEnsureProgress(bubble);if(!progress)return;
+ const raw=payload&&typeof payload==="object"?payload:{};
+ const number=Number(raw.progress);
+ let percent=Number.isFinite(number)?Math.max(0,Math.min(100,number)):null;
+ if(percent!==null&&percent>0&&percent<=1)percent=Math.round(percent*100);
+ const bar=progress.querySelector("progress"),label=progress.querySelector("span");
+ if(bar&&percent!==null)bar.value=percent;
+ if(label){const stage=raw.stage||raw.message||raw.status;label.textContent=(stage?stage+" · ":"")+(percent!==null?Math.round(percent)+"%":"处理中…");}
+}
+function chatRemoveProgress(bubble){
+ const progress=chatPart(bubble,".chat__progress");
+ if(progress)progress.remove();
+}
+function chatFindTurn(taskId){
+ if(!taskId)return null;
+ const bubbles=document.querySelectorAll(".chat__bubble");
+ for(const bubble of bubbles){if(bubble.dataset.taskId===String(taskId))return bubble;}
+ return null;
 }
 let taskRefreshTimer=null,taskHistoryOffset=0;
  const taskHistoryPageSize=10;
@@ -439,8 +641,10 @@ async function refreshPendingActions(){
  try{
   const r=await api("/api/actions/pending"),data=await r.json();if(!r.ok)throw Error(data.error||"读取待确认操作失败");
    if(!renderIsCurrent(host,renderToken))return;
-  if(!data.actions.length){const p=document.createElement("p");p.className="muted";p.textContent="没有待确认操作。";host.append(p);return;}
+  const pending=new Set();
   for(const action of data.actions){
+   const id=String(action.id);pending.add(id);
+   const previous=chatApprovalNodes.get(id);if(previous)previous.remove();
    const card=document.createElement("div");card.className="card warning";
    const title=document.createElement("strong");title.textContent=action.title+" · 需要确认";card.append(title);
    const target=document.createElement("p");target.textContent="目标："+(action.target||formatOutputJson(action.args));card.append(target);
@@ -450,8 +654,18 @@ async function refreshPendingActions(){
    confirmButton.addEventListener("click",async()=>{if(!(await confirmAction("请再次确认：执行“"+action.title+"”，目标为“"+(action.target||formatOutputJson(action.args))+"”。此操作可能造成数据丢失。")))return;confirmButton.disabled=true;try{const cr=await api("/api/actions/"+encodeURIComponent(action.id)+"/confirm",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});const result=await cr.json();if(!cr.ok)throw Error(result.error||"确认执行失败");const out=document.querySelector("#tool-result");out.textContent="已执行确认操作：\\n"+formatOutputJson(result.result);await refreshFiles(currentFilePath);await refreshPendingActions();}catch(error){showToast(errorText(error,"确认执行失败"),"error");confirmButton.disabled=false;}});
    const denyButton=document.createElement("button");denyButton.type="button";denyButton.textContent="拒绝";
    denyButton.addEventListener("click",async()=>{denyButton.disabled=true;try{const dr=await api("/api/actions/"+encodeURIComponent(action.id)+"/deny",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});const result=await dr.json();if(!dr.ok)throw Error(result.error||"拒绝失败");await refreshPendingActions();}catch(error){showToast(errorText(error,"拒绝失败"),"error");denyButton.disabled=false;}});
-   card.append(confirmButton,denyButton);host.append(card);
+   const bubble=chatFindTurn(action.taskId);
+   const inline=bubble?chatPart(bubble,".chat__approval"):null;
+   if(inline){inline.append(card);chatScrollToBottom();}
+   else host.append(card);
+   chatApprovalNodes.set(id,card);
   }
+  for(const [id,node] of Array.from(chatApprovalNodes.entries())){
+   if(pending.has(id))continue;
+   if(node)node.remove();
+   chatApprovalNodes.delete(id);
+  }
+  if(!host.childElementCount){const p=document.createElement("p");p.className="muted";p.textContent=data.actions.length?"待确认操作已显示在上方对话中。":"没有待确认操作。";host.append(p);}
  }catch(error){const p=document.createElement("p");p.className="error";p.textContent=errorText(error,"待确认操作读取失败");host.append(p);}
 }
 document.querySelector("#refresh-pending-actions").addEventListener("click",refreshPendingActions);
@@ -460,6 +674,37 @@ document.querySelector("#task-history-search").addEventListener("change",()=>{ta
 document.querySelector("#task-history-prev").addEventListener("click",()=>{taskHistoryOffset=Math.max(0,taskHistoryOffset-taskHistoryPageSize);refreshRecentTasks();});
 document.querySelector("#task-history-next").addEventListener("click",()=>{taskHistoryOffset+=taskHistoryPageSize;refreshRecentTasks();});
 document.querySelector("#agent-refresh-tasks").addEventListener("click",refreshRecentTasks);
+const chatStopButton=document.querySelector("#agent-stop");
+if(chatStopButton)chatStopButton.addEventListener("click",async()=>{
+ if(chatDirectController){
+  chatStopButton.disabled=true;
+  try{chatDirectController.abort();}catch{}
+  chatSetStatus("已停止");
+  return;
+ }
+ const taskId=chatActiveTaskId;if(!taskId||chatStopButton.disabled)return;
+ chatStopButton.disabled=true;
+ try{
+  const cr=await api("/api/tasks/"+encodeURIComponent(taskId)+"/cancel",{method:"POST"});
+  const cb=await cr.json();if(!cr.ok)throw Error(cb.error||"停止失败");
+  chatSetStatus(cb.cancelRequested?"已请求停止，等待当前工具结束":"任务已取消");
+  showToast(cb.cancelRequested?"已请求停止；当前工具会先完成，不会启动后续工具。":"任务已取消。","ok");
+ }catch(error){chatStopButton.disabled=false;showToast(errorText(error,"停止失败"),"error");}
+});
+const chatInputField=document.querySelector("#agent-input");
+if(chatInputField){
+ chatInputField.addEventListener("input",()=>chatAutoGrowInput(chatInputField));
+ chatInputField.addEventListener("keydown",event=>{
+  if(event.key!=="Enter")return;
+  if(event.shiftKey||event.ctrlKey||event.metaKey||event.altKey||event.isComposing)return;
+  event.preventDefault();
+  const form=document.querySelector("#agent-form");
+  if(!form)return;
+  if(typeof form.requestSubmit==="function")form.requestSubmit();
+  else form.dispatchEvent(new Event("submit",{cancelable:true,bubbles:true}));
+ });
+ chatAutoGrowInput(chatInputField);
+}
 document.querySelector("#task-history-clear").addEventListener("click",async()=>{
  if(!(await confirmAction("清理已完成、失败和已取消的任务记录？排队中和运行中的任务会保留，不会被取消。")))return;
  const button=document.querySelector("#task-history-clear");button.disabled=true;
@@ -472,36 +717,266 @@ document.querySelector("#task-history-clear").addEventListener("click",async()=>
  finally{button.disabled=false;}
 });
 
+function chatOpenStream(taskId,bubble,state){
+ if(typeof EventSource!=="function")return null;
+ let source=null;
+ try{source=new EventSource("/api/tasks/"+encodeURIComponent(taskId)+"/events");}
+ catch{return null;}
+ const handle=event=>chatHandleStreamEvent(event,bubble,state);
+ source.addEventListener("message",handle);
+ for(const type of CHAT_STREAM_EVENT_TYPES)source.addEventListener(type,handle);
+ source.addEventListener("error",()=>{state.streamFailed=true;try{source.close();}catch{}});
+ return source;
+}
+function chatHandleStreamEvent(event,bubble,state){
+ let payload={};
+ try{payload=JSON.parse(event.data||"{}");}catch{payload={};}
+ if(!payload||typeof payload!=="object")payload={};
+ const type=String(payload.type||event.type||"");
+ if(!CHAT_STREAM_EVENT_TYPES.includes(type))return;
+ const data=payload.data&&typeof payload.data==="object"?payload.data:payload;
+ if(type==="progress"){chatUpdateProgress(bubble,data);chatSetStatus(data.stage||data.message||data.status||"处理中…");}
+ else if(type==="tool")chatAppendStreamTool(bubble,data);
+ else if(type==="approval")refreshPendingActions();
+ else if(type==="done"){state.finalTask=data.task||data;state.streamDone=true;}
+ else if(type==="error"){state.streamError=String(data.message||data.error||"任务失败");chatSetStatus(state.streamError);}
+}
+function chatAppendStreamTool(bubble,payload){
+ const tools=chatPart(bubble,".chat__tools");if(!tools)return;
+ const item={tool:payload.tool||payload.name||"工具",result:payload.result!==undefined?payload.result:payload};
+ tools.append(chatToolCard(item,tools.childElementCount));
+ chatScrollToBottom();
+}
+async function chatAwaitTask(taskId,bubble,initialTask){
+ const state={finalTask:null,streamDone:false,streamFailed:false,streamError:""};
+ const stream=chatOpenStream(taskId,bubble,state);
+ chatSetStatus(stream?"已连接流式进度…":"流式不可用，已回退到 750ms 轮询…");
+ let task=initialTask||null;
+ try{
+  for(let i=0;i<120;i++){
+   if(task&&CHAT_TERMINAL_STATUS.has(task.status))break;
+   if(state.finalTask&&CHAT_TERMINAL_STATUS.has(state.finalTask.status)){task=state.finalTask;break;}
+   await new Promise(resolve=>setTimeout(resolve,750));
+   const poll=await api("/api/tasks/"+encodeURIComponent(taskId));const body=await poll.json();
+   if(!poll.ok)throw Error(body.error||"任务状态读取失败");
+   task=body.task;
+   chatUpdateProgress(bubble,task);
+   if(task.status==="awaiting-approval")refreshPendingActions();
+  }
+ }finally{if(stream){try{stream.close();}catch{}}}
+ if(state.finalTask&&(!task||!CHAT_TERMINAL_STATUS.has(task.status)))task=state.finalTask;
+ return task;
+}
+function chatFinalizeTask(taskId,task,bubble){
+ chatRemoveProgress(bubble);
+ if(!bubble)return;
+ if(!task){chatSetTurnContent(bubble,"任务状态未知。任务 ID："+taskId);return;}
+ if(task.status==="completed"&&task.result){
+  const result=task.result;
+  chatSetTurnContent(bubble,result.message||"（无返回内容）");
+  chatRenderToolCards(chatPart(bubble,".chat__tools"),result.results||[]);
+  chatSetTurnMeta(bubble,"任务："+taskId+"；模式："+(result.mode||"—")+"；状态："+(result.status||task.status));
+ }else if(task.status==="failed"){
+  chatSetTurnContent(bubble,"任务失败："+(task.error||"未知错误"));
+  chatSetTurnMeta(bubble,"任务："+taskId+"；状态：failed");
+ }else if(task.status==="cancelled"){
+  chatSetTurnContent(bubble,"任务已取消。");
+  chatSetTurnMeta(bubble,"任务："+taskId+"；状态：cancelled");
+ }else{
+  chatSetTurnContent(bubble,"任务仍在执行。任务 ID："+taskId+"。可在“最近任务”中刷新查看。");
+  chatSetTurnMeta(bubble,"任务："+taskId+"；状态："+(task.status||"running"));
+ }
+}
+/* ------------------------------------------------------ direct chat mode --- */
+const CHAT_MODE_KEY="fnos-nas-agent.chat-mode";
+let chatMode="task";
+let chatDirectController=null;
+let chatDirectStreamText="";
+let chatStopDirect=false;
+function chatReadStoredMode(){
+ try{const stored=localStorage.getItem(CHAT_MODE_KEY);if(stored==="direct"||stored==="task")return stored;}catch{}
+ return "task";
+}
+function chatApplyMode(mode,persist){
+ const next=mode==="direct"?"direct":"task";
+ chatMode=next;
+ if(persist!==false){try{localStorage.setItem(CHAT_MODE_KEY,next);}catch{}}
+ const taskButton=document.querySelector("#chat-mode-task");
+ const directButton=document.querySelector("#chat-mode-direct");
+ if(taskButton)taskButton.setAttribute("aria-pressed",next==="task"?"true":"false");
+ if(directButton)directButton.setAttribute("aria-pressed",next==="direct"?"true":"false");
+ const root=document.querySelector("#agent-chat");
+ if(root)root.dataset.chatMode=next;
+ const pendingCard=document.querySelector("#agent-pending-card");
+ if(pendingCard)pendingCard.hidden=next==="direct";
+ const queueCard=document.querySelector("#agent-task-queue-card");
+ if(queueCard)queueCard.hidden=next==="direct";
+ const hint=document.querySelector("#agent-mode-hint");
+ if(hint)hint.textContent=next==="direct"?"对话模式：与模型直接对话，不执行任何 NAS 工具。":"任务模式：执行 NAS 工具任务，可被审批与停止。";
+ const field=document.querySelector("#agent-input");
+ if(field)field.placeholder=next==="direct"?"直接和模型对话，例如：解释一下 NAS 的存储池设计":"例如：查看系统状态 / 然后打开刚才的目录";
+ chatSetStatus(next==="direct"?"对话模式":"任务模式");
+}
+function chatSetStopDirect(active){
+ const button=document.querySelector("#agent-stop");if(!button)return;
+ chatStopDirect=!!active;
+ button.hidden=!active;
+ button.disabled=!active;
+}
+function chatParseSseFrame(frame){
+ const lines=String(frame).split(/\r?\n/);
+ let event="message";const data=[];
+ for(const line of lines){
+  if(line.startsWith("event:"))event=line.slice(6).trim();
+  else if(line.startsWith("data:"))data.push(line.slice(5).trim());
+ }
+ if(!data.length)return null;
+ const raw=data.join("\n");
+ let payload={raw};
+ try{payload=JSON.parse(raw);}catch{payload={raw};}
+ if(!payload||typeof payload!=="object")payload={raw};
+ return {event,data:payload};
+}
+function chatSplitSseFrames(buffer){
+ const frames=[];let rest=String(buffer===null||buffer===undefined?"":buffer);
+ const pattern=/\r\n\r\n|\n\n|\r\r/;
+ let match;
+ while((match=pattern.exec(rest))!==null){
+  frames.push(rest.slice(0,match.index));
+  rest=rest.slice(match.index+match[0].length);
+ }
+ return {frames,rest};
+}
+async function chatReadSseStream(response,onFrame){
+ if(!response||!response.body||typeof response.body.getReader!=="function")return;
+ const reader=response.body.getReader();
+ const decoder=new TextDecoder();
+ let buffer="";let stopped=false;
+ while(!stopped){
+  const chunk=await reader.read();
+  if(chunk.done)break;
+  buffer+=decoder.decode(chunk.value,{stream:true});
+  const split=chatSplitSseFrames(buffer);buffer=split.rest;
+  for(const frame of split.frames){
+   const parsed=chatParseSseFrame(frame);
+   if(!parsed)continue;
+   if(onFrame(parsed)===false){stopped=true;break;}
+  }
+ }
+ if(!stopped&&buffer.trim()){
+  const parsed=chatParseSseFrame(buffer);
+  if(parsed)onFrame(parsed);
+ }
+ try{await reader.cancel();}catch{}
+}
+function chatDirectAppend(content,text){
+ if(!content||!text)return;
+ let target=content.lastElementChild;
+ if(!target||target.dataset.chatDirect!=="1"){
+  target=document.createElement("p");target.dataset.chatDirect="1";content.append(target);
+ }
+ target.append(document.createTextNode(text));
+ chatScrollToBottom();
+}
+function chatDirectFinalize(content,text){
+ if(!content)return;
+ content.replaceChildren();
+ if(text)content.append(document.createTextNode(text));
+ chatScrollToBottom();
+}
+async function chatSendDirect(text){
+ const field=document.querySelector("#agent-input"),send=document.querySelector("#agent-send"),err=document.querySelector("#agent-error");
+ err.textContent="";
+ let status=null;
+ try{
+  const statusResponse=await api("/api/chat/status");
+  status=await statusResponse.json();
+ }catch(error){err.textContent=errorText(error,"对话模式状态读取失败");chatSetStatus("对话模式状态读取失败");return;}
+ if(!status||status.enabled!==true){
+  err.textContent="尚未配置可用的模型服务商";
+  chatSetStatus("尚未配置可用的模型服务商");
+  showToast("尚未配置可用的模型服务商","error");
+  return;
+ }
+ renderAgentTurn("user",text);
+ field.value="";chatAutoGrowInput(field);
+ send.disabled=true;send.textContent="生成中…";
+ const bubble=renderAgentTurn("agent","");
+ const content=chatPart(bubble,".chat__content");
+ const controller=new AbortController();
+ chatDirectController=controller;chatDirectStreamText="";
+ chatSetStopDirect(true);chatSetStatus("正在生成…");
+ let finalText="";
+ try{
+  const response=await api("/api/chat/message",{method:"POST",headers:{"content-type":"application/json","accept":"text/event-stream"},body:JSON.stringify({messages:[{role:"user",content:text}]}),signal:controller.signal});
+  if(!response.ok){
+   let detail={};
+   try{detail=await response.json();}catch{}
+   throw Error(detail.message||detail.error||"直聊请求失败（HTTP "+response.status+"）");
+  }
+  await chatReadSseStream(response,frame=>{
+   if(frame.event==="delta"){
+    const piece=typeof frame.data.text==="string"?frame.data.text:"";
+    if(piece){finalText+=piece;chatDirectStreamText=finalText;chatDirectAppend(content,piece);}
+    return true;
+   }
+   if(frame.event==="done"){
+    const full=typeof frame.data.text==="string"&&frame.data.text?frame.data.text:finalText;
+    finalText=full;chatDirectStreamText=full;chatDirectFinalize(content,full);
+    return true;
+   }
+   if(frame.event==="error"){
+    const message=String(frame.data.message||"直聊失败");
+    err.textContent=message;chatSetStatus(message);
+    return false;
+   }
+   return true;
+  });
+  if(finalText)chatDirectFinalize(content,finalText);
+  if(!err.textContent)chatSetStatus("就绪");
+ }catch(error){
+  if(error&&error.name==="AbortError"){
+   chatDirectFinalize(content,chatDirectStreamText||"（已停止）");
+   chatSetStatus("已停止");
+  }else{
+   err.textContent=errorText(error,"直聊失败");
+   chatSetStatus("直聊失败");
+  }
+ }finally{
+  chatDirectController=null;
+  chatSetStopDirect(false);
+  send.disabled=false;send.textContent="发送";field.focus();
+ }
+}
+const chatModeTaskButton=document.querySelector("#chat-mode-task");
+const chatModeDirectButton=document.querySelector("#chat-mode-direct");
+if(chatModeTaskButton)chatModeTaskButton.addEventListener("click",()=>chatApplyMode("task"));
+if(chatModeDirectButton)chatModeDirectButton.addEventListener("click",()=>chatApplyMode("direct"));
+chatApplyMode(chatReadStoredMode(),false);
 document.querySelector("#agent-form").addEventListener("submit",async e=>{
  e.preventDefault();const field=document.querySelector("#agent-input"),send=document.querySelector("#agent-send"),err=document.querySelector("#agent-error");
- const text=field.value.trim();if(!text)return;err.textContent="";renderAgentTurn("你",text);field.value="";send.disabled=true;send.textContent="已提交…";
+ const text=field.value.trim();if(!text)return;err.textContent="";
+ if(chatMode==="direct"){await chatSendDirect(text);return;}
+ renderAgentTurn("user",text);field.value="";chatAutoGrowInput(field);send.disabled=true;send.textContent="已提交…";
  try{
   const r=await api("/api/agent/message",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text,history:conversationContext})});
   const accepted=await r.json();if(!r.ok)throw Error(accepted.error||"请求失败");
   const taskId=accepted.task.taskId;
-  let task=accepted.task;
-  for(let i=0;i<120;i++){
-   if(task.status==="completed"||task.status==="failed"||task.status==="cancelled")break;
-   await new Promise(resolve=>setTimeout(resolve,750));
-   const poll=await api("/api/tasks/"+encodeURIComponent(taskId));const body=await poll.json();
-   if(!poll.ok)throw Error(body.error||"任务状态读取失败");task=body.task;
+  const bubble=renderAgentTurn("agent","正在处理…",{taskId});
+  chatEnsureProgress(bubble);
+  chatSetStopVisible(taskId);
+  const task=await chatAwaitTask(taskId,bubble,accepted.task);
+  chatFinalizeTask(taskId,task,bubble);
+  if(task&&task.status==="completed"&&task.result&&task.result.status==="completed"){
+   const result=task.result;
+   const contextParts=[result.message||"已完成请求。"];
+   for(const item of result.results||[])contextParts.push("工具 "+item.tool+"："+JSON.stringify(item.result).slice(0,320));
+   conversationContext=[...conversationContext,{role:"user",content:text},{role:"assistant",content:contextParts.join("\n").slice(0,1200)}].slice(-8);
+   refreshConversationContextStatus();
   }
-  if(task.status==="completed"&&task.result){
-   const result=task.result,details=[result.message,"任务："+taskId+"；模式："+result.mode+"；状态："+result.status];
-   for(const item of result.results||[])details.push("工具 "+item.tool+"：\n"+formatOutputJson(item.result));
-   renderAgentTurn("NAS Agent",details.join("\n\n"));
-   if(result.status==="completed"){
-    const contextParts=[result.message||"已完成请求。"];
-    for(const item of result.results||[])contextParts.push("工具 "+item.tool+"："+JSON.stringify(item.result).slice(0,320));
-    conversationContext=[...conversationContext,{role:"user",content:text},{role:"assistant",content:contextParts.join("\n").slice(0,1200)}].slice(-8);
-    refreshConversationContextStatus();
-   }
-  }else if(task.status==="failed")renderAgentTurn("NAS Agent","任务失败："+(task.error||"未知错误")+"\n任务 ID："+taskId);
-  else if(task.status==="cancelled")renderAgentTurn("NAS Agent","任务已取消。任务 ID："+taskId);
-  else renderAgentTurn("NAS Agent","任务仍在执行。任务 ID："+taskId+"。可在“最近任务”中刷新查看。");
   await refreshRecentTasks();await refreshPendingActions();
- }catch(error){err.textContent=errorText(error,"请求失败");}
- finally{send.disabled=false;send.textContent="发送";field.focus();}
+ }catch(error){err.textContent=errorText(error,"请求失败");chatSetStatus("请求失败");}
+ finally{send.disabled=false;send.textContent="发送";field.focus();chatSetStopVisible("");chatSetStatus("就绪");}
 });
 let currentFilePath="",currentFileOffset=0;
 async function refreshFiles(pathValue=currentFilePath,pageOffset=0){
@@ -764,7 +1239,7 @@ async function refreshSkills(){
    const pickLabel=document.createElement("label");const pick=document.createElement("input");pick.type="checkbox";pick.checked=selectedSkillIds.has(item.id);pick.dataset.skillId=item.id;pick.setAttribute("aria-label","选择 "+item.name);pick.addEventListener("change",()=>{if(pick.checked)selectedSkillIds.add(item.id);else selectedSkillIds.delete(item.id);updateSkillSelectionUi();});pickLabel.append(pick,document.createTextNode(" 选择此 Skill"));card.append(pickLabel);
    const title=document.createElement("strong");title.textContent=item.name+" · "+item.state;card.append(title);
    const meta=document.createElement("p");meta.className="muted";meta.textContent="版本："+(item.version||"未填写")+"；SHA-256："+item.archiveSha256+(item.quarantineFile?"；隔离归档："+formatBytes(item.archiveSizeBytes)+" / "+item.archiveEntryCount+" 个条目":"；仅登记元数据");card.append(meta);
-   if(item.manifestReview){const review=document.createElement("p");review.className=item.manifestReview.findings?.length?"warning":"muted";review.textContent="静态清单："+(item.manifestReview.name||"未识别名称")+"；"+(item.manifestReview.description||"无描述")+"；源码扫描 "+(item.manifestReview.sourceFilesScanned||0)+" 个 / "+formatBytes(item.manifestReview.sourceBytesScanned||0)+(item.manifestReview.sourceReviewIncomplete?"（部分源码未扫描）":"")+"；发现："+((item.manifestReview.findings||[]).join("、")||"未发现规则提示")+"。此结果仅供人工审核，不代表安全认证。";card.append(review);}
+   if(item.manifestReview){const review=document.createElement("p");review.className=item.manifestReview.findings?.length?"warning":"muted";review.textContent="静态清单："+(item.manifestReview.name||"未识别名称")+"；"+(item.manifestReview.description||"无描述")+"；源码扫描 "+(item.manifestReview.sourceFilesScanned||0)+" 个 / "+formatBytes(item.manifestReview.sourceBytesScanned||0)+(item.manifestReview.sourceReviewIncomplete?"（部分源码未扫描）":"")+"；发现："+((item.manifestReview.findings||[]).join("、")||"未发现规则提示")+"。此结果仅供人工审核，不代表安全认证。";card.append(review);}if(item.packageReview&&typeof item.packageReview==="object"){const pack=document.createElement("p");pack.className=item.packageReview.status==="ok"?"muted":"warning";const verdict=item.packageReview.status==="ok"?"结构完整":item.packageReview.status==="incomplete"?"结构不完整":"结构不可用";const parts=["references "+(item.packageReview.references||0),"scripts "+(item.packageReview.scripts||0),"tests "+(item.packageReview.tests||0)];const rules=(item.packageReview.findings||[]).map(entry=>entry.rule).filter(Boolean);if(rules.length)parts.push("问题："+rules.join("、"));pack.textContent="包结构："+verdict+"；"+parts.join("；")+"。";card.append(pack);}
    if(item.reviewNote){const note=document.createElement("p");note.textContent="审核备注："+item.reviewNote;card.append(note);}
    if(item.quarantineFile){
     const sourceDetails=document.createElement("details");
@@ -982,6 +1457,229 @@ document.querySelector("#audit-prev").addEventListener("click",()=>{auditOffset=
 document.querySelector("#audit-next").addEventListener("click",()=>{auditOffset+=20;refreshAudit();});
 document.querySelector("#audit-route").addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();auditOffset=0;refreshAudit();}});
 
+/* ------------------------------------------------------------------ *
+ * 运行状态 / 安全巡检 / 模型用量（Phase 166 只读观察面）
+ * 三个接口都是只读的：这里只读数据、只写文本，不改任何配置。
+ * 渲染一律使用 textContent，不做 HTML 字符串拼接。
+ * ------------------------------------------------------------------ */
+const INSIGHT_SECTION_LABELS={ok:"正常",unknown:"未采集",unavailable:"接口不可用"};
+function insightSectionLines(sections){
+ if(!Array.isArray(sections)||!sections.length)return ["暂无数据。"];
+ return sections.map(section=>{
+  const title=section.title||section.id||"未命名段落";
+  const status=INSIGHT_SECTION_LABELS[section.status]||section.status||"未知状态";
+  const note=section.note?"："+section.note:"";
+  const values=section.values&&typeof section.values==="object"
+   ?Object.entries(section.values).slice(0,6).map(pair=>pair[0]+"="+String(pair[1])).join(" "):"";
+  return "- "+title+"："+status+note+(values?"（"+values+"）":"");
+ });
+}
+async function insightRead(path){
+ try{
+  const response=await api(path);
+  if(!response.ok){
+   const body=await response.json().catch(()=>({}));
+   return {error:(body&&body.error)||("HTTP "+response.status)};
+  }
+  return await response.json();
+ }catch(e){return {error:errorText(e,"读取失败")};}
+}
+async function refreshInsights(){
+ const statusEl=document.querySelector("#insights-status");
+ const systemEl=document.querySelector("#insights-system");
+ const securityEl=document.querySelector("#insights-security");
+ const usageEl=document.querySelector("#insights-usage");
+ if(!systemEl||!securityEl||!usageEl)return;
+ if(statusEl)statusEl.textContent="正在读取观察数据…";
+ const results=await Promise.all([insightRead("/api/system/snapshot"),insightRead("/api/security/inspection"),insightRead("/api/models/usage")]);
+ const snapshot=results[0],inspection=results[1],usage=results[2];
+ if(snapshot&&snapshot.error){systemEl.textContent="读取失败："+snapshot.error;}
+ else{
+  const score=(snapshot&&snapshot.score)||{};
+  const lines=["生成时间："+((snapshot&&snapshot.generatedAt)||"-"),
+   "健康评分："+(typeof score.value==="number"?score.value:"-")+" 分（等级 "+(score.grade||"-")+" · 覆盖率 "+Math.round((Number(score.coverage)||0)*100)+"%）"]
+   .concat(insightSectionLines(snapshot&&snapshot.sections));
+  if(snapshot&&Array.isArray(snapshot.uncovered)&&snapshot.uncovered.length)
+   lines.push("未覆盖项："+snapshot.uncovered.map(item=>item.id).join("、"));
+  systemEl.textContent=lines.join("\n");
+ }
+ if(inspection&&inspection.error){securityEl.textContent="读取失败："+inspection.error;}
+ else{
+  const summary=(inspection&&inspection.summary)||{};
+  const lines=["生成时间："+((inspection&&inspection.generatedAt)||"-"),
+   "待处理：严重 "+(summary.critical||0)+" · 警告 "+(summary.warning||0)+" · 提示 "+(summary.info||0)+" · 合计 "+(summary.total||0)]
+   .concat(insightSectionLines(inspection&&inspection.sections).map(line=>line.replace(/^-\s*/,"")));
+  const permissions=inspection&&Array.isArray(inspection.toolPermissions)?inspection.toolPermissions:[];
+  if(permissions.length)lines.push("工具权限表："+permissions.length+" 个工具");
+  const audit=inspection&&inspection.auditSummary;
+  if(audit)lines.push("审计摘要：共 "+(audit.total||0)+" 条 · 错误 "+(audit.errors||0)+" 条");
+  securityEl.textContent=lines.join("\n");
+ }
+ if(usage&&usage.error){usageEl.textContent="读取失败："+usage.error;}
+ else{
+  const summary=(usage&&usage.summary)||{};
+  const privacy=(usage&&usage.privacy)||{};
+  const lines=["请求 "+(summary.requests||0)+" · 成功 "+(summary.ok||0)+" · 失败 "+(summary.error||0),
+   "输入 token "+(summary.promptTokens||0)+" · 输出 token "+(summary.completionTokens||0)+" · 平均延迟 "+(summary.averageLatencyMs||0)+" ms",
+   "本地请求 "+(summary.localRequests||0)+" · 云端请求 "+(summary.cloudRequests||0)+" · 计价："+(summary.priced?"已计价":"未计价（价格未知，不估算）"),
+   "隐私模式："+(privacy.enabled?"已开启":"未开启")+"（enforced="+(privacy.enforced===true?"true":"false")+"）"];
+  const models=usage&&Array.isArray(usage.byModel)?usage.byModel:[];
+  if(models.length)for(const model of models.slice(0,8))lines.push("- "+model.provider+" / "+model.model+"："+model.requests+" 次 · 失败 "+model.error+" 次");
+  usageEl.textContent=lines.join("\n");
+ }
+ if(statusEl)statusEl.textContent="已更新于 "+formatDateTime(new Date().toISOString());
+}
+document.querySelector("#insights-refresh").addEventListener("click",()=>{refreshInsights();});
+
+
+/* ------------------------------------------------------------------ *
+ * 概览页：服务状态与容量趋势（只读）。
+ * 服务状态来自固定 unit 名单的 systemctl show；容量趋势来自历次采样。
+ * 两个请求并行，任一失败只影响对应区块；渲染一律 textContent。
+ * ------------------------------------------------------------------ */
+const SERVICE_VERDICT_LABELS={running:"运行中",stopped:"已停止",failed:"失败",unknown:"未知"};
+const DEVICE_VERDICT_LABELS={ok:"正常",cool:"偏冷",normal:"正常",warm:"偏热",hot:"过热",warning:"需注意",critical:"严重","up-to-date":"已最新","update-available":"有新版本",unknown:"未知"};
+function renderDeviceDiagnosis(thermal,events,smart,update){
+ const lines=[];
+ const label=(verdict)=>DEVICE_VERDICT_LABELS[verdict]||DEVICE_VERDICT_LABELS.unknown;
+ lines.push("结论：温度 "+label(thermal&&thermal.verdict)+" · 事件 "+label(events&&events.verdict)+" · 磁盘 "+label(smart&&smart.verdict)+" · 升级 "+label(update&&update.status));
+ if(thermal&&!thermal.error){
+  const hot=thermal.hottest;
+  const counts=(thermal&&thermal.counts)||{};
+  const head=hot?("最热 "+(typeof hot.celsius==="number"?hot.celsius.toFixed(1):"-")+"℃（"+(hot.label||hot.source||"未知传感器")+"）"):"没有读到可信温度";
+  lines.push("- 温度："+head+" · 读数 "+(counts.total||0)+" 个（正常 "+(counts.normal||0)+" · 偏热 "+(counts.warm||0)+" · 过热 "+(counts.hot||0)+"）");
+  if(Array.isArray(thermal.notes)&&thermal.notes.length)lines.push("  备注："+thermal.notes.slice(0,6).join("；"));
+ }else if(thermal&&thermal.error)lines.push("- 温度：读取失败（"+thermal.error+"）");
+ if(events&&!events.error){
+  const counts=(events&&events.counts)||{};
+  const repeated=Array.isArray(events.repeated)?events.repeated:[];
+  lines.push("- 事件："+(counts.err||0)+" 条 err · "+(counts.warning||0)+" 条 warning · "+(counts.crit||0)+" 条 crit · 重复 "+(repeated.length?repeated.length+" 组（首条 "+String(repeated[0].count||0)+" 次）":"无")+(Array.isArray(events.sources)&&events.sources.length?(" · 来源 "+events.sources.join("、")):""));
+  if(Array.isArray(events.notes)&&events.notes.length)lines.push("  备注："+events.notes.slice(0,6).join("；"));
+ }else if(events&&events.error)lines.push("- 事件：读取失败（"+events.error+"）");
+ if(smart&&!smart.error){
+  const devices=Array.isArray(smart.devices)?smart.devices:[];
+  lines.push("- 磁盘 SMART："+(devices.length?devices.map((item)=>(item.device||"?")+" "+label(item.verdict)).join(" · "):"未采集"));
+  if(Array.isArray(smart.notes)&&smart.notes.length)lines.push("  备注："+smart.notes.slice(0,6).join("；"));
+  if(smart.note)lines.push("  说明："+smart.note);
+ }else if(smart&&smart.error)lines.push("- 磁盘 SMART：读取失败（"+smart.error+"）");
+ if(update&&!update.error){
+  lines.push("- 升级：当前 "+(update.installedVersion||update.current||"?")+" · "+label(update.status)+(Array.isArray(update.notes)&&update.notes.length?"（"+update.notes.join("；")+"）":""));
+  if(update.note)lines.push("  说明："+update.note);
+ }else if(update&&update.error)lines.push("- 升级：读取失败（"+update.error+"）");
+ return lines.join("\n");
+}
+async function refreshRuntime(){
+ const statusEl=document.querySelector("#runtime-status");
+ const serviceEl=document.querySelector("#runtime-services");
+ const capacityEl=document.querySelector("#runtime-capacity");
+ const deviceEl=document.querySelector("#runtime-devices");
+ if(!serviceEl||!capacityEl)return;
+ if(statusEl)statusEl.textContent="正在读取服务状态、容量趋势与设备诊断…";
+ const results=await Promise.all([
+  insightRead("/api/system/services"),
+  insightRead("/api/system/capacity-forecast"),
+  insightRead("/api/system/thermal"),
+  insightRead("/api/system/events?limit=5"),
+  insightRead("/api/system/smart"),
+  insightRead("/api/system/update-check")
+ ]);
+ const services=results[0],capacity=results[1],thermal=results[2],events=results[3],smart=results[4],update=results[5];
+ if(services&&services.error){serviceEl.textContent="读取失败："+services.error;}
+ else{
+  const items=services&&Array.isArray(services.items)?services.items:[];
+  const summary=(services&&services.summary)||{};
+  const lines=["结论："+(summary.verdict||"unknown")+" · 运行 "+(summary.running||0)+" · 停止 "+(summary.stopped||0)+" · 失败 "+(summary.failed||0)+" · 未知 "+(summary.unknown||0)];
+  for(const item of items){
+   const verdict=SERVICE_VERDICT_LABELS[item.verdict]||SERVICE_VERDICT_LABELS.unknown;
+   const note=item.note?("（"+item.note+(item.reason?" · "+item.reason:"")+"）"):"";
+   const memory=typeof item.memoryCurrentBytes==="number"?(" · 内存 "+formatBytes(item.memoryCurrentBytes)):"";
+   lines.push("- "+(item.unit||item.id)+"："+verdict+memory+note);
+  }
+  const notes=Array.isArray(summary.notes)?summary.notes:[];
+  if(notes.length)lines.push("备注："+notes.join("；"));
+  serviceEl.textContent=lines.join("\n");
+ }
+ if(capacity&&capacity.error){capacityEl.textContent="读取失败："+capacity.error;}
+ else{
+  const disks=capacity&&Array.isArray(capacity.disks)?capacity.disks:[];
+  const sampling=(capacity&&capacity.sampling)||{};
+  const lines=["预测区间："+(capacity&&capacity.horizonDays?capacity.horizonDays+" 天":"30 天")+" · 已存采样 "+(sampling.storedRecords||0)+" 条（本次"+(sampling.appended?"已新增一条":"未新增"+(sampling.reason?"："+sampling.reason:""))+"）"];
+  if(!disks.length)lines.push("- 这次没有读到磁盘用量，无法计算趋势。");
+  for(const disk of disks){
+   lines.push("- "+disk.disk+"："+(disk.headline||"-"));
+   if(typeof disk.currentUsedBytes==="number"||typeof disk.currentTotalBytes==="number")
+    lines.push("  当前 "+formatBytes(disk.currentUsedBytes)+" / "+formatBytes(disk.currentTotalBytes)+"（"+(typeof disk.usedPercent==="number"?disk.usedPercent.toFixed(1):"-")+"%）");
+   if(typeof disk.projectedUsedBytes==="number")
+    lines.push("  预测 "+formatBytes(disk.projectedUsedBytes)+" · 增长 "+(typeof disk.diskGrowthBytesPerDay==="number"?formatBytes(Math.round(disk.diskGrowthBytesPerDay)):"-")+"/天 · 置信度 "+(disk.confidence||"-"));
+   if(typeof disk.daysUntilFull==="number")lines.push("  预计 "+(disk.daysUntilFull<=730?disk.daysUntilFull+" 天后写满":"两年内不会写满"));
+   if(Array.isArray(disk.notes)&&disk.notes.length)lines.push("  备注："+disk.notes.join("；"));
+   if(Array.isArray(disk.assumptions)&&disk.assumptions.length)lines.push("  假设："+disk.assumptions.join("；"));
+  }
+  if(capacity&&capacity.note)lines.push("说明："+capacity.note);
+  capacityEl.textContent=lines.join("\n");
+ }
+ if(deviceEl)deviceEl.textContent=renderDeviceDiagnosis(thermal,events,smart,update);
+ if(statusEl)statusEl.textContent="已更新于 "+formatDateTime(new Date().toISOString());
+}
+document.querySelector("#runtime-refresh").addEventListener("click",()=>{refreshRuntime();});
+
+
+/* ------------------------------------------------------------------ *
+ * 概览页：工作流计划、运行手册与诊断证据（只读）。
+ * 三个请求并行，任一失败只影响对应区块，不会让整页报错；
+ * 渲染一律 textContent，不拼 HTML。
+ * ------------------------------------------------------------------ */
+async function refreshPlaybooks(){
+ const statusEl=document.querySelector("#playbooks-status");
+ const workflowEl=document.querySelector("#playbooks-workflows");
+ const runbookEl=document.querySelector("#playbooks-runbooks");
+ const evidenceEl=document.querySelector("#playbooks-evidence");
+ if(!workflowEl||!runbookEl||!evidenceEl)return;
+ if(statusEl)statusEl.textContent="正在读取工作流、运行手册与诊断证据…";
+ const results=await Promise.all([
+  insightRead("/api/workflows"),
+  insightRead("/api/runbooks?limit=20"),
+  insightRead("/api/diagnostics/evidence")
+ ]);
+ const workflows=results[0],runbooks=results[1],evidence=results[2];
+ if(workflows&&workflows.error){workflowEl.textContent="读取失败："+workflows.error;}
+ else{
+  const list=workflows&&Array.isArray(workflows.workflows)?workflows.workflows:[];
+  const lines=["工作流 "+list.length+" 个"];
+  for(const item of list.slice(0,10))lines.push("- "+item.name+"（"+item.id+"）："+item.stepCount+" 步");
+  if(!list.length)lines.push("尚未注册工作流计划。");
+  workflowEl.textContent=lines.join("\n");
+ }
+ if(runbooks&&runbooks.error){runbookEl.textContent="读取失败："+runbooks.error;}
+ else{
+  const entries=runbooks&&Array.isArray(runbooks.entries)?runbooks.entries:[];
+  const total=runbooks&&typeof runbooks.total==="number"?runbooks.total:entries.length;
+  const lines=["运行手册 "+total+" 条"];
+  for(const entry of entries.slice(0,10)){
+   const tags=Array.isArray(entry.tags)&&entry.tags.length?" ["+entry.tags.join("、")+"]":"";
+   lines.push("- "+entry.title+tags);
+  }
+  if(!total)lines.push("还没有写入运行手册。");
+  runbookEl.textContent=lines.join("\n");
+ }
+ if(evidence&&evidence.error){evidenceEl.textContent="读取失败："+evidence.error;}
+ else{
+  const items=evidence&&Array.isArray(evidence.evidence)?evidence.evidence:[];
+  const count=evidence&&typeof evidence.count==="number"?evidence.count:items.length;
+  const bySource={};
+  for(const item of items)bySource[item.source]=(bySource[item.source]||0)+1;
+  const lines=["证据 "+count+" 条"];
+  const sources=Object.entries(bySource).map(pair=>pair[0]+" "+pair[1]+" 条");
+  if(sources.length)lines.push("来源："+sources.join(" · "));
+  for(const item of items.slice(0,8))lines.push("- ["+item.source+"] "+item.detail);
+  if(!count)lines.push("当前没有可用证据。");
+  evidenceEl.textContent=lines.join("\n");
+ }
+ if(statusEl)statusEl.textContent="已更新于 "+formatDateTime(new Date().toISOString());
+}
+const playbooksRefreshBtn=document.querySelector("#playbooks-refresh");
+if(playbooksRefreshBtn)playbooksRefreshBtn.addEventListener("click",()=>{refreshPlaybooks();});
+
 
 /* ------------------------------------------------------------------ *
  * 概览页统计：优先用 /api/overview 一次性取回全部头条指标，
@@ -1125,18 +1823,370 @@ async function refreshOverviewStats(){
 
 
 /* ------------------------------------------------------------------ *
+ * 知识库与通知中心（Phase 179 的页面层接线）
+ *
+ * 两个 ES module（/ui/knowledge-panel.js、/ui/notifications.js）把纯函数与
+ * 渲染函数挂到 window.KnowledgePanel / window.Notifications；它们在
+ * DOMContentLoaded 之后才可能有 window 对象，因此这里不假设已就绪，
+ * 由 knowledge-panel-ready / notifications-ready 事件触发首次渲染。
+ *
+ * 数据只经 GET 接口读取；所有文本交给渲染函数用 textContent 写入，
+ * 本文件不拼 HTML。任一接口失败只让本区块显示错误，不影响其它页面。
+ * ------------------------------------------------------------------ */
+/* ---------- Phase 191：批量重命名（计划 → 执行） ---------- */
+(function(){
+  const modeEl=document.querySelector("#rename-mode");
+  const filterEl=document.querySelector("#rename-filter");
+  const findEl=document.querySelector("#rename-find");
+  const replaceEl=document.querySelector("#rename-replace");
+  const prefixEl=document.querySelector("#rename-prefix");
+  const suffixEl=document.querySelector("#rename-suffix");
+  const startEl=document.querySelector("#rename-start");
+  const stepEl=document.querySelector("#rename-step");
+  const previewButton=document.querySelector("#rename-preview");
+  const applyButton=document.querySelector("#rename-apply");
+  const statusEl=document.querySelector("#rename-status");
+  const resultEl=document.querySelector("#rename-result");
+  if(!modeEl||!previewButton||!applyButton||!resultEl)return;
+  let pendingPlan=null;
+  const setStatus=(text)=>{if(statusEl)statusEl.textContent=text;};
+  const readNumber=(el,fallback)=>{const value=Number.parseInt(String(el&&el.value||""),10);return Number.isInteger(value)&&value>0?value:fallback;};
+
+  /* 只支持 * 与 ? 的通配匹配：用户输入的是文件名模式，不是正则。 */
+  function globToRegExp(pattern){
+    const escaped=String(pattern||"").trim();
+    if(!escaped||escaped==="*")return null;
+    let source="^";
+    for(const char of escaped){
+      if(char==="*")source+=".*";
+      else if(char==="?")source+=".";
+      else source+=char.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+    }
+    return new RegExp(source+"$","i");
+  }
+  function buildRule(){
+    const mode=modeEl.value;
+    if(mode==="replace")return{mode,find:String(findEl&&findEl.value||""),replace:String(replaceEl&&replaceEl.value||"")};
+    if(mode==="prefix-suffix")return{mode,prefix:String(prefixEl&&prefixEl.value||""),suffix:String(suffixEl&&suffixEl.value||"")};
+    if(mode==="sequence")return{mode,start:readNumber(startEl,1),step:readNumber(stepEl,1),width:3,separator:"-",keepExtension:true};
+    return{mode:"normalize",lowercase:false,spacesTo:"-",trim:true};
+  }
+  async function collectEntries(){
+    const params=new URLSearchParams({limit:"200",type:"all"});
+    if(currentFilePath)params.set("path",currentFilePath);
+    const response=await api("/api/files?"+params.toString());
+    const data=await response.json();
+    if(!response.ok)throw Error(data.error||("目录读取失败（HTTP "+response.status+"）"));
+    const matcher=globToRegExp(filterEl&&filterEl.value);
+    const entries=[];
+    for(const item of data.entries||[]){
+      if(!item||typeof item.path!=="string"||typeof item.name!=="string")continue;
+      if(matcher&&!matcher.test(item.name))continue;
+      entries.push({path:item.path,name:item.name,kind:item.type==="directory"?"dir":"file"});
+    }
+    return entries;
+  }
+  function renderPlan(plan){
+    const lines=[];
+    const summary=plan&&plan.summary?plan.summary:{};
+    lines.push("计划："+(plan&&plan.ok?"可执行":"有冲突，不能执行")+" · 共 "+(summary.total||0)+" 项 · 计划改名 "+(summary.planned||0)+" · 跳过 "+(summary.skipped||0)+" · 冲突 "+(summary.conflicts||0));
+    for(const step of (plan&&plan.plan)||[])lines.push("  "+step.from+"  →  "+step.to);
+    for(const item of (plan&&plan.conflicts)||[])lines.push("  冲突："+item.path+"（"+item.kind+"）"+(item.detail?" · "+item.detail:""));
+    for(const item of (plan&&plan.skipped)||[])lines.push("  跳过："+item.path+"（"+item.reason+"）");
+    for(const item of (plan&&plan.errors)||[])lines.push("  错误："+(item.code||"error")+" · "+(item.message||""));
+    resultEl.textContent=lines.join("\n");
+  }
+
+  previewButton.addEventListener("click",async()=>{
+    previewButton.disabled=true;
+    applyButton.disabled=true;
+    pendingPlan=null;
+    resultEl.textContent="正在生成计划…";
+    setStatus("正在读取当前目录并生成计划…");
+    try{
+      const entries=await collectEntries();
+      if(!entries.length){resultEl.textContent="当前目录里没有匹配的文件。";setStatus("换个匹配模式，或先进入目标目录。");return;}
+      const response=await api("/api/files/rename-plan",{method:"POST",body:JSON.stringify({entries,rule:buildRule()})});
+      const plan=await response.json();
+      if(!response.ok)throw Error(plan.error||("生成计划失败（HTTP "+response.status+"）"));
+      pendingPlan=plan;
+      renderPlan(plan);
+      applyButton.disabled=plan.ok!==true;
+      setStatus(plan.ok?"核对无误后点「执行计划」。":"计划里有冲突，先调整参数或过滤条件；没有任何文件被改动。");
+    }catch(error){
+      setStatus((error&&error.message)?error.message:"生成计划失败");
+    }finally{
+      previewButton.disabled=false;
+    }
+  });
+
+  applyButton.addEventListener("click",async()=>{
+    if(!pendingPlan||pendingPlan.ok!==true)return;
+    applyButton.disabled=true;
+    previewButton.disabled=true;
+    setStatus("正在执行…失败会自动回滚已改的项。");
+    try{
+      const entries=await collectEntries();
+      const response=await api("/api/files/rename-apply",{method:"POST",body:JSON.stringify({entries,rule:buildRule(),confirm:true})});
+      const data=await response.json();
+      if(!response.ok&&!data.result)throw Error(data.error||("执行失败（HTTP "+response.status+"）"));
+      const result=data.result||{};
+      const lines=["已改名 "+(result.applied||0)+" 项"+(result.failed?"，在第 "+result.failed.from+" 处失败并回滚 "+(result.rolledBack||0)+" 项":""),"结束时间："+formatDateTime(new Date().toISOString())];
+      for(const item of result.rollbackFailures||[])lines.push("回滚失败："+item.from+"（"+item.message+"）");
+      resultEl.textContent=lines.join("\n");
+      setStatus(result.failed?"执行中途失败，已尽力回滚；请核对目录后再试。":"执行完成。");
+      pendingPlan=null;
+      if(typeof refreshFiles==="function")await refreshFiles(currentFilePath,currentFileOffset);
+    }catch(error){
+      setStatus((error&&error.message)?error.message:"执行失败");
+    }finally{
+      previewButton.disabled=false;
+    }
+  });
+})();
+
+const knowledgePageState={
+ entries:[],
+ view:null,
+ query:"",
+ source:"",
+ loaded:false
+};
+const notificationPageState={
+ items:[],
+ summary:null,
+ filter:{},
+ readIds:[],
+ loaded:false
+};
+
+function setKnowledgeStatus(text){
+ const node=document.querySelector("#knowledge-status");
+ if(node)node.textContent=text;
+}
+function setNotifyStatus(text){
+ const node=document.querySelector("#notify-status");
+ if(node)node.textContent=text;
+}
+
+async function refreshKnowledgePanel(){
+ const lib=window.KnowledgePanel,container=document.querySelector("#knowledge-panel");
+ if(!lib||!container){setKnowledgeStatus("知识库面板尚未就绪。");return;}
+ setKnowledgeStatus("正在读取知识库…");
+ try{
+  const params=new URLSearchParams();
+  const keyword=knowledgePageState.query.trim();
+  if(keyword)params.set("q",keyword);
+  if(knowledgePageState.source)params.set("source",knowledgePageState.source);
+  const suffix=params.toString();
+  const response=await api("/api/knowledge"+(suffix?"?"+suffix:""));
+  const payload=await response.json();
+  if(!response.ok)throw Error(payload.error||"知识库读取失败");
+  const entries=Array.isArray(payload.entries)?payload.entries:[];
+  knowledgePageState.entries=entries;
+  knowledgePageState.view=lib.buildKnowledgeView(entries);
+  lib.renderKnowledgePanel(container,knowledgePageState.view);
+  const total=Number.isFinite(payload.total)?payload.total:entries.length;
+  setKnowledgeStatus(entries.length?"已加载 "+entries.length+" 条，共 "+total+" 条。":"没有匹配的知识条目。");
+  knowledgePageState.loaded=true;
+ }catch(error){
+  knowledgePageState.view=null;
+  lib.renderKnowledgePanel(container,null);
+  setKnowledgeStatus(error&&error.message?error.message:"知识库读取失败");
+ }
+}
+
+async function refreshAppInventory(){
+ const lib=window.KnowledgePanel,container=document.querySelector("#app-inventory");
+ if(!lib||!container)return;
+ try{
+  const response=await api("/api/system/snapshot");
+  const snapshot=await response.json();
+  if(!response.ok)throw Error(snapshot.error||"系统快照读取失败");
+  lib.renderAppInventory(container,lib.buildAppInventoryView(snapshot));
+ }catch(error){
+  lib.renderAppInventory(container,null);
+ }
+}
+
+async function refreshNotifications(){
+ const lib=window.Notifications,container=document.querySelector("#notification-center");
+ if(!lib||!container){setNotifyStatus("通知中心尚未就绪。");return;}
+ setNotifyStatus("正在汇总通知…");
+ // 三路事件各自失败都不该让通知中心整体空白，因此用 allSettled。
+ const [exceptions,approvals,tasks]=await Promise.allSettled([
+  api("/api/audit?outcome=error&limit=20").then(r=>r.json()),
+  api("/api/actions/pending").then(r=>r.json()),
+  api("/api/tasks?limit=20").then(r=>r.json())
+ ]);
+ const sources={
+  exceptions:exceptions.status==="fulfilled"&&Array.isArray(exceptions.value.entries)
+   ?exceptions.value.entries.map(entry=>({
+    id:"audit:"+(entry.at||"")+":"+(entry.route||""),
+    type:"exception",
+    title:(entry.route||"接口")+" 返回 HTTP "+(entry.statusCode||"?"),
+    detail:entry.method||"",
+    at:entry.at||"",
+    source:"audit"
+   }))
+   :[],
+  approvals:approvals.status==="fulfilled"&&Array.isArray(approvals.value.actions)
+   ?approvals.value.actions.map(action=>({
+    id:"approval:"+String(action.id||""),
+    kind:"approval",
+    title:action.title||action.toolId||"待确认操作",
+    detail:action.description||"",
+    at:action.createdAt||"",
+    source:"actions"
+   }))
+   :[],
+  tasks:tasks.status==="fulfilled"&&Array.isArray(tasks.value.tasks)
+   ?tasks.value.tasks.map(task=>({
+    id:"task:"+String(task.taskId||""),
+    kind:"task",
+    title:(task.prompt||task.taskId||"任务")+" · "+(task.status||""),
+    detail:task.error||"",
+    at:task.completedAt||task.createdAt||"",
+    source:"tasks"
+   }))
+   :[]
+ };
+ try{
+  const {items}=lib.collectNotifications(sources);
+  notificationPageState.items=items;
+  notificationPageState.summary=lib.summarizeNotifications(items);
+  lib.renderNotificationCenter(container,{
+   items:notificationPageState.items,
+   summary:notificationPageState.summary,
+   filter:notificationPageState.filter
+  });
+  const failed=[exceptions,approvals,tasks].filter(r=>r.status!=="fulfilled").length;
+  setNotifyStatus(items.length
+   ?"共 "+items.length+" 条通知，未读 "+(notificationPageState.summary.unread||0)+" 条"+(failed?"（"+failed+" 个来源读取失败）":"")+"。"
+   :"暂无通知。");
+  notificationPageState.loaded=true;
+ }catch(error){
+  lib.renderNotificationCenter(container,null);
+  setNotifyStatus(error&&error.message?error.message:"通知汇总失败");
+ }
+}
+
+function bindKnowledgeControls(){
+ const search=document.querySelector("#knowledge-search");
+ const refreshButton=document.querySelector("#knowledge-refresh");
+ const query=document.querySelector("#knowledge-query");
+ const source=document.querySelector("#knowledge-source");
+ if(search&&!search.dataset.bound){
+  search.dataset.bound="1";
+  search.addEventListener("click",()=>{
+   knowledgePageState.query=query?query.value:"";
+   knowledgePageState.source=source?source.value:"";
+   refreshKnowledgePanel();
+  });
+ }
+ if(refreshButton&&!refreshButton.dataset.bound){
+  refreshButton.dataset.bound="1";
+  refreshButton.addEventListener("click",()=>{refreshKnowledgePanel();refreshAppInventory();refreshNotifications();});
+ }
+ if(query&&!query.dataset.bound){
+  query.dataset.bound="1";
+  query.addEventListener("keydown",event=>{
+   if(event.key!=="Enter")return;
+   event.preventDefault();
+   knowledgePageState.query=query.value;
+   knowledgePageState.source=source?source.value:"";
+   refreshKnowledgePanel();
+  });
+ }
+ const filters=[
+  ["#notify-filter-all",{}],
+  ["#notify-filter-exception",{type:"exception"}],
+  ["#notify-filter-approval",{type:"approval"}],
+  ["#notify-filter-task",{type:"task"}]
+ ];
+ for(const [selector,filter] of filters){
+  const button=document.querySelector(selector);
+  if(!button||button.dataset.bound)continue;
+  button.dataset.bound="1";
+  button.addEventListener("click",()=>{
+   notificationPageState.filter=filter;
+   for(const [other] of filters){
+    const node=document.querySelector(other);
+    if(node)node.setAttribute("aria-pressed",other===selector?"true":"false");
+   }
+   const container=document.querySelector("#notification-center");
+   if(container&&window.Notifications){
+    window.Notifications.renderNotificationCenter(container,{
+     items:notificationPageState.items,
+     summary:notificationPageState.summary,
+     filter:notificationPageState.filter
+    });
+   }
+  });
+ }
+ const markAll=document.querySelector("#notify-mark-all");
+ if(markAll&&!markAll.dataset.bound){
+  markAll.dataset.bound="1";
+  markAll.addEventListener("click",()=>{
+   if(!window.Notifications)return;
+   const ids=notificationPageState.items.map(item=>item.id);
+   const changedIds=window.Notifications.markNotificationsRead(notificationPageState.items,ids);
+   notificationPageState.items=Array.isArray(changedIds)?changedIds:notificationPageState.items;
+   notificationPageState.summary=window.Notifications.summarizeNotifications(notificationPageState.items);
+   const container=document.querySelector("#notification-center");
+   if(container)window.Notifications.renderNotificationCenter(container,{
+    items:notificationPageState.items,
+    summary:notificationPageState.summary,
+    filter:notificationPageState.filter
+   });
+   setNotifyStatus("已把 "+ids.length+" 条通知标为已读（仅本次会话内有效）。");
+  });
+ }
+ const clearRead=document.querySelector("#notify-clear-read");
+ if(clearRead&&!clearRead.dataset.bound){
+  clearRead.dataset.bound="1";
+  clearRead.addEventListener("click",()=>{
+   if(!window.Notifications)return;
+   const before=notificationPageState.items.length;
+   const kept=window.Notifications.clearReadNotifications(notificationPageState.items);
+   notificationPageState.items=Array.isArray(kept)?kept:[];
+   notificationPageState.summary=window.Notifications.summarizeNotifications(notificationPageState.items);
+   const container=document.querySelector("#notification-center");
+   if(container)window.Notifications.renderNotificationCenter(container,{
+    items:notificationPageState.items,
+    summary:notificationPageState.summary,
+    filter:notificationPageState.filter
+   });
+   setNotifyStatus("已移除 "+(before-notificationPageState.items.length)+" 条已读通知（仅本次会话内有效）。");
+  });
+ }
+}
+async function refreshKnowledgePage(){
+ bindKnowledgeControls();
+ await Promise.all([refreshKnowledgePanel(),refreshAppInventory(),refreshNotifications()]);
+}
+
+window.addEventListener("knowledge-panel-ready",()=>{
+ if(currentRouteId()==="knowledge-card")refreshKnowledgePage();
+});
+window.addEventListener("notifications-ready",()=>{
+ if(currentRouteId()==="knowledge-card")refreshNotifications();
+});
+
+/* ------------------------------------------------------------------ *
  * 当前页刷新：顶栏 #refresh、页面内 [data-action="refresh"] 与路由切换共用。
  * ------------------------------------------------------------------ */
 async function refreshCurrentPage(){
   const id=currentRouteId();
   try{
-    if(id==="status-card"){await refresh();await refreshOverviewStats();}
+    if(id==="status-card"){await refresh();await refreshOverviewStats();await refreshInsights();await refreshPlaybooks();}
     else if(id==="files-card")await refreshFiles(currentFilePath,currentFileOffset);
     else if(id==="agent-card"){await refreshAgentStatus();await refreshRecentTasks();await refreshPendingActions();}
     else if(id==="tools-card")await refreshTools();
     else if(id==="models-card"){await refreshModelPresets();await refreshModels();}
     else if(id==="skills-card")await refreshSkills();
     else if(id==="audit-card")await refreshAudit();
+    else if(id==="knowledge-card")await refreshKnowledgePage();
   }catch(e){
     // 单页刷新失败不阻塞其它页面。
   }
@@ -1144,3 +2194,78 @@ async function refreshCurrentPage(){
 
 /* 启动：外壳已经就绪，这里开始拉取会话与首屏数据。 */
 init();
+
+
+/* ---------- Phase 186：文件查找重复 + 设备能力体检 ---------- */
+(function(){
+  const duplicateButton=document.querySelector("#file-duplicates");
+  const duplicateStatus=document.querySelector("#file-duplicates-status");
+  const duplicateResult=document.querySelector("#file-duplicates-result");
+  if(duplicateButton&&duplicateResult){
+    duplicateButton.addEventListener("click",async()=>{
+      duplicateButton.disabled=true;
+      duplicateResult.textContent="";
+      if(duplicateStatus)duplicateStatus.textContent="正在按大小与 SHA-256 比对当前目录…";
+      try{
+        const params=new URLSearchParams({limit:"200"});
+        if(currentFilePath)params.set("path",currentFilePath);
+        const response=await api("/api/files/duplicates?"+params.toString());
+        const data=await response.json();
+        if(!response.ok)throw Error(data.error||("扫描失败（HTTP "+response.status+"）"));
+        const groups=Array.isArray(data.groups)?data.groups:[];
+        if(!groups.length){
+          duplicateResult.textContent="当前目录没有内容相同的重复文件。";
+          if(duplicateStatus)duplicateStatus.textContent="已比对 "+(data.scanned||0)+" 个文件，没有可回收的重复空间。";
+        }else{
+          const lines=[];
+          let wasted=0;
+          groups.forEach((group,index)=>{
+            const size=Number(group.size)||0;
+            wasted+=Number(group.wastedBytes)||size*(group.paths.length-1);
+            lines.push("#"+(index+1)+"  "+formatBytes(size)+" × "+group.paths.length+" 个");
+            for(const filePath of group.paths)lines.push("    "+filePath);
+          });
+          duplicateResult.textContent=lines.join("\n");
+          if(duplicateStatus)duplicateStatus.textContent="发现 "+groups.length+" 组重复，可回收约 "+formatBytes(wasted)+"（只比对当前目录，不递归）。";
+        }
+        if(data.truncated&&duplicateStatus)duplicateStatus.textContent+=" 结果已截断，请缩小目录范围。";
+      }catch(error){
+        if(duplicateStatus)duplicateStatus.textContent=(error&&error.message)?error.message:"扫描失败";
+      }finally{
+        duplicateButton.disabled=false;
+      }
+    });
+  }
+
+  const capabilityStatus=document.querySelector("#capability-status");
+  const capabilityResult=document.querySelector("#capability-result");
+  async function loadDeviceCapability(profile){
+    if(!capabilityResult)return;
+    capabilityResult.textContent="";
+    if(capabilityStatus)capabilityStatus.textContent="正在读取本机环境…";
+    try{
+      const response=await api("/api/system/capabilities?profile="+encodeURIComponent(profile));
+      const data=await response.json();
+      if(!response.ok)throw Error(data.error||("读取失败（HTTP "+response.status+"）"));
+      const verdict=data.verdict==="ready"?"满足运行要求":data.verdict==="partial"?"部分满足":"不满足";
+      const lines=[verdict+"　"+String(data.profile||"")+"（"+String(data.passed)+"/"+String(data.total)+" 项通过）"];
+      for(const item of data.dimensions||[]){
+        const mark=item.passed===true?"✔":(item.passed===false?"✘":"?");
+        lines.push(mark+" "+item.label+"：需要 "+item.required+"，当前 "+item.actual);
+      }
+      if(data.recommendation)lines.push("结论："+data.recommendation);
+      if(data.note)lines.push(data.note);
+      capabilityResult.textContent=lines.join("\n");
+      if(capabilityStatus)capabilityStatus.textContent="";
+    }catch(error){
+      if(capabilityStatus)capabilityStatus.textContent=(error&&error.message)?error.message:"读取失败";
+    }
+  }
+  for(const button of document.querySelectorAll("[data-capability-profile]")){
+    button.addEventListener("click",()=>{
+      loadDeviceCapability(button.getAttribute("data-capability-profile")||"agent-host");
+    });
+  }
+})();
+
+

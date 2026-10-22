@@ -1,0 +1,287 @@
+/*
+ * knowledge-panel.css — Phase 179
+ *
+ * Styles for the read-only knowledge panel, the application inventory and the
+ * unified notification centre. The class names mirror the ones the ES modules
+ * create in `knowledge-panel.js` and `notifications.js`; a rename there has to
+ * be mirrored here or the panel would fall back to unstyled markup.
+ */
+
+.knowledge-panel,
+.app-inventory,
+.notification-center {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+  border: 1px solid var(--border, #2a2f3a);
+  border-radius: var(--radius, 10px);
+  background: var(--surface, #14171d);
+  color: var(--text, #e6e8ee);
+  min-width: 0;
+}
+
+.knowledge-panel__head,
+.notification-center__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+}
+
+.knowledge-panel__title,
+.app-inventory__title,
+.notification-center__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.knowledge-panel__summary,
+.app-inventory__summary,
+.notification-center__count {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted, #9aa1ad);
+}
+
+.knowledge-panel__empty,
+.app-inventory__empty,
+.notification-center__empty {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-size: 0.875rem;
+  color: var(--text-muted, #9aa1ad);
+  border: 1px dashed var(--border, #2a2f3a);
+  border-radius: var(--radius-sm, 8px);
+}
+
+.knowledge-panel__list,
+.app-inventory__list,
+.notification-center__list,
+.notifications__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.knowledge-panel__item,
+.app-inventory__item,
+.notification-center__item,
+.notifications__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border, #2a2f3a);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-raised, #1a1e26);
+}
+
+.knowledge-panel__item-title,
+.app-inventory__item-name,
+.notifications__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.knowledge-panel__item-source,
+.knowledge-panel__item-meta,
+.knowledge-panel__item-note,
+.app-inventory__item-detail,
+.app-inventory__item-update,
+.notification-center__detail,
+.notification-center__time,
+.notifications__detail,
+.notifications__time,
+.notifications__type,
+.notification-center__type {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted, #9aa1ad);
+  overflow-wrap: anywhere;
+}
+
+.knowledge-panel__item-excerpt {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text, #e6e8ee);
+  overflow-wrap: anywhere;
+}
+
+.knowledge-panel__item-badges,
+.notification-center__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.knowledge-panel__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border, #2a2f3a);
+  background: var(--surface-sunken, #101318);
+  color: var(--text-muted, #9aa1ad);
+  white-space: nowrap;
+}
+
+.knowledge-panel__badge--muted {
+  color: var(--text-muted, #9aa1ad);
+}
+
+.knowledge-panel__badge--info {
+  color: #8fb7ff;
+  border-color: #2c4a7a;
+}
+
+.knowledge-panel__badge--success {
+  color: #7fd1a2;
+  border-color: #2b5b41;
+}
+
+.knowledge-panel__badge--warning {
+  color: #f0c274;
+  border-color: #6b5322;
+}
+
+.knowledge-panel__badge--error {
+  color: #ff9a9a;
+  border-color: #7a3030;
+}
+
+.app-inventory__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.app-inventory__group-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #9aa1ad);
+}
+
+.app-inventory__group-status {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted, #9aa1ad);
+}
+
+.app-inventory__item-update--available {
+  color: #f0c274;
+}
+
+.app-inventory__item-update--current {
+  color: #7fd1a2;
+}
+
+.app-inventory__item-update--unknown {
+  color: var(--text-muted, #9aa1ad);
+}
+
+.notification-center__filters {
+  gap: var(--space-2, 8px);
+}
+
+.notification-center__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 0.8125rem;
+  border: 1px solid var(--border, #2a2f3a);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted, #9aa1ad);
+  cursor: pointer;
+}
+
+.notification-center__filter[aria-pressed="true"],
+.notification-center__filter--active {
+  border-color: #2c4a7a;
+  color: #8fb7ff;
+  background: rgba(44, 74, 122, 0.18);
+}
+
+.notification-center__filter-label {
+  font-size: 0.8125rem;
+}
+
+.notification-center__item--exception {
+  border-left: 3px solid #ff9a9a;
+}
+
+.notification-center__item--approval {
+  border-left: 3px solid #f0c274;
+}
+
+.notification-center__item--task {
+  border-left: 3px solid #7fd1a2;
+}
+
+.notification-center__dot,
+.notifications__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8fb7ff;
+  flex: 0 0 auto;
+}
+
+.notifications__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  align-items: baseline;
+  font-size: 0.8125rem;
+  color: var(--text-muted, #9aa1ad);
+}
+
+.notifications__summary-total,
+.notifications__summary-count {
+  font-weight: 600;
+  color: var(--text, #e6e8ee);
+}
+
+.notifications__summary-type--exception {
+  color: #ff9a9a;
+}
+
+.notifications__summary-type--approval {
+  color: #f0c274;
+}
+
+.notifications__summary-type--task {
+  color: #7fd1a2;
+}
+
+@media (max-width: 720px) {
+  .knowledge-panel,
+  .app-inventory,
+  .notification-center {
+    padding: var(--space-3, 12px);
+  }
+
+  .knowledge-panel__head,
+  .notification-center__head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

@@ -1,13 +1,105 @@
-import { appendFile, chmod, mkdir, rename, rm, stat } from "node:fs/promises";
+import { appendFile, chmod, mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const ROUTES = new Set([
-  "setup", "login", "logout", "diagnostics", "audit.list", "files.list", "files.manage", "files.checksum", "skills.list", "skills.register",
-  "skills.import", "skills.transition", "skills.remove", "skills.install-cli", "agent.status", "agent.trim-cli-test", "agent.trim-cli-login-command", "agent.message",
-  "tasks.status", "tasks.list", "tasks.cancel", "tasks.clear", "tasks.get", "actions.pending", "actions.confirm", "tools.list",
-  "tools.run", "health-checks.list", "health-checks.create", "health-checks.update", "health-checks.delete", "health-checks.run", "models.presets", "models.list", "models.add", "models.update", "models.remove", "models.default", "models.test", "execution.mode", "other_api"
-]);
+  "actions.confirm",
+  "actions.pending",
+  "agent.message",
+  "agent.status",
+  "agent.trace",
+  "agent.trim-cli-login-command",
+  "agent.trim-cli-test",
+  "audit.list",
+  "chat.message",
+  "chat.status",
+  "compositions.plan",
+  "compositions.validate",
+  "deploy.precheck",
+  "diagnoses.correct",
+  "diagnoses.list",
+  "diagnoses.read",
+  "diagnoses.stats",
+  "diagnostics",
+  "diagnostics.evidence",
+  "diagnostics.log-evidence",
+  "diagnostics.report",
+  "docker.advice",
+  "docker.stats",
+  "execution.mode",
+  "files.checksum",
+  "files.duplicates",
+  "files.list",
+  "files.manage",
+  "files.rename-apply",
+  "files.rename-plan",
+  "health-checks.create",
+  "health-checks.delete",
+  "health-checks.list",
+  "health-checks.run",
+  "health-checks.update",
+  "knowledge.commit",
+  "knowledge.conflicts",
+  "knowledge.list",
+  "knowledge.preview",
+  "knowledge.read",
+  "knowledge.reference",
+  "knowledge.stats",
+  "login",
+  "logout",
+  "mcp.status",
+  "models.add",
+  "models.default",
+  "models.list",
+  "models.presets",
+  "models.remove",
+  "models.test",
+  "models.update",
+  "models.usage",
+  "network.certificate-check",
+  "network.check",
+  "network.diagnostics",
+  "network.interfaces",
+  "network.policy",
+  "runbooks.delete",
+  "runbooks.list",
+  "runbooks.read",
+  "runbooks.stats",
+  "runbooks.write",
+  "security.inspection",
+  "setup",
+  "skills.import",
+  "skills.install-cli",
+  "skills.list",
+  "skills.register",
+  "skills.remove",
+  "skills.transition",
+  "system.capabilities",
+  "system.capacity-forecast",
+  "system.device-profile",
+  "system.device-profile.delete",
+  "system.device-profile.write",
+  "system.device-profiles",
+  "system.events",
+  "system.services",
+  "system.smart",
+  "system.snapshot",
+  "system.thermal",
+  "system.update-check",
+  "tasks.cancel",
+  "tasks.clear",
+  "tasks.events",
+  "tasks.get",
+  "tasks.list",
+  "tasks.status",
+  "tools.list",
+  "tools.run",
+  "web.fetch",
+  "workflows.events",
+  "workflows.list",
+  "workflows.run",
+  "workflows.triggers",
+  "write.actions.list",]);
 
 // Audit events are written from a response "finish" listener that runs outside the
 // request try/catch, so record() must never throw: an unknown route, an unsupported
@@ -93,6 +185,40 @@ export function createAuditLogger({ dataDir, filename = "audit.jsonl", maxBytes 
       return queue;
     },
     flush() { return queue; },
-    filePath() { return file; }
+    filePath() { return file; },
+    /**
+     * Reads the recorded audit events.
+     *
+     * The reader is read-only and bounded: it never rotates and never writes.
+     * A damaged line is skipped instead of failing the whole read, because a
+     * single broken line must not hide the rest of the history.
+     *
+     * @param {{limit?: number}} [options]
+     * @returns {Promise<Array<object>>}
+     */
+    async read({ limit = 500 } = {}) {
+      const max = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 5000) : 500;
+      const lines = [];
+      for (const target of [file, rotated]) {
+        let raw = "";
+        try {
+          raw = await readFile(target, "utf8");
+        } catch (error) {
+          if (error.code === "ENOENT") continue;
+          throw error;
+        }
+        for (const line of raw.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) lines.push(parsed);
+          } catch {
+            // A damaged line is skipped: the reader reports what it could read.
+          }
+        }
+      }
+      return lines.slice(-max);
+    }
   });
 }

@@ -1,0 +1,347 @@
+/* ==================================================================
+ * model-settings.css —— Phase 154：Marvis 风格「大模型管理」UI 样式
+ *
+ * 约束：
+ *   - 本文件**只新增**规则，不修改任何既有样式；
+ *   - 所有类名以 `.model-settings__` 开头，避免与既有 .card / .btn / .input
+ *     等全局类冲突；
+ *   - 视觉基线来自腾讯 Marvis 桌面端（Vite + React + Semi Design）的模型
+ *     管理面板与模型表单：列表项 64px 高、24px 大圆角容器、12px 输入框圆角、
+ *     #f75040 字段级错误红、#0080ff 外链蓝。
+ * ================================================================== */
+
+.model-settings {
+  --model-settings-radius-card: 24px;
+  --model-settings-radius-item: 12px;
+  --model-settings-radius-badge: 18px;
+  --model-settings-radius-input: 12px;
+  --model-settings-surface: rgba(255, 255, 255, 0.7);
+  --model-settings-divider: rgba(0, 0, 0, 0.04);
+  --model-settings-hover: rgba(0, 0, 0, 0.04);
+  --model-settings-field-bg: rgba(0, 0, 0, 0.04);
+  --model-settings-danger: #f75040;
+  --model-settings-link: #0080ff;
+  --model-settings-warn: #b45309;
+  --model-settings-ok: #0f9d58;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ---------- 面板头 ---------- */
+
+.model-settings__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: var(--model-settings-surface);
+}
+
+.model-settings__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.model-settings__subtitle {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--text-muted);
+}
+
+/* ---------- 列表容器 ---------- */
+
+.model-settings__list {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--model-settings-radius-card);
+  background: var(--model-settings-surface);
+  overflow: hidden;
+}
+
+.model-settings__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 162px;
+  padding: 24px;
+  border-radius: var(--model-settings-radius-card);
+  background: var(--model-settings-surface);
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ---------- 列表项（服务商卡片） ---------- */
+
+.model-settings__card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px 20px;
+}
+
+.model-settings__card::after {
+  content: "";
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 0;
+  height: 1px;
+  background: var(--model-settings-divider);
+}
+
+.model-settings__card:last-child::after {
+  display: none;
+}
+
+.model-settings__card:hover {
+  background: var(--model-settings-hover);
+}
+
+.model-settings__card-main {
+  min-width: 0;
+}
+
+.model-settings__card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-settings__card-meta,
+.model-settings__card-credential,
+.model-settings__card-test {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.model-settings__card-credential--ok {
+  color: var(--model-settings-ok);
+}
+
+.model-settings__card-test--danger {
+  color: var(--model-settings-danger);
+}
+
+.model-settings__card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---------- 徽标 ---------- */
+
+.model-settings__badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--model-settings-radius-badge);
+  background: var(--model-settings-field-bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 24px;
+  white-space: nowrap;
+}
+
+.model-settings__badge--ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.model-settings__badge--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.model-settings__badge--warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+/* ---------- 向导 ---------- */
+
+.model-settings__wizard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  border-radius: 16px;
+  background: var(--model-settings-surface);
+}
+
+.model-settings__wizard-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.model-settings__wizard-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--model-settings-radius-badge);
+  background: var(--model-settings-field-bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 28px;
+}
+
+.model-settings__wizard-step--current {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.model-settings__wizard-step--done {
+  color: var(--model-settings-ok);
+}
+
+.model-settings__wizard-step--invalid {
+  color: var(--model-settings-danger);
+}
+
+.model-settings__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.model-settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.model-settings__field-label {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 24px;
+  color: var(--text);
+}
+
+.model-settings__field-required {
+  margin-left: 6px;
+  color: var(--model-settings-danger);
+}
+
+.model-settings__field-input {
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: var(--model-settings-radius-input);
+  background: var(--model-settings-field-bg);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.model-settings__field-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.model-settings__field-input--error {
+  border-color: var(--model-settings-danger);
+}
+
+.model-settings__field-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+}
+
+.model-settings__field-error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--model-settings-danger);
+}
+
+.model-settings__field-link {
+  color: var(--model-settings-link);
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.model-settings__field-link:hover {
+  text-decoration: underline;
+}
+
+/* ---------- 凭据状态条 ---------- */
+
+.model-settings__credential {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--model-settings-field-bg);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+}
+
+.model-settings__credential--ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.model-settings__credential--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.model-settings__fingerprint {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .model-settings__card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .model-settings__card-badges {
+    justify-content: flex-start;
+  }
+
+  .model-settings__wizard {
+    padding: 16px;
+  }
+}
+
+/* --- Phase 154: field level errors of the model settings form --------- */
+.field--invalid{border-color:var(--danger,#c0392b);box-shadow:0 0 0 1px rgba(192,57,43,.25);}
+.field__error{margin:.25rem 0 0;color:var(--danger,#c0392b);font-size:.8125rem;line-height:1.4;}

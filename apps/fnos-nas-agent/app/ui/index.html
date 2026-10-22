@@ -8,6 +8,8 @@
 <meta name="description" content="fnOS NAS Agent —— 自托管的 NAS 助手：文件管理、模型服务、Skill 隔离审核与受限只读 fnOS 工具。">
 <title>fnOS NAS Agent</title>
 <link rel="stylesheet" href="/ui/styles.css">
+<link rel="stylesheet" href="/ui/model-settings.css">
+<link rel="stylesheet" href="/ui/knowledge-panel.css">
 <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
 </head>
 <body class="app">
@@ -51,6 +53,7 @@
     <a class="nav-rail__link" href="#models-card" data-page="models-card"><span class="nav-rail__icon" aria-hidden="true">◇</span><span>模型服务</span></a>
     <a class="nav-rail__link" href="#skills-card" data-page="skills-card"><span class="nav-rail__icon" aria-hidden="true">❖</span><span>Skill 管理</span></a>
     <a class="nav-rail__link" href="#audit-card" data-page="audit-card"><span class="nav-rail__icon" aria-hidden="true">◷</span><span>操作审计</span></a>
+    <a class="nav-rail__link" href="#knowledge-card" data-page="knowledge-card"><span class="nav-rail__icon" aria-hidden="true">◆</span><span>知识库</span></a>
     <a class="nav-rail__link" href="#security-note" data-page="security-note"><span class="nav-rail__icon" aria-hidden="true">⛨</span><span>安全说明</span></a>
     <div class="nav-rail__foot">
       <p class="muted">任意系统命令执行关闭；导入的 Skill 只隔离不执行。</p>
@@ -142,10 +145,84 @@
           </div>
         </details>
 
+        <details class="card card--flat">
+          <summary class="card__head">
+            <h3 class="card__title">运行状态、安全巡检与模型用量</h3>
+            <p class="card__sub">展开查看系统快照、安全巡检与模型调用统计（只读，不改配置）。</p>
+          </summary>
+          <div class="card__body">
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" id="insights-refresh" type="button">刷新观察数据</button>
+            </div>
+            <p class="field__hint" id="insights-status" role="status">登录后点击刷新读取观察数据。</p>
+            <h4 class="card__title">系统快照</h4>
+            <pre id="insights-system">尚未读取。</pre>
+            <h4 class="card__title">安全巡检</h4>
+            <pre id="insights-security">尚未读取。</pre>
+            <h4 class="card__title">模型用量</h4>
+            <pre id="insights-usage">尚未读取。</pre>
+          </div>
+        </details>
+
+        <details class="card card--flat">
+          <summary class="card__head">
+            <h3 class="card__title">工作流、运行手册与诊断证据</h3>
+            <p class="card__sub">展开查看可执行的工作流计划、可复用的运行手册和当前能取到的诊断证据（只读）。</p>
+          </summary>
+          <div class="card__body">
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" id="playbooks-refresh" type="button">刷新工作流与手册</button>
+            </div>
+            <p class="field__hint" id="playbooks-status" role="status">登录后点击刷新读取工作流、运行手册与诊断证据。</p>
+            <h4 class="card__title">工作流计划</h4>
+            <pre id="playbooks-workflows">尚未读取。</pre>
+            <h4 class="card__title">运行手册</h4>
+            <pre id="playbooks-runbooks">尚未读取。</pre>
+            <h4 class="card__title">诊断证据</h4>
+            <pre id="playbooks-evidence">尚未读取。</pre>
+          </div>
+        </details>
+
       </div>
     </section>
 
-    <!-- ============================ 文件管理 ============================ -->
+    <!-- ============================ 文件管理 ============================ -->        <details class="card card--flat">
+          <summary class="card__head">
+            <h3 class="card__title">设备能力体检</h3>
+            <p class="card__sub">逐维查看本机是否满足「本助手」或「本地模型」的运行条件；只读，不上传任何数据。</p>
+          </summary>
+          <div class="card__body">
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" type="button" data-capability-profile="agent-host">检查本助手运行条件</button>
+              <button class="btn btn--secondary" type="button" data-capability-profile="local-llm">检查本地模型条件</button>
+            </div>
+            <p class="field__hint" id="capability-status" role="status">点击任一按钮读取本机平台、架构、CPU 核心、内存与存储类型。</p>
+            <pre id="capability-result">尚未检查。</pre>
+          </div>
+        </details>
+
+        <details class="card card--flat">
+          <summary class="card__head">
+            <div>
+              <h3 class="card__title">服务状态与容量趋势</h3>
+              <p class="card__sub">fnOS 核心服务是否在跑，以及磁盘用量的历史趋势（只读；每次刷新记一次采样，同小时不重复记）。</p>
+            </div>
+          </summary>
+          <div class="card__body">
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" id="runtime-refresh" type="button">刷新服务、趋势与设备</button>
+            </div>
+            <p class="field__hint" id="runtime-status" role="status">登录后点击刷新读取服务状态、容量趋势与设备诊断。</p>
+            <h4 class="card__title">服务状态</h4>
+            <pre id="runtime-services">尚未读取。</pre>
+            <h4 class="card__title">容量趋势</h4>
+            <pre id="runtime-capacity">尚未读取。</pre>
+            <h4 class="card__title">设备诊断</h4>
+            <pre id="runtime-devices">尚未读取。</pre>
+          </div>
+        </details>
+
+
     <section class="page hidden" id="files-card" data-title="文件管理" data-sub="浏览、上传与整理 NAS 文件">
       <div class="page__head">
         <h2 class="page__title">文件管理</h2>
@@ -173,9 +250,55 @@
           </div>
           <div class="toolbar__spacer"></div>
           <div class="toolbar__group row row--wrap">
+            <button class="btn btn--secondary" id="file-duplicates" type="button">查找重复</button>
             <button class="btn btn--secondary" id="file-mkdir" type="button">新建文件夹</button>
           </div>
         </div>
+
+        <details class="card card--flat" open>
+          <summary class="card__head">
+            <h3 class="card__title">查找重复文件</h3>
+            <p class="card__sub">按大小与 SHA-256 比对当前目录中的文件；只读扫描，不会删除或移动任何文件。</p>
+          </summary>
+          <div class="card__body">
+            <p class="field__hint" id="file-duplicates-status" role="status">点击工具栏「查找重复」后在此显示结果。</p>
+            <pre id="file-duplicates-result">尚未扫描。</pre>
+          </div>
+        </details>
+
+        <details class="card card--flat">
+          <summary class="card__head">
+            <h3 class="card__title">批量重命名（先规划、再执行）</h3>
+            <p class="card__sub">对当前目录里匹配的文件生成改名计划；执行时逐个改名，任何一步失败会自动回滚已改的项。</p>
+          </summary>
+          <div class="card__body">
+            <div class="row row--wrap">
+              <label class="field__label" for="rename-mode">模式</label>
+              <select id="rename-mode">
+                <option value="replace">字面替换</option>
+                <option value="prefix-suffix">加前缀/后缀</option>
+                <option value="sequence">顺序编号</option>
+                <option value="normalize">规范化空白与大小写</option>
+              </select>
+              <label class="field__label" for="rename-filter">只处理匹配</label>
+              <input id="rename-filter" type="text" placeholder="例如 *.jpg，留空表示全部" />
+            </div>
+            <div class="row row--wrap">
+              <input id="rename-find" type="text" placeholder="查找（字面替换）" />
+              <input id="rename-replace" type="text" placeholder="替换为" />
+              <input id="rename-prefix" type="text" placeholder="前缀" />
+              <input id="rename-suffix" type="text" placeholder="后缀" />
+              <input id="rename-start" type="number" min="1" step="1" value="1" title="起始编号" />
+              <input id="rename-step" type="number" min="1" step="1" value="1" title="步长" />
+            </div>
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" id="rename-preview" type="button">生成计划</button>
+              <button class="btn btn--primary" id="rename-apply" type="button" disabled>执行计划</button>
+            </div>
+            <p class="field__hint" id="rename-status" role="status">先生成计划，核对无误后再执行。</p>
+            <pre id="rename-result">尚未生成计划。</pre>
+          </div>
+        </details>
 
         <div class="card card--flat">
           <div class="card__body">
@@ -328,11 +451,20 @@
             <p class="card__sub">例如：查看系统状态 / 然后打开刚才的目录。</p>
           </div>
           <div class="card__body">
-            <div class="chat">
+            <div class="chat" id="agent-chat" data-chat-mode="task">
+              <div class="chat__modes" role="group" aria-label="对话模式">
+                <button class="chat__mode" id="chat-mode-task" type="button" aria-pressed="true" data-chat-mode="task">任务模式</button>
+                <button class="chat__mode" id="chat-mode-direct" type="button" aria-pressed="false" data-chat-mode="direct">对话模式</button>
+              </div>
+              <p class="chat__mode-hint muted" id="agent-mode-hint">任务模式：执行 NAS 工具任务，可被审批与停止。</p>
               <div class="chat__thread" id="agent-history" aria-live="polite"><p class="muted">登录后可开始查询。</p></div>
+              <div class="chat__toolbar">
+                <span class="chat__status" id="agent-stream-status" role="status">就绪</span>
+                <button class="btn btn--secondary btn--sm chat__stop" id="agent-stop" type="button" hidden>停止生成</button>
+              </div>
               <form class="composer" id="agent-form">
                 <label class="visually-hidden" for="agent-input">你想了解什么？</label>
-                <input class="input composer__input" id="agent-input" maxlength="2000" autocomplete="off" placeholder="例如：查看系统状态 / 然后打开刚才的目录" required>
+                <textarea class="input composer__input" id="agent-input" rows="1" maxlength="2000" autocomplete="off" enterkeyhint="send" placeholder="例如：查看系统状态 / 然后打开刚才的目录" required></textarea>
                 <button class="btn btn--primary composer__send" id="agent-send" type="submit">发送</button>
               </form>
             </div>
@@ -340,7 +472,7 @@
           </div>
         </div>
 
-        <div class="card card--flat">
+        <div class="card card--flat" id="agent-pending-card">
           <div class="card__head">
             <h3 class="card__title">待确认的危险操作</h3>
             <p class="card__sub">确认只对下面显示的具体目标有效，60 秒内有效且只能执行一次。</p>
@@ -351,7 +483,7 @@
           </div>
         </div>
 
-        <div class="card card--flat">
+        <div class="card card--flat" id="agent-task-queue-card">
           <div class="card__head">
             <h3 class="card__title">任务队列</h3>
             <p class="card__sub" id="task-stats">正在读取队列状态…</p>
@@ -492,6 +624,9 @@
               </div>
             </form>
             <p id="model-provider-error" class="error" role="status"></p>
+            <!-- Phase 154: the Marvis style wizard. The module reports the step
+                 the operator is on and the fields that still block the save. -->
+            <div class="model-settings__wizard" id="model-provider-wizard" aria-live="polite"></div>
           </div>
         </div>
 
@@ -703,6 +838,72 @@
       </div>
     </section>
 
+    <!-- ============================ 知识库 ============================ -->
+    <section class="page hidden" id="knowledge-card" data-title="知识库" data-sub="来源、时效、冲突与通知中心">
+      <div class="page__head">
+        <h2 class="page__title">知识库</h2>
+        <p class="page__sub">每条记录都带来源与采集时间；没采集到的字段显示「未采集」，长期记忆不代表当前实时状态。</p>
+      </div>
+      <div class="page__body">
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">知识库检索</h3>
+            <p class="card__sub">按关键词、标签与来源过滤；官方来源排在前面，冲突并列展示不做自动裁决。</p>
+          </div>
+          <div class="toolbar">
+            <label class="field field--inline">
+              <span class="field__label">关键词</span>
+              <input id="knowledge-query" type="search" placeholder="镜像、磁盘、证书…" autocomplete="off">
+            </label>
+            <label class="field field--inline">
+              <span class="field__label">来源</span>
+              <select id="knowledge-source">
+                <option value="">全部来源</option>
+                <option value="official">官方文档</option>
+                <option value="vendor">厂商</option>
+                <option value="operations">运维记录</option>
+                <option value="community">社区</option>
+                <option value="memory">长期记忆</option>
+              </select>
+            </label>
+            <button class="btn btn--ghost btn--sm" id="knowledge-search" type="button">检索</button>
+            <button class="btn btn--ghost btn--sm" id="knowledge-refresh" type="button">刷新</button>
+          </div>
+          <p class="muted" id="knowledge-status">尚未加载知识库。</p>
+          <div id="knowledge-panel"></div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">应用与容器（只读）</h3>
+            <p class="card__sub">来自系统快照；未采集的分区标注为未知，不显示为正常。</p>
+          </div>
+          <div id="app-inventory"></div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">通知中心</h3>
+            <p class="card__sub">异常、待审批与任务完成三路事件；正文中的凭据在展示前已被隐藏。</p>
+          </div>
+          <div class="toolbar">
+            <div class="segmented" role="group" aria-label="按类型筛选">
+              <button class="btn btn--ghost btn--sm" id="notify-filter-all" type="button" aria-pressed="true">全部</button>
+              <button class="btn btn--ghost btn--sm" id="notify-filter-exception" type="button" aria-pressed="false">异常</button>
+              <button class="btn btn--ghost btn--sm" id="notify-filter-approval" type="button" aria-pressed="false">待审批</button>
+              <button class="btn btn--ghost btn--sm" id="notify-filter-task" type="button" aria-pressed="false">任务</button>
+            </div>
+            <button class="btn btn--ghost btn--sm" id="notify-mark-all" type="button">全部标为已读</button>
+            <button class="btn btn--ghost btn--sm" id="notify-clear-read" type="button">清除已读</button>
+          </div>
+          <p class="muted" id="notify-status">尚未加载通知。</p>
+          <div id="notification-center"></div>
+        </div>
+
+      </div>
+    </section>
+
     <!-- ============================ 安全说明 ============================ -->
     <section class="page hidden" id="security-note" data-title="安全说明" data-sub="这个 Agent 能做什么、不能做什么">
       <div class="page__head">
@@ -744,6 +945,7 @@
       <a class="menu__item" href="#models-card" data-page="models-card"><span class="nav-rail__icon" aria-hidden="true">◇</span><span>模型服务</span></a>
       <a class="menu__item" href="#skills-card" data-page="skills-card"><span class="nav-rail__icon" aria-hidden="true">❖</span><span>Skill 管理</span></a>
       <a class="menu__item" href="#audit-card" data-page="audit-card"><span class="nav-rail__icon" aria-hidden="true">◷</span><span>操作审计</span></a>
+      <a class="menu__item" href="#knowledge-card" data-page="knowledge-card"><span class="nav-rail__icon" aria-hidden="true">◆</span><span>知识库</span></a>
       <a class="menu__item" href="#security-note" data-page="security-note"><span class="nav-rail__icon" aria-hidden="true">⛨</span><span>安全说明</span></a>
     </div>
   </div>
@@ -799,5 +1001,14 @@
 
 <script src="/ui/core.js"></script>
 <script src="/ui/pages.js"></script>
+<!-- Phase 154: the model settings helpers are an ES module. They publish
+     themselves on the window object for the classic script above. -->
+<script type="module" src="/ui/model-settings.js"></script>
+<!-- Phase 179: the knowledge panel and the notification centre are ES modules
+     too. They publish `window.KnowledgePanel` / `window.Notifications` and
+     dispatch `knowledge-panel-ready` / `notifications-ready` so the classic
+     script above can pick them up without an import. -->
+<script type="module" src="/ui/knowledge-panel.js"></script>
+<script type="module" src="/ui/notifications.js"></script>
 </body>
 </html>
