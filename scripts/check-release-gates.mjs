@@ -346,9 +346,9 @@ assert.match(readme, /\[LICENSE\]\(LICENSE\)/);
 assert.ok(await exists("LICENSE"), "LICENSE must exist before a release is published.");
 assert.ok(await exists("apps/fnos-nas-agent/app/version.mjs"), "The shared version module must exist.");
 assert.ok(await exists("docs/phase-132-nas-staging-acceptance.md"), "The NAS staging acceptance record must exist.");
-assert.match(await read("apps/fnos-nas-agent/app/version.mjs"), /export const APP_VERSION = "0\.2\.1"/);
-assert.match(await read("apps/fnos-nas-agent/manifest"), /version\s+=\s+0\.2\.1/);
-assert.match(pkg, /"version": "0\.2\.1"/);
+assert.match(await read("apps/fnos-nas-agent/app/version.mjs"), /export const APP_VERSION = "0\.2\.2"/);
+assert.match(await read("apps/fnos-nas-agent/manifest"), /version\s+=\s+0\.2\.2/);
+assert.match(pkg, /"version": "0\.2\.2"/);
 assert.match(pkg, /"license": "MIT"/);
 
 // Phase 134: the overview service turns six API calls into one.
