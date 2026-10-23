@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 217 documents (201 phase documents and 15 non-phase documents, plus this file).
+This index lists 218 documents (202 phase documents and 15 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -764,6 +764,7 @@ This index lists 217 documents (201 phase documents and 15 non-phase documents, 
 - [Phase 214：知识条目的核验、标记过期与归档](phase-214-knowledge-entry-actions.md) — 条目上三个维护动作沿用两步写入（确认条 → previewId → commit），新增 `POST /api/knowledge/cancel` 丢弃未提交的预览，9 例测试。
 - [Phase 215：只读步骤的失败重试](phase-215-retry-policy.md) — 只重试只读工具上的瞬时失败（超时/连接类/429/5xx），上限 3 次、指数退避；工作流路由接入并把重试记录放进响应，运维页可一键试运行内置工作流，14 例测试。
 - [Phase 216：知识库的「显示已归档」开关](phase-216-knowledge-archived-view.md) — 列表页补上 `archived=1` 开关与「（含已归档）」状态；顺带修掉视图模型丢 `archived` 标记、归档条目被画出维护按钮的缺陷，4 例测试。
+- [Phase 217：备份前检查](phase-217-backup-precheck.md) — 七项只读体检（空间、只读挂载、容量趋势、服务、SMART、诊断）拼成一句「现在能不能安心备份」；`GET /api/backup/precheck` + 运维页卡片，14 例纯函数用例与 1 例 401 边界。
 
 ## This index
 

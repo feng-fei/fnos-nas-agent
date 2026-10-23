@@ -199,7 +199,7 @@ per-intent command string builder in the chat path.
 | SEC10 Server-side revalidation | Implemented | Every tool revalidates on the server | — |
 | SEC11 Prompt-injection defence | Partly | Tool boundary: model output can only request registered tools | No explicit injection detector |
 | SEC12 Delete protection | Partly | Delete tools show the target before execution | — |
-| SEC13 Backup pre-check | Open | — | — |
+| SEC13 Backup pre-check | Implemented | `app/backup-precheck.mjs` `buildBackupPrecheck`, `GET /api/backup/precheck`, ops page card | Verdict is pure logic over already-collected facts; diagnostics input is not auto-filled, so that check stays `unknown` until a report is supplied |
 | SEC14 Rollback strategy | Partly | Phase 163 archive plan is reversible by construction | No generic rollback |
 | SEC15 Rate limiting | Implemented | Server rate limiter | — |
 | SEC16 Emergency stop | Partly | Stop generation, cancel task | No global kill switch |

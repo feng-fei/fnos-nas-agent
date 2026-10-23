@@ -2950,6 +2950,39 @@ async function refreshAgentTrace(){
   opsSection("#agent-trace","工具调用观测",lines,body);
 }
 
+/* ------------------------------ 备份前检查 ------------------------------ */
+
+const BACKUP_STATUS_LABELS={ok:"正常",warn:"留意",blocked:"阻断",unknown:"未知"};
+const BACKUP_VERDICT_LABELS={ready:"可以开始备份",warn:"可以备份，但有需要留意的地方",blocked:"先处理阻断项再备份",unknown:"证据不足，先补采数据"};
+
+async function runOpsBackupPrecheck(){
+  opsNotice("#ops-backup-status","正在体检…");
+  const result=await opsFetch("/api/backup/precheck");
+  if(!result.ok){
+    opsNotice("#ops-backup-status",opsFailure(result,"运行备份前检查"));
+    opsSection("#ops-backup-result","备份前检查",[opsFailure(result,"运行备份前检查")],result.body);
+    return;
+  }
+  const body=result.body||{};
+  const checks=Array.isArray(body.checks)?body.checks:[];
+  const summary=body.summary&&typeof body.summary==="object"?body.summary:{};
+  const verdict=BACKUP_VERDICT_LABELS[body.verdict]||body.verdict||"未知";
+  opsNotice("#ops-backup-status","体检完成："+verdict+"（正常 "+opsDescribe(summary.ok)+" · 留意 "+opsDescribe(summary.warn)+" · 阻断 "+opsDescribe(summary.blocked)+" · 未知 "+opsDescribe(summary.unknown)+"）");
+  const lines=[];
+  for(const item of checks){
+    const status=item&&item.status||"unknown";
+    lines.push("["+(BACKUP_STATUS_LABELS[status]||status)+"] "+(item&&(item.title||item.id)||"检查项")+"："+(item&&item.detail||"没有说明"));
+  }
+  const actions=Array.isArray(body.actions)?body.actions:[];
+  if(actions.length){
+    lines.push("");
+    lines.push("建议：");
+    for(const action of actions.slice(0,8))lines.push("  · "+action);
+  }
+  if(body.note)lines.push("",String(body.note));
+  opsSection("#ops-backup-result","备份前检查",lines,body);
+}
+
 /* ------------------------------- 页面调度 ------------------------------- */
 
 function bindOpsControls(){
@@ -2979,6 +3012,7 @@ function bindOpsControls(){
   guard("#ops-device-refresh","设备档案",refreshOpsDeviceProfiles);
   guard("#ops-write-actions-refresh","写动作登记",refreshOpsWriteActions);
   guard("#ops-health-checks-refresh","定时健康检查",refreshOpsHealthChecks);
+  guard("#ops-backup-precheck","备份前检查",runOpsBackupPrecheck);
   guard("#agent-trace-refresh","工具调用观测",refreshAgentTrace);
 }
 
