@@ -6,6 +6,6 @@
  * Release tooling and the release gates compare these values, so this module only
  * ever changes together with those two files.
  */
-export const APP_VERSION = "0.2.1";
+export const APP_VERSION = "0.2.2";
 
 export default APP_VERSION;
