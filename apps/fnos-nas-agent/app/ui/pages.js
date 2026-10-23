@@ -1945,6 +1945,38 @@ async function refreshOverviewStats(){
   });
 })();
 
+/* --------------------- 共享 HTTP 小工具 --------------------- */
+// 这几个函数不属于任何单个页面：它们同时被知识库与诊断运维页使用，所以放在两个页面之前。
+
+async function opsFetch(path,options){
+  try{
+    const response=await api(path,options);
+    let body=null;
+    try{body=await response.json();}catch{body=null;}
+    return {ok:response.ok,status:response.status,body:body};
+  }catch(error){
+    return {ok:false,status:0,body:{error:errorText(error,"请求失败")}};
+  }
+}
+
+function opsFailure(result,label){
+  const detail=result.body&&(result.body.error||result.body.message);
+  const message=detail?(localizeServerMessage(detail)||detail):"HTTP "+result.status;
+  return label+"失败："+message;
+}
+
+function opsPostJson(path,payload){
+  return opsFetch(path,{
+    method:"POST",
+    headers:{"content-type":"application/json"},
+    body:JSON.stringify(payload)
+  });
+}
+
+function opsGetJson(path){
+  return opsFetch(path,{method:"GET"});
+}
+
 const knowledgePageState={
  entries:[],
  view:null,
@@ -1989,10 +2021,56 @@ async function refreshKnowledgePanel(){
   const total=Number.isFinite(payload.total)?payload.total:entries.length;
   setKnowledgeStatus(entries.length?"已加载 "+entries.length+" 条，共 "+total+" 条。":"没有匹配的知识条目。");
   knowledgePageState.loaded=true;
+  await refreshKnowledgeFacts();
  }catch(error){
   knowledgePageState.view=null;
   lib.renderKnowledgePanel(container,null);
   setKnowledgeStatus(error&&error.message?error.message:"知识库读取失败");
+ }
+}
+
+// 知识库统计与冲突：只读展示。冲突代表同一主题存在不同结论，
+// 系统不自动取舍，这里只并列呈现，由人决定信哪一条。
+async function refreshKnowledgeFacts(){
+ const statsBox=document.querySelector("#knowledge-stats"),conflictsBox=document.querySelector("#knowledge-conflicts");
+ if(!statsBox||!conflictsBox)return;
+ const [statsResult,conflictResult]=await Promise.allSettled([
+  api("/api/knowledge/stats").then((r)=>r.json()),
+  api("/api/knowledge/conflicts").then((r)=>r.json())
+ ]);
+ statsBox.textContent="";
+ if(statsResult.status==="fulfilled"&&statsResult.value&&statsResult.value.ok){
+  const stats=statsResult.value,parts=["共 "+stats.total+" 条","归档 "+stats.archived+" 条"];
+  const sources=Object.entries(stats.bySource||{}).filter(([,value])=>value>0).map(([key,value])=>key+" "+value);
+  if(sources.length)parts.push("来源 "+sources.join("、"));
+  const verifications=Object.entries(stats.byVerification||{}).filter(([,value])=>value>0).map(([key,value])=>key+" "+value);
+  if(verifications.length)parts.push("核验 "+verifications.join("、"));
+  const line=document.createElement("p");
+  line.className="muted";
+  line.textContent="知识库统计："+parts.join("；")+"。";
+  statsBox.append(line);
+ }
+ conflictsBox.textContent="";
+ if(conflictResult.status==="fulfilled"&&conflictResult.value&&conflictResult.value.ok){
+  const conflicts=Array.isArray(conflictResult.value.conflicts)?conflictResult.value.conflicts:[];
+  const head=document.createElement("p");
+  head.className="muted";
+  head.textContent=conflicts.length?"发现 "+conflicts.length+" 组冲突结论（不做自动取舍）：":"未发现互相冲突的知识条目。";
+  conflictsBox.append(head);
+  for(const group of conflicts.slice(0,5)){
+   const box=document.createElement("div");
+   box.className="knowledge-conflict";
+   const title=document.createElement("p");
+   title.textContent="主题："+(group.topic||"未命名")+"（"+((group.entries||[]).length)+" 条）";
+   const list=document.createElement("ul");
+   for(const entry of (group.entries||[]).slice(0,6)){
+    const item=document.createElement("li");
+    item.textContent=[entry.title||entry.id||"未命名",entry.conclusion||"未记录结论",entry.source||"",entry.verification||""].filter(Boolean).join(" · ");
+    list.append(item);
+   }
+   box.append(title,list);
+   conflictsBox.append(box);
+  }
  }
 }
 
@@ -2173,6 +2251,555 @@ window.addEventListener("notifications-ready",()=>{
  if(currentRouteId()==="knowledge-card")refreshNotifications();
 });
 
+/* ================================================================== *
+ * 诊断与运维（Phase 213）：网络体检、部署校验、技能组合、诊断报告、
+ * 诊断历史、日志证据、自动化、运行手册、容器与设备档案。
+ * 约束：只用 textContent 组装文本，不拼 HTML、不执行任何系统命令；
+ * 解析不了的返回额外折叠成原始 JSON，方便对账而不是猜。
+ * ================================================================== */
+let opsControlsBound=false;
+
+function opsHost(id){return document.querySelector(id);}
+
+function opsDescribe(value){
+  if(value===null||value===undefined)return "—";
+  if(typeof value==="boolean")return value?"是":"否";
+  if(typeof value==="number")return Number.isFinite(value)?String(value):"—";
+  if(typeof value==="string"){const text=value.trim();if(!text)return "—";return text.length>200?text.slice(0,200)+"…":text;}
+  if(Array.isArray(value))return value.length?value.slice(0,8).map(item=>opsDescribe(item)).join("、"):"（空）";
+  if(typeof value==="object"){
+    const entries=Object.entries(value).filter(([,item])=>item!==null&&item!==undefined&&item!=="");
+    if(!entries.length)return "（空）";
+    return entries.slice(0,8).map(([key,item])=>key+"="+opsDescribe(item)).join(" · ");
+  }
+  return String(value);
+}
+
+function opsArray(value,keys){
+  if(Array.isArray(value))return value;
+  if(value&&typeof value==="object"){
+    for(const key of keys||["entries","items","list","records","data","sources"]){
+      if(Array.isArray(value[key]))return value[key];
+    }
+  }
+  return [];
+}
+
+function opsSection(id,headline,lines,payload){
+  const host=opsHost(id);
+  if(!host)return;
+  host.textContent="";
+  const heading=document.createElement("p");
+  heading.className="muted";
+  heading.textContent=headline;
+  const pre=document.createElement("pre");
+  pre.className="ops-pre";
+  pre.textContent=(Array.isArray(lines)?lines.join("\n"):String(lines))||"—";
+  host.append(heading,pre);
+  if(payload===undefined)return;
+  let text="";
+  try{text=JSON.stringify(payload,null,2);}catch{text=String(payload);}
+  if(text&&text.length>20000)text=text.slice(0,20000)+"\n…（已截断，只保留前 20000 字符）";
+  if(!text)return;
+  const details=document.createElement("details");
+  details.className="ops-raw";
+  const summary=document.createElement("summary");
+  summary.textContent="原始返回 JSON";
+  const raw=document.createElement("pre");
+  raw.textContent=text;
+  details.append(summary,raw);
+  host.appendChild(details);
+}
+
+function opsNotice(id,text){
+  const host=opsHost(id);
+  if(host)host.textContent=text;
+}
+
+
+/* ------------------------------ 网络与出口 ------------------------------ */
+
+async function refreshOpsNetwork(){
+  opsNotice("#ops-network-status","正在读取网络状态…");
+  const policy=await opsFetch("/api/network/policy");
+  if(!policy.ok){
+    opsNotice("#ops-network-status",opsFailure(policy,"读取出口策略"));
+    opsSection("#ops-network-policy","出口策略",[opsFailure(policy,"读取出口策略")],policy.body);
+  }else{
+    const settings=(policy.body&&policy.body.settings)||{};
+    const allow=Array.isArray(settings.allowList)?settings.allowList:[];
+    opsNotice("#ops-network-status","出口策略已读取。");
+    opsSection("#ops-network-policy","出口策略",[
+      "状态："+((policy.body&&policy.body.open)?"已开放（允许 "+allow.length+" 个地址）":"默认关闭（不放行任何地址）"),
+      "白名单："+(allow.length?allow.slice(0,20).join("、")+(allow.length>20?" 等 "+allow.length+" 个":""):"空"),
+      "说明：本页从不发起外部请求；联网检查只问策略，不发数据包。"
+    ],policy.body);
+  }
+
+  const interfaces=await opsFetch("/api/network/interfaces");
+  if(!interfaces.ok){
+    opsSection("#ops-network-interfaces","接口带宽",[opsFailure(interfaces,"读取接口计数")],interfaces.body);
+  }else{
+    const body=interfaces.body||{};
+    const list=opsArray({interfaces:body.interfaces},"interfaces");
+    const lines=["结论："+opsDescribe(body.verdict)+" · 采样间隔 "+opsDescribe(body.windowMs)+" ms"];
+    if(!list.length)lines.push("没有可用的接口计数：这一项按未测到显示，不代表网络空闲。");
+    for(const item of list.slice(0,12)){
+      const name=(item&&(item.name||item.interface))||"未知接口";
+      const rx=item&&(item.rxBytesPerSecond!==undefined?item.rxBytesPerSecond:item.receivedBytes);
+      const tx=item&&(item.txBytesPerSecond!==undefined?item.txBytesPerSecond:item.transmittedBytes);
+      lines.push("  · "+name+"：接收 "+(rx===undefined?"未测到":formatBytes(rx)+"/s")+" · 发送 "+(tx===undefined?"未测到":formatBytes(tx)+"/s"));
+    }
+    opsSection("#ops-network-interfaces","接口带宽",lines,body);
+  }
+
+  const patrol=await opsFetch("/api/network/diagnostics");
+  if(!patrol.ok){
+    opsSection("#ops-network-patrol","连通性巡检",[opsFailure(patrol,"读取连通性巡检")],patrol.body);
+  }else{
+    const body=patrol.body||{};
+    const checks=opsArray(body,"checks");
+    const lines=["巡检结论："+opsDescribe(body.verdict)+" · 检查项 "+checks.length+" 个"];
+    if(!checks.length)lines.push("没有探测数据：服务端不发网络请求，所以每一项都是未知，而不是正常。");
+    for(const check of checks.slice(0,15)){
+      const name=(check&&(check.name||check.id||check.host))||"检查";
+      const status=(check&&(check.verdict||check.status))||"未知";
+      const detail=check&&(check.detail||check.note||check.error);
+      lines.push("  · "+name+"："+status+(detail?"（"+opsDescribe(detail)+"）":""));
+    }
+    opsSection("#ops-network-patrol","连通性巡检",lines,body);
+  }
+}
+
+async function checkOpsUrl(){
+  const host=opsHost("#ops-url");
+  const target=host&&host.value?host.value.trim():"";
+  if(!target){opsNotice("#ops-url-result","请先填写目标地址。");return;}
+  opsNotice("#ops-url-result","正在询问出口策略…");
+  const result=await opsPostJson("/api/network/check",{url:target});
+  if(!result.ok){opsNotice("#ops-url-result",opsFailure(result,"检查"));return;}
+  const body=result.body||{};
+  const allowed=body.allowed!==undefined?body.allowed:body.ok;
+  const reason=body.reason||body.code||body.error;
+  opsNotice("#ops-url-result",
+    (allowed?"按当前策略允许访问：":"按当前策略不会访问：")+target+
+    (reason?"（"+opsDescribe(reason)+"）":"")+
+    "。被策略拒绝只代表这台机器不去访问它，不代表域名不存在。");
+}
+
+// 网页取证：走服务端 web 抓取器（默认策略关闭，因此常态是被拒绝）。
+// 被拒绝是正常结果，不是故障——这里照实呈现 code/reason，不做重试。
+async function fetchOpsWebEvidence(){
+  const host=opsHost("#ops-fetch-url");
+  const target=host&&host.value?host.value.trim():"";
+  const box=opsHost("#ops-fetch-result");
+  if(!target){opsNotice("#ops-url-result","请先填写要取证的地址。");return;}
+  if(box){box.textContent="";}
+  opsNotice("#ops-url-result","正在请求网页取证…");
+  const result=await opsPostJson("/api/web/fetch",{url:target});
+  if(!result.ok){
+    const body=result.body||{};
+    opsNotice("#ops-url-result","抓取被拒绝或失败："+(localizeServerMessage(body.error||body.code)||body.error||"HTTP "+result.status)+
+      (body.reason?"（"+opsDescribe(body.reason)+"）":"")+"。默认策略关闭出口，属预期行为。");
+    return;
+  }
+  const body=result.body||{};
+  const evidence=body.evidence||{};
+  opsNotice("#ops-url-result","已取得网页证据"+(body.truncated?"（内容已截断）":"")+"。");
+  if(!box)return;
+  const lines=[
+    "地址："+(evidence.url||target),
+    "标题："+(evidence.title||"未采集"),
+    "抓取时间："+(evidence.fetchedAt?formatDateTime(evidence.fetchedAt):"未记录"),
+    "字节："+opsDescribe(evidence.bytes!==undefined?evidence.bytes:evidence.contentLength),
+    "摘要："+(evidence.summary||evidence.excerpt||"未生成摘要")
+  ];
+  opsSection("#ops-fetch-result","网页证据",lines,evidence);
+}
+
+/* --------------------------- 部署与技能组合校验 --------------------------- */
+
+function opsParseJsonField(selector,label){
+  const host=opsHost(selector);
+  const text=host&&host.value?host.value.trim():"";
+  if(!text)return {error:"请先填写"+label+"。"};
+  let parsed=null;
+  try{parsed=JSON.parse(text);}catch(error){return {error:label+"不是合法 JSON："+errorText(error,"解析失败")};}
+  if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))return {error:label+"必须是一个 JSON 对象。"};
+  return {value:parsed};
+}
+
+async function checkOpsPlan(){
+  const parsed=opsParseJsonField("#ops-plan","部署计划");
+  if(parsed.error){opsSection("#ops-plan-result","部署校验",[parsed.error]);return;}
+  opsSection("#ops-plan-result","部署校验",["正在校验计划（不部署、不改动本机）…"]);
+  const result=await opsPostJson("/api/deploy/precheck",{plan:parsed.value});
+  if(!result.ok){opsSection("#ops-plan-result","部署校验",[opsFailure(result,"校验")],result.body);return;}
+  const body=result.body||{};
+  const report=body.report&&typeof body.report==="object"?body.report:body;
+  const findings=opsArray(report,"findings");
+  const lines=["结论："+opsDescribe(report.verdict)+" · 服务 "+opsDescribe(report.serviceCount)+" 个 · 需要处理 "+findings.length+" 条"];
+  if(!findings.length)lines.push("没有阻塞项。这个接口只判断计划本身，不会真正部署。");
+  for(const finding of findings.slice(0,20)){
+    const level=(finding&&(finding.severity||finding.level))||"info";
+    const message=(finding&&(finding.message||finding.title||finding.code))||"未说明";
+    const service=finding&&finding.service?"（"+opsDescribe(finding.service)+"）":"";
+    lines.push("  · ["+level+"] "+message+service);
+  }
+  for(const note of opsArray(report,"notes"))lines.push("备注："+opsDescribe(note));
+  opsSection("#ops-plan-result","部署校验",lines,body);
+}
+
+async function checkOpsComposition(){
+  const parsed=opsParseJsonField("#ops-composition","技能组合");
+  if(parsed.error){opsSection("#ops-composition-result","组合校验",[parsed.error]);return;}
+  opsSection("#ops-composition-result","组合校验",["正在校验组合（不执行任何技能）…"]);
+  const result=await opsPostJson("/api/compositions/validate",{composition:parsed.value,skills:[]});
+  if(!result.ok){opsSection("#ops-composition-result","组合校验",[opsFailure(result,"校验")],result.body);return;}
+  const body=result.body||{};
+  const report=body.report&&typeof body.report==="object"?body.report:body;
+  const errors=opsArray(report,"errors");
+  const warnings=opsArray(report,"warnings");
+  const steps=opsArray(report,"steps");
+  const verdictLine="结论："+(report.ok===false?"不通过":report.ok===true?"通过":opsDescribe(report.verdict))+
+    " · 步骤 "+steps.length+" 个 · 错误 "+errors.length+" 条 · 警告 "+warnings.length+" 条";
+  const lines=[verdictLine];
+  if(!errors.length&&!warnings.length)lines.push("没有发现结构性问题。校验不等于执行：真正的权限检查仍然发生在运行期。");
+  for(const item of errors.slice(0,20))lines.push("  · 错误："+opsDescribe(item));
+  for(const item of warnings.slice(0,20))lines.push("  · 警告："+opsDescribe(item));
+  opsSection("#ops-composition-result","组合校验",lines,body);
+}
+
+/* ------------------------------- 诊断 ------------------------------- */
+
+async function runOpsDiagnosis(){
+  const host=opsHost("#ops-symptom");
+  const symptom=host&&host.value?host.value.trim():"";
+  if(!symptom){opsSection("#ops-diagnosis-result","诊断报告",["请先描述症状，例如「文件管理打不开磁盘列表」。"]);return;}
+  opsSection("#ops-diagnosis-result","诊断报告",["正在收集证据并生成报告…"]);
+  const result=await opsPostJson("/api/diagnostics/report",{symptom});
+  if(!result.ok){opsSection("#ops-diagnosis-result","诊断报告",[opsFailure(result,"生成诊断")],result.body);return;}
+  const body=result.body||{};
+  const report=body.report&&typeof body.report==="object"?body.report:body;
+  const causes=opsArray(report,"causes");
+  const lines=["症状："+opsDescribe(report.symptom||symptom)];
+  if(report.verdict)lines.push("结论："+opsDescribe(report.verdict));
+  if(!causes.length)lines.push("没有给出候选原因：证据不足时报告会保持为空，而不是编一个原因。");
+  causes.slice(0,6).forEach((cause,index)=>{
+    const title=(cause&&(cause.title||cause.summary||cause.cause))||("原因 "+(index+1));
+    const confidence=cause&&(cause.confidence||cause.likelihood);
+    lines.push("· "+title+(confidence!==undefined?"（可信度 "+opsDescribe(confidence)+"）":""));
+    opsArray(cause,"checks").slice(0,6).forEach(check=>lines.push("    - 确认："+opsDescribe(check)));
+  });
+  if(report.historyId)lines.push("诊断编号："+opsDescribe(report.historyId)+"（已写入诊断历史，可回来纠错）");
+  opsSection("#ops-diagnosis-result","诊断报告",lines,body);
+}
+
+async function refreshOpsHistory(){
+  opsSection("#ops-history","诊断历史",["正在读取…"]);
+  const [history,stats]=await Promise.all([opsFetch("/api/diagnoses?limit=20"),opsFetch("/api/diagnoses/stats")]);
+  const lines=[];
+  if(!history.ok)lines.push(opsFailure(history,"读取诊断历史"));
+  else{
+    const body=history.body||{};
+    const entries=opsArray(body,"entries");
+    const total=body.total!==undefined?body.total:entries.length;
+    lines.push("共 "+opsDescribe(total)+" 条诊断。");
+    if(!entries.length)lines.push("还没有诊断记录。上面生成一次报告后就会留下来。");
+    for(const entry of entries.slice(0,12)){
+      const symptomText=(entry&&(entry.symptom||entry.title))||"（无症状）";
+      const at=entry&&(entry.at||entry.createdAt||entry.generatedAt);
+      const top=opsArray(entry,"causes")[0];
+      const topTitle=(top&&(top.title||top.summary))||"（无结论）";
+      lines.push("· "+formatDateTime(at)+" · "+opsDescribe(symptomText)+" → "+opsDescribe(topTitle));
+    }
+  }
+  if(stats.ok){
+    const body=stats.body||{};
+    const parts=[];
+    if(body.total!==undefined)parts.push("总数 "+opsDescribe(body.total));
+    if(body.symptoms!==undefined)parts.push("症状 "+opsDescribe(body.symptoms));
+    if(body.corrected!==undefined)parts.push("已纠正 "+opsDescribe(body.corrected));
+    if(parts.length)lines.push("统计："+parts.join(" · "));
+  }
+  opsSection("#ops-history","诊断历史",lines);
+}
+
+async function refreshOpsLogEvidence(){
+  opsSection("#ops-log-evidence-result","日志证据",["正在读取本机日志尾部…"]);
+  const result=await opsFetch("/api/diagnostics/log-evidence");
+  if(!result.ok){opsSection("#ops-log-evidence-result","日志证据",[opsFailure(result,"读取日志证据")],result.body);return;}
+  const body=result.body||{};
+  const evidence=opsArray(body.evidence||body,"evidence");
+  const lines=["生成时间："+formatDateTime(body.generatedAt||new Date().toISOString())+" · 条目 "+evidence.length+" 个"];
+  if(body.note)lines.push("备注："+opsDescribe(body.note));
+  if(body.collectorNote)lines.push("采集："+opsDescribe(body.collectorNote));
+  if(!evidence.length)lines.push("没有采集到条目：这表示日志里没有可用证据，而不是系统正常。");
+  for(const item of evidence.slice(0,15)){
+    const category=(item&&(item.category||item.source||item.kind))||"其他";
+    const count=item&&(item.count||item.total);
+    const sample=item&&(item.sample||item.message||item.detail);
+    lines.push("  · "+category+(count!==undefined?" ×"+opsDescribe(count):"")+(sample?"："+opsDescribe(sample):""));
+  }
+  opsSection("#ops-log-evidence-result","日志证据",lines,body);
+}
+
+/* ------------------------ 自动化、运行手册与 MCP ------------------------ */
+
+async function refreshOpsWorkflows(){
+  opsSection("#ops-workflows","工作流",["正在读取…"]);
+  const result=await opsFetch("/api/workflows");
+  if(!result.ok){opsSection("#ops-workflows","工作流",[opsFailure(result,"读取工作流")],result.body);return;}
+  const body=result.body||{};
+  const workflows=opsArray(body,"workflows");
+  const lines=["内置工作流 "+workflows.length+" 个。运行工作流不在此页入口：需要审批的步骤会如实拒绝，不会静默执行。"];
+  if(!workflows.length)lines.push("没有已注册的工作流。");
+  for(const workflow of workflows.slice(0,12)){
+    const name=(workflow&&(workflow.name||workflow.id))||"未命名";
+    const steps=opsArray(workflow,"steps");
+    lines.push("  · "+name+" · 步骤 "+steps.length+" 个"+(workflow&&workflow.description?"："+opsDescribe(workflow.description):""));
+  }
+  opsSection("#ops-workflows","工作流",lines,body);
+}
+
+async function evalOpsTriggers(){
+  opsSection("#ops-triggers","触发规则",["正在评估本地规则（无事实时应当不触发）…"]);
+  const result=await opsPostJson("/api/workflows/triggers/evaluate",{});
+  if(!result.ok){opsSection("#ops-triggers","触发规则",[opsFailure(result,"评估触发规则")],result.body);return;}
+  const body=result.body||{};
+  const triggered=opsArray(body,"triggered");
+  const lines=["规则 "+opsDescribe(body.ruleCount)+" 条 · 命中 "+triggered.length+" 条"];
+  if(!triggered.length)lines.push("没有命中：缺少事实时规则保持安静，不会凭空触发。");
+  for(const item of triggered.slice(0,10))lines.push("  · "+opsDescribe(item));
+  for(const note of opsArray(body,"notes"))lines.push("备注："+opsDescribe(note));
+  opsSection("#ops-triggers","触发规则",lines,body);
+}
+
+async function refreshOpsMcp(){
+  opsSection("#ops-mcp","MCP 服务器",["正在读取…"]);
+  const result=await opsFetch("/api/mcp/status");
+  if(!result.ok){opsSection("#ops-mcp","MCP 服务器",[opsFailure(result,"读取 MCP 状态")],result.body);return;}
+  const body=result.body||{};
+  const servers=opsArray(body,"servers");
+  const errors=opsArray(body,"errors");
+  const lines=["服务器 "+servers.length+" 个 · 错误 "+errors.length+" 条"];
+  if(!servers.length)lines.push("没有配置 MCP 服务器。");
+  for(const server of servers.slice(0,12)){
+    const name=(server&&(server.id||server.name))||"未命名";
+    const status=(server&&(server.status||server.state))||"未知";
+    const tools=opsArray(server,"tools");
+    lines.push("  · "+name+"："+opsDescribe(status)+(tools.length?" · 工具 "+tools.length+" 个":"")+(server&&server.error?"（"+opsDescribe(server.error)+"）":""));
+  }
+  for(const error of errors.slice(0,10))lines.push("  · 错误："+opsDescribe(error));
+  const sources=opsArray(body,"sources");
+  if(sources.length)lines.push("工具来源："+sources.map(source=>opsDescribe(source)).join("；"));
+  opsSection("#ops-mcp","MCP 服务器",lines,body);
+}
+
+async function refreshOpsRunbooks(){
+  opsSection("#ops-runbooks","运行手册",["正在读取…"]);
+  const result=await opsFetch("/api/runbooks?limit=20");
+  if(!result.ok){opsSection("#ops-runbooks","运行手册",[opsFailure(result,"读取运行手册")],result.body);return;}
+  const body=result.body||{};
+  const entries=opsArray(body,"entries");
+  const lines=["共 "+opsDescribe(body.total!==undefined?body.total:entries.length)+" 条。运行手册只保存文字，不会被执行。"];
+  if(!entries.length)lines.push("还没有条目。用下面的表单保存第一条。");
+  for(const entry of entries.slice(0,12)){
+    const title=(entry&&entry.title)||"（无标题）";
+    const tags=Array.isArray(entry&&entry.tags)?entry.tags:[];
+    const at=entry&&(entry.updatedAt||entry.createdAt);
+    lines.push("  · "+title+(tags.length?" ["+tags.join("/")+"]":"")+(at?" · "+formatDateTime(at):""));
+  }
+  opsSection("#ops-runbooks","运行手册",lines,body);
+  await refreshOpsRunbookStats();
+}
+
+// 运行手册统计：只读，用来回答「已存了多少、覆盖哪些标签、是否已落盘」。
+async function refreshOpsRunbookStats(){
+  const result=await opsGetJson("/api/runbooks/stats");
+  const box=opsHost("#ops-runbooks-stats");
+  if(!box)return;
+  box.textContent="";
+  if(!result.ok)return;
+  const stats=result.body||{};
+  const line=document.createElement("p");
+  line.className="muted";
+  const parts=["已存 "+opsDescribe(stats.count)+" 条"];
+  if(Array.isArray(stats.tags)&&stats.tags.length)parts.push("标签 "+stats.tags.join("、"));
+  parts.push(stats.persisted===true?"已落盘":"仅内存");
+  if(stats.updatedAt)parts.push("最近更新 "+formatDateTime(stats.updatedAt));
+  line.textContent="运行手册统计："+parts.join("；")+"。上限 "+opsDescribe(stats.maxEntries)+" 条。";
+  box.append(line);
+}
+
+async function saveOpsRunbook(){
+  const titleHost=opsHost("#ops-runbook-title");
+  const bodyHost=opsHost("#ops-runbook-body");
+  const title=titleHost&&titleHost.value?titleHost.value.trim():"";
+  const steps=bodyHost&&bodyHost.value?bodyHost.value.trim():"";
+  if(!title||!steps){opsNotice("#ops-runbook-status","标题和步骤都要填写。");return;}
+  opsNotice("#ops-runbook-status","正在保存…");
+  const result=await opsPostJson("/api/runbooks",{
+    id:"ui-"+Date.now().toString(36),
+    title:title,
+    tags:["ui"],
+    body:steps,
+    source:"web-ui"
+  });
+  if(!result.ok||(result.body&&result.body.written===false)){
+    const reason=(result.body&&(result.body.reason||result.body.error))||("HTTP "+result.status);
+    opsNotice("#ops-runbook-status","保存失败："+(localizeServerMessage(reason)||reason));
+    return;
+  }
+  opsNotice("#ops-runbook-status","已保存。");
+  if(titleHost)titleHost.value="";
+  if(bodyHost)bodyHost.value="";
+  await refreshOpsRunbooks();
+}
+
+/* --------------------- 容器、设备档案、写动作与健康检查 --------------------- */
+
+async function refreshOpsDocker(){
+  opsSection("#ops-docker","容器统计",["正在读取…"]);
+  const result=await opsFetch("/api/docker/stats");
+  if(!result.ok){opsSection("#ops-docker","容器统计",[opsFailure(result,"读取容器统计")],result.body);return;}
+  const body=result.body||{};
+  const summary=body.summary&&typeof body.summary==="object"?body.summary:{};
+  const anomalies=opsArray(body,"anomalies");
+  const lines=[
+    "容器 "+(summary.containers!==undefined?opsDescribe(summary.containers):"—")+
+    " 个（运行 "+(summary.running!==undefined?opsDescribe(summary.running):"—")+
+    "） · 异常 "+anomalies.length+" 条"
+  ];
+  if(body.collectorNote)lines.push("采集："+opsDescribe(body.collectorNote));
+  if(!anomalies.length)lines.push("没有发现异常容器。采样失败会显示未测到，而不是当作正常。");
+  for(const item of anomalies.slice(0,12))lines.push("  · "+opsDescribe(item));
+  for(const note of opsArray(body,"notes"))lines.push("备注："+opsDescribe(note));
+  opsSection("#ops-docker","容器统计",lines,body);
+}
+
+async function refreshOpsDockerAdvice(){
+  opsSection("#ops-docker-advice","容器建议",["正在读取…"]);
+  const result=await opsFetch("/api/docker/advice");
+  if(!result.ok){opsSection("#ops-docker-advice","容器建议",[opsFailure(result,"读取容器建议")],result.body);return;}
+  const body=result.body||{};
+  const report=body.report&&typeof body.report==="object"?body.report:body;
+  const advice=opsArray(report,"advice");
+  const lines=["建议 "+advice.length+" 条。建议只是文字，不会自动执行。"];
+  if(!advice.length)lines.push("没有建议：数据不足时不编造结论。");
+  for(const item of advice.slice(0,12)){
+    const title=(item&&(item.title||item.action||item.message))||opsDescribe(item);
+    lines.push("  · "+title);
+  }
+  opsSection("#ops-docker-advice","容器建议",lines,body);
+}
+
+async function refreshOpsDeviceProfiles(){
+  opsSection("#ops-device-profiles","设备档案",["正在读取…"]);
+  const result=await opsFetch("/api/system/device-profiles");
+  if(!result.ok){opsSection("#ops-device-profiles","设备档案",[opsFailure(result,"读取设备档案")],result.body);return;}
+  const body=result.body||{};
+  const profiles=opsArray(body,"profiles");
+  const lines=["设备 "+profiles.length+" 台。档案会标注新鲜度：过期的测量不会被当成现在。"];
+  if(!profiles.length)lines.push("还没有设备档案。");
+  for(const profile of profiles.slice(0,10)){
+    const name=(profile&&(profile.deviceId||profile.id||profile.model))||"未知设备";
+    lines.push("  · "+name+" · 新鲜度 "+opsDescribe(profile&&profile.freshness)+(profile&&profile.model?" · "+opsDescribe(profile.model):""));
+  }
+  opsSection("#ops-device-profiles","设备档案",lines,body);
+}
+
+async function refreshOpsWriteActions(){
+  opsSection("#ops-write-actions","写动作登记",["正在读取…"]);
+  const result=await opsFetch("/api/write-actions");
+  if(!result.ok){opsSection("#ops-write-actions","写动作登记",[opsFailure(result,"读取写动作登记")],result.body);return;}
+  const body=result.body||{};
+  const actions=opsArray(body,"actions");
+  const lines=["登记 "+opsDescribe(body.registered!==undefined?body.registered:actions.length)+" 个写动作。列表为空是设计：没有「预览—审批—校验」三段的写路径不会出现在这里。"];
+  for(const action of actions.slice(0,10))lines.push("  · "+opsDescribe(action));
+  opsSection("#ops-write-actions","写动作登记",lines,body);
+}
+
+async function refreshOpsHealthChecks(){
+  opsSection("#ops-health-checks","定时健康检查",["正在读取…"]);
+  const result=await opsFetch("/api/health-checks");
+  if(!result.ok){opsSection("#ops-health-checks","定时健康检查",[opsFailure(result,"读取定时健康检查")],result.body);return;}
+  const checks=opsArray(result.body,"checks");
+  const lines=["共 "+checks.length+" 条。"];
+  if(!checks.length)lines.push("还没有定时健康检查。");
+  for(const check of checks.slice(0,10)){
+    const name=(check&&(check.name||check.id))||"未命名";
+    const interval=check&&(check.intervalMinutes||check.everyMinutes);
+    const last=check&&(check.lastRunAt||check.lastCheckedAt);
+    lines.push("  · "+name+(interval!==undefined?" · 每 "+opsDescribe(interval)+" 分钟":"")+(last?" · 上次 "+formatDateTime(last):""));
+  }
+  opsSection("#ops-health-checks","定时健康检查",lines,result.body);
+}
+
+/* ---------------------------- 工具调用观测 ---------------------------- */
+
+async function refreshAgentTrace(){
+  opsSection("#agent-trace","工具调用观测",["正在读取…"]);
+  const result=await opsFetch("/api/agent/trace?limit=50");
+  if(!result.ok){opsSection("#agent-trace","工具调用观测",[opsFailure(result,"读取工具追踪")],result.body);return;}
+  const body=result.body||{};
+  const summary=body.summary&&typeof body.summary==="object"?body.summary:{};
+  const entries=opsArray(body,"entries");
+  const observer=body.observer&&typeof body.observer==="object"?body.observer:{};
+  const records=opsArray({records:observer.records},"records");
+  const lines=[
+    "累计 "+opsDescribe(summary.total!==undefined?summary.total:entries.length)+" 次 · 成功 "+opsDescribe(summary.ok)+
+    " · 失败 "+opsDescribe(summary.error)+" · 策略拒绝 "+opsDescribe(summary.denied)
+  ];
+  const merged=entries.length?entries:records;
+  if(!merged.length)lines.push("还没有调用记录。");
+  for(const entry of merged.slice(-15).reverse()){
+    const tool=(entry&&(entry.tool||entry.toolId||entry.id))||"未知工具";
+    const outcome=(entry&&(entry.outcome||entry.status))||"未知";
+    const at=entry&&(entry.at||entry.finishedAt||entry.startedAt);
+    const ms=entry&&(entry.durationMs!==undefined?entry.durationMs:entry.elapsedMs);
+    lines.push("  · "+formatDateTime(at)+" · "+tool+" · "+opsDescribe(outcome)+(ms!==undefined?" · "+opsDescribe(ms)+" ms":""));
+  }
+  opsSection("#agent-trace","工具调用观测",lines,body);
+}
+
+/* ------------------------------- 页面调度 ------------------------------- */
+
+function bindOpsControls(){
+  if(opsControlsBound)return;
+  opsControlsBound=true;
+  const bind=(selector,handler)=>{
+    const element=opsHost(selector);
+    if(element)element.addEventListener("click",handler);
+  };
+  const guard=(id,headline,action)=>bind(id,()=>{action().catch(error=>opsSection(id,headline,[errorText(error,"操作失败")]))});
+  bind("#ops-network-refresh",()=>{refreshOpsNetwork().catch(error=>opsNotice("#ops-network-status",errorText(error,"加载失败")));});
+  bind("#ops-patrol",()=>{refreshOpsNetwork().catch(error=>opsSection("#ops-network-patrol","连通性巡检",[errorText(error,"加载失败")]));});
+  guard("#ops-url-check","网络与出口",checkOpsUrl);
+  guard("#ops-fetch-run","网络与出口",fetchOpsWebEvidence);
+  guard("#ops-plan-check","部署校验",checkOpsPlan);
+  guard("#ops-composition-check","组合校验",checkOpsComposition);
+  guard("#ops-diagnose","诊断报告",runOpsDiagnosis);
+  guard("#ops-history-refresh","诊断历史",refreshOpsHistory);
+  guard("#ops-log-evidence","日志证据",refreshOpsLogEvidence);
+  guard("#ops-workflows-refresh","工作流",refreshOpsWorkflows);
+  guard("#ops-triggers-eval","触发规则",evalOpsTriggers);
+  guard("#ops-mcp-refresh","MCP 服务器",refreshOpsMcp);
+  guard("#ops-runbooks-refresh","运行手册",refreshOpsRunbooks);
+  guard("#ops-runbook-save","运行手册",saveOpsRunbook);
+  guard("#ops-docker-refresh","容器统计",refreshOpsDocker);
+  guard("#ops-docker-advice","容器建议",refreshOpsDockerAdvice);
+  guard("#ops-device-refresh","设备档案",refreshOpsDeviceProfiles);
+  guard("#ops-write-actions-refresh","写动作登记",refreshOpsWriteActions);
+  guard("#ops-health-checks-refresh","定时健康检查",refreshOpsHealthChecks);
+  guard("#agent-trace-refresh","工具调用观测",refreshAgentTrace);
+}
+
+async function refreshOpsPage(){
+  bindOpsControls();
+  await refreshOpsNetwork().catch(()=>{});
+}
+
 /* ------------------------------------------------------------------ *
  * 当前页刷新：顶栏 #refresh、页面内 [data-action="refresh"] 与路由切换共用。
  * ------------------------------------------------------------------ */
@@ -2181,12 +2808,13 @@ async function refreshCurrentPage(){
   try{
     if(id==="status-card"){await refresh();await refreshOverviewStats();await refreshInsights();await refreshPlaybooks();}
     else if(id==="files-card")await refreshFiles(currentFilePath,currentFileOffset);
-    else if(id==="agent-card"){await refreshAgentStatus();await refreshRecentTasks();await refreshPendingActions();}
+    else if(id==="agent-card"){await refreshAgentStatus();await refreshRecentTasks();await refreshPendingActions();await refreshAgentTrace().catch(()=>{});}
     else if(id==="tools-card")await refreshTools();
     else if(id==="models-card"){await refreshModelPresets();await refreshModels();}
     else if(id==="skills-card")await refreshSkills();
     else if(id==="audit-card")await refreshAudit();
     else if(id==="knowledge-card")await refreshKnowledgePage();
+    else if(id==="ops-card")await refreshOpsPage();
   }catch(e){
     // 单页刷新失败不阻塞其它页面。
   }

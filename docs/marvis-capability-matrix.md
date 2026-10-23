@@ -359,7 +359,7 @@ risk of the action it performs and goes through the same execution policy.
 | O02 Request chain trace | Implemented | Phase 146 trace, Phase 155 observer | — |
 | O03 Metric collection | Partly | Latency counters | No exporter |
 | O04 Health check API | Implemented | `/api/health` | — |
-| O05 Runtime status page | Partly | MCP status and tool source views | — |
+| O05 Runtime status page | Implemented | Phase 211 诊断与运维 page (network, deploy, diagnosis, workflows, MCP, runbooks, containers, device profiles, health checks) | — |
 | O06 Error aggregation | Implemented | Phase 160 `repeatedErrors` | — |
 | O07 Debug mode | Partly | Diagnostic bundles in the trace | No separate switch |
 | O08 Configuration validation | Implemented | Release gates and startup checks | — |

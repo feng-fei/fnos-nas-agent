@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 211 documents (195 phase documents and 15 non-phase documents, plus this file).
+This index lists 212 documents (196 phase documents and 15 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -756,6 +756,9 @@ This index lists 211 documents (195 phase documents and 15 non-phase documents, 
 
 ### Phase 210
 - [Phase 210 — 把 203–209 接到 HTTP 上，并修好审计白名单](phase-210-wiring.md) — 给七个纯函数层补上 HTTP 与工具注册表出口，并把审计白名单从 44 个名字补到 97 个、加一条静态防回退用例。
+
+### Phase 211
+- [Phase 211：把「只在服务端存在」的能力真正摆到界面上](phase-211-ui-gap-coverage.md) — 审查出 19 条无界面入口的路由，接上 24 条入口（新增「诊断与运维」整页），保留 4 条有意 API-only，并用 7 例测试锁死。
 
 ## This index
 
