@@ -29,7 +29,7 @@ State values:
 | A05 Task dependency management | Partly | Phase 209 `app/skill-composition.mjs` dependency validation and topological plan | Composition steps have an order; ordinary agent plan steps still have no dependency graph |
 | A06 Shared task context | Implemented | `app/task-manager.mjs`, Phase 146 event stream | — |
 | A07 Result aggregation | Partly | `app/task-manager.mjs`, chat window | Results are shown, not cross-checked |
-| A08 Failure retry | Open | — | — |
+| A08 Failure retry | Partly | `app/retry-policy.mjs` `classifyFailure` / `decideRetry` / `createRetryingInvoker`, wired into the workflow route (Phase 215) | Only read-only workflow steps retry, at most 3 attempts; task-level and agent-level retries are not implemented |
 | A09 Task recovery after restart | Open | — | Interrupted tasks are not resumed |
 | A10 Task cancellation | Implemented | `app/agent-core.mjs` `shouldCancel`/`signal`, stop button | — |
 | A11 Task progress display | Implemented | Phase 146 task events, Phase 149/151 progress UI | — |
@@ -216,7 +216,7 @@ require an explicit confirmation with a server-issued capability.
 | --- | --- | --- | --- |
 | W01 Create a task from natural language | Partly | `health-checks.*` API | No natural-language creation yet |
 | W02 Cron and calendar scheduling | Partly | Health-check plans | Calendar rules are missing |
-| W03 Event triggering | Open | — | — |
+| W03 Event triggering | Partly | `app/workflow-triggers.mjs`, `POST /api/workflows/triggers/evaluate`, operations page「评估触发规则」 | Rules are evaluated on demand against supplied facts; no background watcher fires them |
 | W04 Multi-step orchestration | Partly | `app/agent-core.mjs` plans, `app/workflow-engine.mjs`, Phase 168 | Workflow plans exist but cannot be authored in the UI |
 | W05 Conditional branches | Partly | `app/workflow-engine.mjs` skip rules | Branches are skip-on-failure, not user-defined conditions |
 | W06 Failure handling | Partly | Failure records are kept, workflow skip policy | No retry policy yet |
@@ -243,7 +243,7 @@ warn, but a plan that changes data needs approval.
 | B03 Log and error-code lookup | Open | — | — |
 | B04 Page content extraction | Implemented | Phase 175 `fetchEvidence`, Phase 176 `POST /api/web/fetch` | Only the four allowed content types |
 | B05 Page change monitoring | Open | — | — |
-| B06 Version lookup | Open | — | — |
+| B06 Version lookup | Implemented | `app/update-check.mjs`, `GET /api/system/update-check`, overview「升级检查」 | Compares the installed version with a caller-supplied latest version; it never fetches one by itself |
 | B07 External API calls | Partly | Phase 176 `POST /api/web/fetch` | The policy is closed by default and every redirect hop is re-checked |
 | B08 Web operation planning | Open | — | — |
 | B09 Source citation | Open | — | — |
@@ -315,7 +315,7 @@ collection, never from the index.
 | SK01 Skill registration | Implemented | Phase 144 package parser, Phase 147 registry, Phase 187 import-time structure review | — |
 | SK02 Skill inventory | Implemented | Skill list API | — |
 | SK03 Skill discovery | Partly | Name and description matching | — |
-| SK04 Skill composition | Open | — | — |
+| SK04 Skill composition | Implemented | `app/skill-composition.mjs`, `POST /api/compositions/validate` and `/plan`, operations page「组合计划」 | Composition is validated and planned against the registered skills; execution stays with the workflow engine |
 | SK05 Skill versioning | Partly | Manifest version field | — |
 | SK06 Skill permission declaration | Partly | Manifest declaration plus per-tool risk | — |
 | SK07 Install and uninstall | Implemented | `app/skill-installer.mjs` | — |

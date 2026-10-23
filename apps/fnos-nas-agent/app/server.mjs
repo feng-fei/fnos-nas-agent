@@ -47,6 +47,7 @@ import { createSystemCollector, buildUsageEntry } from "./agent-insights.mjs";
 import { createRunbookStore } from "./runbook-store.mjs";
 import { buildEvidenceBundle, collectDiagnosticEvidence } from "./diagnostic-evidence.mjs";
 import { createWorkflowEngine } from "./workflow-engine.mjs";
+import { createRetryingInvoker, MAX_RETRY_ATTEMPTS } from "./retry-policy.mjs";
 import { createDiagnosisHistory } from "./diagnosis-history.mjs";
 import { createVerifiedWritePipeline } from "./verified-write.mjs";
 import { createNetworkPolicy } from "./network-policy.mjs";
@@ -2502,16 +2503,24 @@ const server = createServer(async (req, res) => {
       const input = await jsonBody(req);
       const workflowId = typeof input?.workflowId === "string" ? input.workflowId : "";
       if (!workflowId) return reply(res, 400, { error: "A workflow id is required" });
+      // 失败重试只发生在只读步骤上：写与破坏性动作失败后必须让人看见，
+      // 不能被悄悄重放。次数由调用方给，但夹在 1..MAX_RETRY_ATTEMPTS。
+      const retryAttempts = Math.min(MAX_RETRY_ATTEMPTS, Math.max(1, Math.trunc(Number(input?.retryAttempts) || 1)));
+      const retryInvoker = createRetryingInvoker({
+        maxAttempts: retryAttempts,
+        resolveRisk: (tool) => toolRegistry.get(tool)?.risk ?? null,
+        invoke: async ({ tool, args }) => { await toolRegistry.invoke(tool, args || {}); }
+      });
       // The engine asks for a tool: the server owns the catalogue and the
       // policy. The engine itself cannot execute anything.
       const result = await workflowEngine.runWorkflow(workflowId, {
         sessionId: active.key,
-        invokeTool: async ({ tool, args }) => { await toolRegistry.invoke(tool, args || {}); },
+        invokeTool: (request) => retryInvoker.run(request),
         requestApproval: async () => ({ approved: false, reason: "工作流不自行批准任何步骤" }),
         notify: () => {}
       });
       if (!result.started) return reply(res, result.reason === "locked" ? 409 : 404, { error: result.reason === "locked" ? "The workflow is already running" : "Unknown workflow", reason: result.reason });
-      return reply(res, 200, result);
+      return reply(res, 200, { ...result, retryAttempts, retries: retryInvoker.retries() });
     }
     if (url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/events")) {
       const active = sessionFor(req);

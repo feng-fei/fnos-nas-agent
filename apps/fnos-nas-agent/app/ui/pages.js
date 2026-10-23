@@ -2661,13 +2661,15 @@ async function refreshOpsLogEvidence(){
 
 /* ------------------------ 自动化、运行手册与 MCP ------------------------ */
 
+const WORKFLOW_ID_PATTERN=/^[a-z0-9][a-z0-9-]{0,63}$/;
+
 async function refreshOpsWorkflows(){
   opsSection("#ops-workflows","工作流",["正在读取…"]);
   const result=await opsFetch("/api/workflows");
   if(!result.ok){opsSection("#ops-workflows","工作流",[opsFailure(result,"读取工作流")],result.body);return;}
   const body=result.body||{};
   const workflows=opsArray(body,"workflows");
-  const lines=["内置工作流 "+workflows.length+" 个。运行工作流不在此页入口：需要审批的步骤会如实拒绝，不会静默执行。"];
+  const lines=["内置工作流 "+workflows.length+" 个。内置工作流只用只读工具，可以直接试运行；需要审批的步骤仍会如实拒绝，不会静默执行。"];
   if(!workflows.length)lines.push("没有已注册的工作流。");
   for(const workflow of workflows.slice(0,12)){
     const name=(workflow&&(workflow.name||workflow.id))||"未命名";
@@ -2675,7 +2677,66 @@ async function refreshOpsWorkflows(){
     lines.push("  · "+name+" · 步骤 "+steps.length+" 个"+(workflow&&workflow.description?"："+opsDescribe(workflow.description):""));
   }
   opsSection("#ops-workflows","工作流",lines,body);
+  renderOpsWorkflowButtons(workflows);
 }
+
+/**
+ * 每个内置工作流后面给一个「试运行」按钮。
+ * 工作流本身只用只读工具；这里只传 id 与重试次数，参数一律由工作流自己决定。
+ */
+function renderOpsWorkflowButtons(workflows){
+  const host=document.querySelector("#ops-workflows");
+  if(!host)return;
+  const bar=document.createElement("div");
+  bar.className="ops-actions";
+  for(const workflow of workflows.slice(0,12)){
+    const id=String((workflow&&workflow.id)||"");
+    if(!WORKFLOW_ID_PATTERN.test(id))continue;
+    const button=document.createElement("button");
+    button.type="button";
+    button.className="btn btn--ghost btn--sm";
+    button.dataset.workflowRun=id;
+    button.textContent="试运行 · "+((workflow&&workflow.name)||id);
+    bar.appendChild(button);
+  }
+  if(!bar.children.length)return;
+  host.appendChild(bar);
+  host.addEventListener("click",(event)=>{
+    const target=event.target&&event.target.closest?event.target.closest("[data-workflow-run]"):null;
+    if(!target)return;
+    if(target.dataset.busy==="1")return;
+    target.dataset.busy="1";
+    runOpsWorkflow(target.dataset.workflowRun).catch((error)=>{
+      opsSection("#ops-workflow-result","工作流试运行",["试运行失败："+(error&&error.message?error.message:"未知错误")]);
+    }).finally(()=>{delete target.dataset.busy;});
+  });
+}
+
+/**
+ * 试运行一个内置工作流：固定带 2 次尝试（只读步骤才会重试），
+ * 把每一步的状态、失败原因与重试记录原样显示出来。
+ */
+async function runOpsWorkflow(workflowId){
+  opsSection("#ops-workflow-result","工作流试运行",["正在运行 "+workflowId+"（只读步骤最多重试 1 次）…"]);
+  const result=await opsPostJson("/api/workflows",{workflowId:workflowId,retryAttempts:2});
+  if(!result.ok){opsSection("#ops-workflow-result","工作流试运行",[opsFailure(result,"试运行 "+workflowId)],result.body);return;}
+  const body=result.body||{};
+  const lines=["工作流 "+workflowId+"："+(body.status||"未知")+"（重试上限 "+(body.retryAttempts||1)+" 次）"];
+  const steps=Array.isArray(body.steps)?body.steps:[];
+  for(const step of steps.slice(0,20)){
+    const name=(step&&step.stepId)||"未命名步骤";
+    const state=(step&&step.status)||"未知";
+    const reason=step&&step.reason?" · "+(String(step.reason).slice(0,120)):"";
+    lines.push("  · "+name+"："+state+reason);
+  }
+  const retries=Array.isArray(body.retries)?body.retries:[];
+  for(const retry of retries.slice(0,10)){
+    lines.push("  · 重试 "+((retry&&retry.tool)||"未知工具")+" 第 "+((retry&&retry.attempt)||"?")+" 次（"+((retry&&retry.reason)||"原因未知")+"，等待 "+((retry&&retry.delayMs)||0)+"ms）");
+  }
+  if(!retries.length)lines.push("  · 没有发生重试。");
+  opsSection("#ops-workflow-result","工作流试运行",lines,body);
+}
+
 
 async function evalOpsTriggers(){
   opsSection("#ops-triggers","触发规则",["正在评估本地规则（无事实时应当不触发）…"]);

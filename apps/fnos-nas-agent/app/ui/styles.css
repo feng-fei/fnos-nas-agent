@@ -2797,3 +2797,6 @@ label:where(:not(.field__label):not(.checkbox):not(.visually-hidden)) {
   align-items: center;
   gap: var(--space-1);
 }
+
+.ops-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
+.ops-result:empty{display:none;}
