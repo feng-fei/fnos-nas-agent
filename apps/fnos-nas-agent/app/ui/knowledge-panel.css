@@ -317,3 +317,6 @@
   display: flex;
   gap: var(--space-2, 8px);
 }
+
+/* Phase 216：知识库列表的「显示已归档」开关。勾选只影响查询参数，不改变归档条目的只读语义。 */
+.knowledge-archived-toggle{display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;white-space:nowrap}

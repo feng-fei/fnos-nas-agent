@@ -199,7 +199,7 @@ per-intent command string builder in the chat path.
 | SEC10 Server-side revalidation | Implemented | Every tool revalidates on the server | — |
 | SEC11 Prompt-injection defence | Partly | Tool boundary: model output can only request registered tools | No explicit injection detector |
 | SEC12 Delete protection | Partly | Delete tools show the target before execution | — |
-| SEC13 Backup pre-check | Open | — | — |
+| SEC13 Backup pre-check | Implemented | `app/backup-precheck.mjs` `buildBackupPrecheck`, `GET /api/backup/precheck`, ops page card | Verdict is pure logic over already-collected facts; diagnostics input is not auto-filled, so that check stays `unknown` until a report is supplied |
 | SEC14 Rollback strategy | Partly | Phase 163 archive plan is reversible by construction | No generic rollback |
 | SEC15 Rate limiting | Implemented | Server rate limiter | — |
 | SEC16 Emergency stop | Partly | Stop generation, cancel task | No global kill switch |
@@ -286,7 +286,7 @@ Missing capabilities are reported as unknown, never as a working feature.
 | K05 User preferences | Open | — | — |
 | K06 Semantic retrieval | Partly | Term and bigram ranking | No embeddings |
 | K07 Source citation | Partly | Index results carry their file | — |
-| K08 Stale information management | Partly | `app/knowledge-base.mjs` `evaluateKnowledgeExpiry`, Phase 214 mark-stale action on the knowledge page | Expiry is evaluated on read; marking stale is manual, nothing re-collects the entry |
+| K08 Stale information management | Partly | `app/knowledge-base.mjs` `evaluateKnowledgeExpiry`, Phase 214 mark-stale action, Phase 216 `archived=1` toggle on the knowledge page | Expiry is evaluated on read; marking stale is manual, nothing re-collects the entry; archived entries are list-only (no un-archive action) |
 | K09 Memory correction | Partly | `app/knowledge-base.mjs` `compareKnowledgeFacts`, `detectKnowledgeConflicts`, Phase 213 two-step write, Phase 214 verify / archive actions | A conflict is shown and can be corrected or archived one entry at a time; there is no merge flow |
 | K10 Knowledge update prompt | Partly | `app/knowledge-base.mjs` `reviewKnowledgeUpdates` | The prompt is rendered in the panel only; no push reminder |
 

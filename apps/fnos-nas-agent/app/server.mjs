@@ -68,6 +68,7 @@ import { evaluateDeviceCapabilities, deviceEnvironment, DEVICE_PROFILES } from "
 import { collectServiceStatus } from "./service-status.mjs";
 import { createSystemctlCollector, FNOS_SERVICE_UNITS } from "./service-status-collector.mjs";
 import { buildTrendVerdict } from "./capacity-forecast.mjs";
+import { buildBackupPrecheck } from "./backup-precheck.mjs";
 // 部署前校验与证书体检都是纯函数：调用方把计划/证书记录交进来，本进程不读系统、
 // 不连 Docker、不发 TLS 握手，所以它们可以被反复调用而不会产生副作用。
 import { precheckDeploymentPlan } from "./deployment-precheck.mjs";
@@ -927,6 +928,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/system/capabilities") return "system.capabilities";
   if (pathname === "/api/system/services") return "system.services";
   if (pathname === "/api/system/capacity-forecast") return "system.capacity-forecast";
+  if (pathname === "/api/backup/precheck") return "backup.precheck";
   if (pathname === "/api/system/thermal") return "system.thermal";
   if (pathname === "/api/system/events") return "system.events";
   if (pathname === "/api/system/smart") return "system.smart";
@@ -1887,6 +1889,83 @@ const server = createServer(async (req, res) => {
       // 采集器起不来（无 systemctl / 无权限）时每条都是 unknown，不会被当成健康。
       const report = await collectServiceStatus({ units: FNOS_SERVICE_UNITS, run: serviceStatusCollector });
       return reply(res, 200, report);
+    }
+    if (url.pathname === "/api/backup/precheck") {
+      if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "GET") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "GET" });
+      // 只读体检：把「现在能不能安心开一次备份」拆成可解释的检查项。所有数据都来自
+      // 已经采好的只读事实；采集失败的项如实标成 unknown，不冒充正常。
+      const snapshot = await buildSystemSnapshot({ collect: (sectionId) => systemCollector.collect(sectionId) });
+      const storage = snapshot.sections.find((section) => section.id === "storage");
+      const disks = [];
+      for (const disk of Array.isArray(storage?.values?.disks) ? storage.values.disks : []) {
+        const name = typeof disk?.name === "string" ? disk.name : "";
+        if (!name) continue;
+        const usedBytes = typeof disk.usedBytes === "number" ? disk.usedBytes : null;
+        const totalBytes = typeof disk.totalBytes === "number" ? disk.totalBytes : null;
+        if (usedBytes === null && totalBytes === null) continue;
+        disks.push({ name, usedBytes, totalBytes });
+      }
+      const at = new Date().toISOString();
+      const sampling = disks.length
+        ? capacityHistory.append({ at, disks: disks.map((disk) => ({ name: disk.name, totalBytes: disk.totalBytes, usedBytes: disk.usedBytes })) })
+        : { appended: false, reason: "no-disk-data", records: capacityHistory.read().records };
+      const records = Array.isArray(sampling.records) ? sampling.records : [];
+      const trends = disks.slice(0, MAX_TREND_DISKS).map((disk) => {
+        const series = [];
+        for (const record of records) {
+          const hit = record.disks.find((item) => item.name === disk.name);
+          if (!hit || hit.usedBytes === null) continue;
+          series.push({ at: record.at, diskUsedBytes: hit.usedBytes, diskTotalBytes: hit.totalBytes });
+        }
+        return { name: disk.name, ...buildTrendVerdict(series) };
+      });
+      let services = null;
+      try {
+        services = await collectServiceStatus({ units: FNOS_SERVICE_UNITS, run: serviceStatusCollector });
+      } catch (error) {
+        services = null;
+      }
+      let smart = null;
+      if (smartCollector) {
+        try {
+          const collected = await smartCollector();
+          smart = {
+            devices: (Array.isArray(collected?.devices) ? collected.devices : []).map((entry) => {
+              const health = summarizeSmartHealth({
+                info: parseSmartInfo(entry.text),
+                attributes: parseSmartAttributes(entry.text)
+              });
+              // smart-health.mjs 给的是 verdict（ok/warn/failing），这里归一成 precheck 认的 health。
+              const verdict = String(health?.verdict || "").toLowerCase();
+              return {
+                device: entry.device,
+                health: verdict === "failing" || verdict === "critical" ? "failing" : verdict === "warn" ? "warning" : "ok",
+                findings: Array.isArray(health?.findings) ? health.findings.length : 0
+              };
+            })
+          };
+        } catch (error) {
+          smart = null;
+        }
+      }
+      const report = buildBackupPrecheck({ snapshot, capacity: { trends }, services, smart }, {});
+      return reply(res, 200, {
+        ...report,
+        generatedAt: at,
+        storageStatus: typeof storage?.status === "string" ? storage.status : "unknown",
+        sampling: {
+          appended: sampling.appended === true,
+          reason: sampling.reason ?? null,
+          storedRecords: records.length
+        },
+        inputs: {
+          services: services ? "collected" : "unavailable",
+          smart: smart ? "collected" : "unavailable",
+          diagnostics: "not-supplied"
+        },
+        note: "只读体检：只根据已有采集数据给结论，不写盘、不改配置。未采集到的项会标成 unknown。"
+      });
     }
     if (url.pathname === "/api/system/capacity-forecast") {
       if (!sessionFor(req)) return reply(res, 401, { error: "Unauthorized" });

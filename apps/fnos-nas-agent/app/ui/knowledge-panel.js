@@ -384,6 +384,9 @@ function normalizeEntry(entry, index) {
     credibility: record.credibility,
     kind: text(record.kind),
     memory: record.memory === true,
+    // Phase 216：归档标记必须一路带到视图，否则渲染层看不到「已归档」，
+    // 会给归档条目画出一整排本不该存在的维护按钮。
+    archived: record.archived === true,
     realtime: record.realtime
   };
 }
@@ -440,6 +443,7 @@ export function buildKnowledgeView(entries, options = {}) {
         badges,
         stale: freshness.stale,
         expired: freshness.expired,
+        archived: entry.archived === true,
         realtime: boundary.realtime
       };
     })

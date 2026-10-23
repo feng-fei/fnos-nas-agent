@@ -898,6 +898,7 @@
             </label>
             <button class="btn btn--ghost btn--sm" id="knowledge-search" type="button">检索</button>
             <button class="btn btn--ghost btn--sm" id="knowledge-refresh" type="button">刷新</button>
+            <label class="muted knowledge-archived-toggle"><input id="knowledge-show-archived" type="checkbox"> 显示已归档</label>
           </div>
           <p class="muted" id="knowledge-status">尚未加载知识库。</p>
           <div id="knowledge-stats"></div>
@@ -1108,6 +1109,18 @@
           <div id="ops-device-profiles"></div>
           <div id="ops-write-actions"></div>
           <div id="ops-health-checks"></div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">备份前检查</h3>
+            <p class="card__sub">开备份之前先过一遍：空间、只读挂载、容量趋势、服务与磁盘健康。只读体检，不改任何配置；没采到的项显示未知。</p>
+          </div>
+          <div class="toolbar">
+            <button class="btn btn--ghost btn--sm" id="ops-backup-precheck" type="button">运行备份前检查</button>
+          </div>
+          <p class="muted" id="ops-backup-status" role="status">尚未检查。</p>
+          <div id="ops-backup-result"></div>
         </div>
 
       </div>

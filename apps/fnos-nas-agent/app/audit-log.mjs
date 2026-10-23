@@ -77,6 +77,7 @@ const ROUTES = new Set([
   "skills.transition",
   "system.capabilities",
   "system.capacity-forecast",
+  "backup.precheck",
   "system.device-profile",
   "system.device-profile.delete",
   "system.device-profile.write",

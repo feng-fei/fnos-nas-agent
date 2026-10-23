@@ -2093,6 +2093,7 @@ const knowledgePageState={
  view:null,
  query:"",
  source:"",
+ archived:false,
  loaded:false
 };
 const notificationPageState={
@@ -2121,6 +2122,7 @@ async function refreshKnowledgePanel(){
   const keyword=knowledgePageState.query.trim();
   if(keyword)params.set("q",keyword);
   if(knowledgePageState.source)params.set("source",knowledgePageState.source);
+  if(knowledgePageState.archived)params.set("archived","1");
   const suffix=params.toString();
   const response=await api("/api/knowledge"+(suffix?"?"+suffix:""));
   const payload=await response.json();
@@ -2130,7 +2132,8 @@ async function refreshKnowledgePanel(){
   knowledgePageState.view=lib.buildKnowledgeView(entries);
   lib.renderKnowledgePanel(container,knowledgePageState.view);
   const total=Number.isFinite(payload.total)?payload.total:entries.length;
-  setKnowledgeStatus(entries.length?"已加载 "+entries.length+" 条，共 "+total+" 条。":"没有匹配的知识条目。");
+  const scope=knowledgePageState.archived?"（含已归档）":"";
+  setKnowledgeStatus(entries.length?"已加载 "+entries.length+" 条"+scope+"，共 "+total+" 条。":"没有匹配的知识条目。");
   knowledgePageState.loaded=true;
   await refreshKnowledgeFacts();
  }catch(error){
@@ -2276,6 +2279,14 @@ function bindKnowledgeControls(){
  if(refreshButton&&!refreshButton.dataset.bound){
   refreshButton.dataset.bound="1";
   refreshButton.addEventListener("click",()=>{refreshKnowledgePanel();refreshAppInventory();refreshNotifications();});
+ const archivedToggle=document.querySelector("#knowledge-show-archived");
+ if(archivedToggle&&!archivedToggle.dataset.bound){
+  archivedToggle.dataset.bound="1";
+  archivedToggle.addEventListener("change",()=>{
+   knowledgePageState.archived=Boolean(archivedToggle.checked);
+   refreshKnowledgePanel();
+  });
+ }
  }
  if(query&&!query.dataset.bound){
   query.dataset.bound="1";
@@ -2939,6 +2950,39 @@ async function refreshAgentTrace(){
   opsSection("#agent-trace","工具调用观测",lines,body);
 }
 
+/* ------------------------------ 备份前检查 ------------------------------ */
+
+const BACKUP_STATUS_LABELS={ok:"正常",warn:"留意",blocked:"阻断",unknown:"未知"};
+const BACKUP_VERDICT_LABELS={ready:"可以开始备份",warn:"可以备份，但有需要留意的地方",blocked:"先处理阻断项再备份",unknown:"证据不足，先补采数据"};
+
+async function runOpsBackupPrecheck(){
+  opsNotice("#ops-backup-status","正在体检…");
+  const result=await opsFetch("/api/backup/precheck");
+  if(!result.ok){
+    opsNotice("#ops-backup-status",opsFailure(result,"运行备份前检查"));
+    opsSection("#ops-backup-result","备份前检查",[opsFailure(result,"运行备份前检查")],result.body);
+    return;
+  }
+  const body=result.body||{};
+  const checks=Array.isArray(body.checks)?body.checks:[];
+  const summary=body.summary&&typeof body.summary==="object"?body.summary:{};
+  const verdict=BACKUP_VERDICT_LABELS[body.verdict]||body.verdict||"未知";
+  opsNotice("#ops-backup-status","体检完成："+verdict+"（正常 "+opsDescribe(summary.ok)+" · 留意 "+opsDescribe(summary.warn)+" · 阻断 "+opsDescribe(summary.blocked)+" · 未知 "+opsDescribe(summary.unknown)+"）");
+  const lines=[];
+  for(const item of checks){
+    const status=item&&item.status||"unknown";
+    lines.push("["+(BACKUP_STATUS_LABELS[status]||status)+"] "+(item&&(item.title||item.id)||"检查项")+"："+(item&&item.detail||"没有说明"));
+  }
+  const actions=Array.isArray(body.actions)?body.actions:[];
+  if(actions.length){
+    lines.push("");
+    lines.push("建议：");
+    for(const action of actions.slice(0,8))lines.push("  · "+action);
+  }
+  if(body.note)lines.push("",String(body.note));
+  opsSection("#ops-backup-result","备份前检查",lines,body);
+}
+
 /* ------------------------------- 页面调度 ------------------------------- */
 
 function bindOpsControls(){
@@ -2968,6 +3012,7 @@ function bindOpsControls(){
   guard("#ops-device-refresh","设备档案",refreshOpsDeviceProfiles);
   guard("#ops-write-actions-refresh","写动作登记",refreshOpsWriteActions);
   guard("#ops-health-checks-refresh","定时健康检查",refreshOpsHealthChecks);
+  guard("#ops-backup-precheck","备份前检查",runOpsBackupPrecheck);
   guard("#agent-trace-refresh","工具调用观测",refreshAgentTrace);
 }
 
