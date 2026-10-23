@@ -54,6 +54,7 @@
     <a class="nav-rail__link" href="#skills-card" data-page="skills-card"><span class="nav-rail__icon" aria-hidden="true">❖</span><span>Skill 管理</span></a>
     <a class="nav-rail__link" href="#audit-card" data-page="audit-card"><span class="nav-rail__icon" aria-hidden="true">◷</span><span>操作审计</span></a>
     <a class="nav-rail__link" href="#knowledge-card" data-page="knowledge-card"><span class="nav-rail__icon" aria-hidden="true">◆</span><span>知识库</span></a>
+    <a class="nav-rail__link" href="#ops-card" data-page="ops-card"><span class="nav-rail__icon" aria-hidden="true">⌁</span><span>诊断与运维</span></a>
     <a class="nav-rail__link" href="#security-note" data-page="security-note"><span class="nav-rail__icon" aria-hidden="true">⛨</span><span>安全说明</span></a>
     <div class="nav-rail__foot">
       <p class="muted">任意系统命令执行关闭；导入的 Skill 只隔离不执行。</p>
@@ -353,8 +354,27 @@
         <div class="card card--flat">
           <div class="card__head">
             <h3 class="card__title">目录内容</h3>
+            <p class="card__sub">勾选条目后可批量重命名或批量移动；删除仍需逐项确认。</p>
           </div>
           <div class="card__body">
+            <div class="file-batch" id="file-batch-bar">
+              <p class="muted" id="file-batch-count">未选择条目（最多 20 项）。</p>
+              <div class="row row--wrap">
+                <button class="btn btn--ghost btn--sm" id="file-batch-clear" type="button">清空选择</button>
+                <button class="btn btn--ghost btn--sm" id="file-batch-select-page" type="button">全选本页</button>
+                <label class="field field--inline">
+                  <span class="field__label">统一前缀</span>
+                  <input class="input" id="file-batch-prefix" maxlength="80" placeholder="例如：2026-10-" autocomplete="off">
+                </label>
+                <button class="btn btn--secondary btn--sm" id="file-batch-rename" type="button">批量重命名</button>
+                <label class="field field--inline">
+                  <span class="field__label">目标目录</span>
+                  <input class="input" id="file-batch-target" maxlength="1024" placeholder="/vol1/1000/目标目录" autocomplete="off">
+                </label>
+                <button class="btn btn--secondary btn--sm" id="file-batch-move" type="button">批量移动</button>
+              </div>
+              <div id="file-batch-result"></div>
+            </div>
             <div class="list" id="file-list"><p class="muted">登录后加载目录。</p></div>
           </div>
         </div>
@@ -519,6 +539,17 @@
             </div>
             <div class="stack" id="agent-recent-tasks"><p class="muted">暂无任务记录。</p></div>
           </div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">工具调用轨迹</h3>
+            <p class="card__sub">只记录工具、结果与耗时；参数、返回值和错误原文都不留。</p>
+          </div>
+          <div class="toolbar">
+            <button class="btn btn--ghost btn--sm" id="agent-trace-refresh" type="button">刷新轨迹</button>
+          </div>
+          <div id="agent-trace"></div>
         </div>
 
       </div>
@@ -860,18 +891,59 @@
               <span class="field__label">来源</span>
               <select id="knowledge-source">
                 <option value="">全部来源</option>
-                <option value="official">官方文档</option>
-                <option value="vendor">厂商</option>
-                <option value="operations">运维记录</option>
-                <option value="community">社区</option>
-                <option value="memory">长期记忆</option>
+                <option value="official-doc">官方文档</option>
+                <option value="field-observation">实地观察</option>
+                <option value="manual-confirmation">人工确认</option>
               </select>
             </label>
             <button class="btn btn--ghost btn--sm" id="knowledge-search" type="button">检索</button>
             <button class="btn btn--ghost btn--sm" id="knowledge-refresh" type="button">刷新</button>
           </div>
           <p class="muted" id="knowledge-status">尚未加载知识库。</p>
+          <div id="knowledge-stats"></div>
+          <div id="knowledge-conflicts"></div>
           <div id="knowledge-panel"></div>
+        </div>
+
+        <div class="card card--flat" id="knowledge-write">
+          <div class="card__head">
+            <h3 class="card__title">记录一条知识</h3>
+            <p class="card__sub">两步写入：先预览服务端会存什么、哪些字段会被脱敏，确认后才落库。来源与核验状态必须如实标注。</p>
+          </div>
+          <div class="card__body">
+            <label class="field">
+              <span class="field__label">标题</span>
+              <input class="input" id="knowledge-new-title" maxlength="200" placeholder="例如：vol4 由两块 HGST 组 RAID0" autocomplete="off">
+            </label>
+            <label class="field">
+              <span class="field__label">摘要（不超过 300 字）</span>
+              <textarea class="input" id="knowledge-new-summary" maxlength="300" rows="2" placeholder="一句话结论，供检索与列表展示"></textarea>
+            </label>
+            <label class="field">
+              <span class="field__label">正文</span>
+              <textarea class="input" id="knowledge-new-body" rows="5" placeholder="可写多段。正文里出现的密钥、令牌、绝对路径会被服务端拒绝或脱敏。"></textarea>
+            </label>
+            <div class="row row--wrap">
+              <label class="field field--inline">
+                <span class="field__label">来源</span>
+                <select id="knowledge-new-source"></select>
+              </label>
+              <label class="field field--inline">
+                <span class="field__label">核验状态</span>
+                <select id="knowledge-new-verification"></select>
+              </label>
+              <label class="field field--inline">
+                <span class="field__label">标签（逗号分隔）</span>
+                <input class="input" id="knowledge-new-tags" maxlength="200" placeholder="vol4, mdadm, 只读" autocomplete="off">
+              </label>
+            </div>
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" id="knowledge-preview" type="button">预览</button>
+              <button class="btn btn--primary" id="knowledge-commit" type="button" disabled>确认写入</button>
+            </div>
+            <p class="muted" id="knowledge-write-status" role="status"></p>
+            <div id="knowledge-write-result"></div>
+          </div>
         </div>
 
         <div class="card card--flat">
@@ -899,6 +971,143 @@
           </div>
           <p class="muted" id="notify-status">尚未加载通知。</p>
           <div id="notification-center"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================ 诊断与运维 ============================ -->
+    <section class="page hidden" id="ops-card" data-title="诊断与运维" data-sub="网络体检、部署校验、诊断报告与自动化">
+      <div class="page__head">
+        <h2 class="page__title">诊断与运维</h2>
+        <p class="page__sub">每一项都写清楚「测到了什么」：没采到的显示未知或未测到，不显示为正常。</p>
+      </div>
+      <div class="page__body">
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">网络与出口</h3>
+            <p class="card__sub">服务端不做对外连接：策略只回答「允许不允许」，接口吞吐来自 /proc/net/dev 的 1 秒差分。</p>
+          </div>
+          <div class="toolbar">
+            <button class="btn btn--ghost btn--sm" id="ops-network-refresh" type="button">刷新网络状态</button>
+            <button class="btn btn--ghost btn--sm" id="ops-patrol" type="button">连通性巡检</button>
+          </div>
+          <p class="muted" id="ops-network-status">尚未加载网络状态。</p>
+          <div id="ops-network-policy"></div>
+          <div id="ops-network-interfaces"></div>
+          <div id="ops-network-patrol"></div>
+          <div class="toolbar">
+            <label class="field field--inline">
+              <span class="field__label">目标地址</span>
+              <input class="input" id="ops-url" maxlength="2048" placeholder="https://example.com/path" autocomplete="off">
+            </label>
+            <button class="btn btn--ghost btn--sm" id="ops-url-check" type="button">检查是否允许访问</button>
+          </div>
+          <p class="muted" id="ops-url-result" role="status">尚未检查。被策略拒绝不代表域名不存在，只代表这台机器不会去访问它。</p>
+          <div class="toolbar">
+            <label class="field field--inline">
+              <span class="field__label">网页取证</span>
+              <input class="input" id="ops-fetch-url" maxlength="2048" placeholder="https://example.com/doc（默认策略关闭）" autocomplete="off">
+            </label>
+            <button class="btn btn--ghost btn--sm" id="ops-fetch-run" type="button">抓取并转成证据</button>
+          </div>
+          <div id="ops-fetch-result"></div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">部署与技能组合校验</h3>
+            <p class="card__sub">只做判定，不部署、不执行：被判定为 blocked 的计划不会被下发。</p>
+          </div>
+          <div class="field">
+            <label class="field__label" for="ops-plan">部署计划（JSON）</label>
+            <textarea class="input" id="ops-plan" rows="6" spellcheck="false" placeholder='{"services":[{"name":"agent","image":"fnos/nas-agent:1.0"}]}'></textarea>
+          </div>
+          <div class="toolbar">
+            <button class="btn btn--secondary btn--sm" id="ops-plan-check" type="button">校验部署计划</button>
+          </div>
+          <div id="ops-plan-result"></div>
+          <div class="field">
+            <label class="field__label" for="ops-composition">技能组合（JSON）</label>
+            <textarea class="input" id="ops-composition" rows="6" spellcheck="false" placeholder='{"id":"nightly","name":"夜间巡检","steps":[{"id":"s1","skillId":"skill:disk"}]}'></textarea>
+          </div>
+          <div class="toolbar">
+            <button class="btn btn--secondary btn--sm" id="ops-composition-check" type="button">校验组合</button>
+          </div>
+          <div id="ops-composition-result"></div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">诊断</h3>
+            <p class="card__sub">报告只列最可能的原因与确认方法；诊断记录会留存，之后可以回来纠正结论。</p>
+          </div>
+          <div class="toolbar">
+            <label class="field field--inline">
+              <span class="field__label">症状</span>
+              <input class="input" id="ops-symptom" maxlength="2000" placeholder="例如：文件管理打不开磁盘列表" autocomplete="off">
+            </label>
+            <button class="btn btn--secondary btn--sm" id="ops-diagnose" type="button">生成诊断报告</button>
+          </div>
+          <div id="ops-diagnosis-result"></div>
+          <div class="toolbar">
+            <button class="btn btn--ghost btn--sm" id="ops-history-refresh" type="button">刷新诊断历史</button>
+            <button class="btn btn--ghost btn--sm" id="ops-log-evidence" type="button">读取日志证据</button>
+          </div>
+          <div id="ops-history"></div>
+          <div id="ops-log-evidence-result"></div>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">自动化与接入</h3>
+            <p class="card__sub">工作流不自行批准任何步骤：需要审批的步骤在这里会被如实拒绝，而不是静默执行。</p>
+          </div>
+          <div class="toolbar">
+            <button class="btn btn--ghost btn--sm" id="ops-workflows-refresh" type="button">刷新工作流</button>
+            <button class="btn btn--ghost btn--sm" id="ops-triggers-eval" type="button">评估触发规则</button>
+            <button class="btn btn--ghost btn--sm" id="ops-mcp-refresh" type="button">刷新 MCP 状态</button>
+          </div>
+          <div id="ops-workflows"></div>
+          <div id="ops-workflow-result" class="ops-result"></div>
+          <div id="ops-triggers"></div>
+          <div id="ops-mcp"></div>
+          <div class="toolbar">
+            <button class="btn btn--ghost btn--sm" id="ops-runbooks-refresh" type="button">刷新运行手册</button>
+          </div>
+          <div id="ops-runbooks"></div>
+          <div id="ops-runbooks-stats"></div>
+          <div class="field">
+            <label class="field__label" for="ops-runbook-title">新建运行手册：标题</label>
+            <input class="input" id="ops-runbook-title" maxlength="120" placeholder="例如：vol4 只读恢复步骤">
+          </div>
+          <div class="field">
+            <label class="field__label" for="ops-runbook-body">步骤（每行一步）</label>
+            <textarea class="input" id="ops-runbook-body" rows="4" spellcheck="false" placeholder="umount /vol4&#10;mdadm --assemble /dev/md2 ..."></textarea>
+          </div>
+          <div class="toolbar">
+            <button class="btn btn--ghost btn--sm" id="ops-runbook-save" type="button">保存运行手册</button>
+          </div>
+          <p class="muted" id="ops-runbook-status" role="status"></p>
+        </div>
+
+        <div class="card card--flat">
+          <div class="card__head">
+            <h3 class="card__title">容器、设备与写动作</h3>
+            <p class="card__sub">统计与建议都来自只读采集；采集失败时显示「没测到」。</p>
+          </div>
+          <div class="toolbar">
+            <button class="btn btn--ghost btn--sm" id="ops-docker-refresh" type="button">刷新容器统计</button>
+            <button class="btn btn--ghost btn--sm" id="ops-device-refresh" type="button">刷新设备档案</button>
+            <button class="btn btn--ghost btn--sm" id="ops-write-actions-refresh" type="button">刷新写动作登记</button>
+            <button class="btn btn--ghost btn--sm" id="ops-health-checks-refresh" type="button">刷新定时健康检查</button>
+          </div>
+          <div id="ops-docker"></div>
+          <div id="ops-docker-advice"></div>
+          <div id="ops-device-profiles"></div>
+          <div id="ops-write-actions"></div>
+          <div id="ops-health-checks"></div>
         </div>
 
       </div>
@@ -946,6 +1155,7 @@
       <a class="menu__item" href="#skills-card" data-page="skills-card"><span class="nav-rail__icon" aria-hidden="true">❖</span><span>Skill 管理</span></a>
       <a class="menu__item" href="#audit-card" data-page="audit-card"><span class="nav-rail__icon" aria-hidden="true">◷</span><span>操作审计</span></a>
       <a class="menu__item" href="#knowledge-card" data-page="knowledge-card"><span class="nav-rail__icon" aria-hidden="true">◆</span><span>知识库</span></a>
+      <a class="menu__item" href="#ops-card" data-page="ops-card"><span class="nav-rail__icon" aria-hidden="true">⌁</span><span>诊断与运维</span></a>
       <a class="menu__item" href="#security-note" data-page="security-note"><span class="nav-rail__icon" aria-hidden="true">⛨</span><span>安全说明</span></a>
     </div>
   </div>
@@ -1009,6 +1219,7 @@
      dispatch `knowledge-panel-ready` / `notifications-ready` so the classic
      script above can pick them up without an import. -->
 <script type="module" src="/ui/knowledge-panel.js"></script>
+<script type="module" src="/ui/knowledge-write.js"></script>
 <script type="module" src="/ui/notifications.js"></script>
 </body>
 </html>

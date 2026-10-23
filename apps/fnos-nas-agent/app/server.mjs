@@ -47,6 +47,7 @@ import { createSystemCollector, buildUsageEntry } from "./agent-insights.mjs";
 import { createRunbookStore } from "./runbook-store.mjs";
 import { buildEvidenceBundle, collectDiagnosticEvidence } from "./diagnostic-evidence.mjs";
 import { createWorkflowEngine } from "./workflow-engine.mjs";
+import { createRetryingInvoker, MAX_RETRY_ATTEMPTS } from "./retry-policy.mjs";
 import { createDiagnosisHistory } from "./diagnosis-history.mjs";
 import { createVerifiedWritePipeline } from "./verified-write.mjs";
 import { createNetworkPolicy } from "./network-policy.mjs";
@@ -964,6 +965,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/knowledge/conflicts") return "knowledge.conflicts";
   if (pathname === "/api/knowledge/preview") return "knowledge.preview";
   if (pathname === "/api/knowledge/commit") return "knowledge.commit";
+  if (pathname === "/api/knowledge/cancel") return "knowledge.cancel";
   if (pathname.startsWith("/api/knowledge/")) return pathname.endsWith("/reference") ? "knowledge.reference" : "knowledge.read";
   if (pathname === "/api/docker/advice") return "docker.advice";
   if (pathname === "/api/tasks/clear-history") return "tasks.clear";
@@ -2501,16 +2503,24 @@ const server = createServer(async (req, res) => {
       const input = await jsonBody(req);
       const workflowId = typeof input?.workflowId === "string" ? input.workflowId : "";
       if (!workflowId) return reply(res, 400, { error: "A workflow id is required" });
+      // 失败重试只发生在只读步骤上：写与破坏性动作失败后必须让人看见，
+      // 不能被悄悄重放。次数由调用方给，但夹在 1..MAX_RETRY_ATTEMPTS。
+      const retryAttempts = Math.min(MAX_RETRY_ATTEMPTS, Math.max(1, Math.trunc(Number(input?.retryAttempts) || 1)));
+      const retryInvoker = createRetryingInvoker({
+        maxAttempts: retryAttempts,
+        resolveRisk: (tool) => toolRegistry.get(tool)?.risk ?? null,
+        invoke: async ({ tool, args }) => { await toolRegistry.invoke(tool, args || {}); }
+      });
       // The engine asks for a tool: the server owns the catalogue and the
       // policy. The engine itself cannot execute anything.
       const result = await workflowEngine.runWorkflow(workflowId, {
         sessionId: active.key,
-        invokeTool: async ({ tool, args }) => { await toolRegistry.invoke(tool, args || {}); },
+        invokeTool: (request) => retryInvoker.run(request),
         requestApproval: async () => ({ approved: false, reason: "工作流不自行批准任何步骤" }),
         notify: () => {}
       });
       if (!result.started) return reply(res, result.reason === "locked" ? 409 : 404, { error: result.reason === "locked" ? "The workflow is already running" : "Unknown workflow", reason: result.reason });
-      return reply(res, 200, result);
+      return reply(res, 200, { ...result, retryAttempts, retries: retryInvoker.retries() });
     }
     if (url.pathname.startsWith("/api/workflows/") && url.pathname.endsWith("/events")) {
       const active = sessionFor(req);
@@ -2611,6 +2621,21 @@ const server = createServer(async (req, res) => {
       const result = knowledgeBase.commit(previewId);
       if (result.ok === false) return reply(res, 400, { error: result.message || "Rejected", code: result.code || "rejected" });
       return reply(res, 201, result);
+    }
+    if (url.pathname === "/api/knowledge/cancel") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const previewId = typeof input?.previewId === "string" ? input.previewId : "";
+      if (!previewId) return reply(res, 400, { error: "A previewId is required" });
+      // 丢弃一个还没提交的预览：界面上点「取消」时调用，避免服务端留下悬空预览。
+      const result = knowledgeBase.cancel(previewId);
+      if (result.ok === false) return reply(res, 400, { error: result.message || "Rejected", code: result.code || "rejected" });
+      return reply(res, 200, result);
     }
     if (url.pathname === "/api/knowledge") {
       const active = sessionFor(req);

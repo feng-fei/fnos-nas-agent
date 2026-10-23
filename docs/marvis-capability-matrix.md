@@ -29,7 +29,7 @@ State values:
 | A05 Task dependency management | Partly | Phase 209 `app/skill-composition.mjs` dependency validation and topological plan | Composition steps have an order; ordinary agent plan steps still have no dependency graph |
 | A06 Shared task context | Implemented | `app/task-manager.mjs`, Phase 146 event stream | — |
 | A07 Result aggregation | Partly | `app/task-manager.mjs`, chat window | Results are shown, not cross-checked |
-| A08 Failure retry | Open | — | — |
+| A08 Failure retry | Partly | `app/retry-policy.mjs` `classifyFailure` / `decideRetry` / `createRetryingInvoker`, wired into the workflow route (Phase 215) | Only read-only workflow steps retry, at most 3 attempts; task-level and agent-level retries are not implemented |
 | A09 Task recovery after restart | Open | — | Interrupted tasks are not resumed |
 | A10 Task cancellation | Implemented | `app/agent-core.mjs` `shouldCancel`/`signal`, stop button | — |
 | A11 Task progress display | Implemented | Phase 146 task events, Phase 149/151 progress UI | — |
@@ -103,7 +103,7 @@ can only escalate to a human instead of proposing them.
 | F07 Duplicate file detection | Implemented | Phase 163 `detectDuplicates`, Phase 184 scan route, Phase 186 UI entry | Two-stage size plus hash, bounded; single-directory scope by design |
 | F08 Temporary file identification | Implemented | `files.inspect` | — |
 | F09 Automatic archiving | Partly | Phase 163 `planArchive` | Produces a plan, never moves files |
-| F10 Batch rename | Implemented | Phase 189 planner, Phase 191 plan/apply routes and UI | Single directory only, 50 items per apply, no swap rename |
+| F10 Batch rename | Implemented | Phase 189 planner, Phase 191 plan/apply routes and UI, Phase 212 multi-select batch rename/move on the file page | Single directory only, 50 items per apply, no swap rename |
 | F11 Organising preview | Implemented | Phase 163 dry-run plan | — |
 | F12 Image OCR | Open | — | — |
 | F13 AI gallery | Partly | trim-cli `photos.search` | — |
@@ -216,7 +216,7 @@ require an explicit confirmation with a server-issued capability.
 | --- | --- | --- | --- |
 | W01 Create a task from natural language | Partly | `health-checks.*` API | No natural-language creation yet |
 | W02 Cron and calendar scheduling | Partly | Health-check plans | Calendar rules are missing |
-| W03 Event triggering | Open | — | — |
+| W03 Event triggering | Partly | `app/workflow-triggers.mjs`, `POST /api/workflows/triggers/evaluate`, operations page「评估触发规则」 | Rules are evaluated on demand against supplied facts; no background watcher fires them |
 | W04 Multi-step orchestration | Partly | `app/agent-core.mjs` plans, `app/workflow-engine.mjs`, Phase 168 | Workflow plans exist but cannot be authored in the UI |
 | W05 Conditional branches | Partly | `app/workflow-engine.mjs` skip rules | Branches are skip-on-failure, not user-defined conditions |
 | W06 Failure handling | Partly | Failure records are kept, workflow skip policy | No retry policy yet |
@@ -243,7 +243,7 @@ warn, but a plan that changes data needs approval.
 | B03 Log and error-code lookup | Open | — | — |
 | B04 Page content extraction | Implemented | Phase 175 `fetchEvidence`, Phase 176 `POST /api/web/fetch` | Only the four allowed content types |
 | B05 Page change monitoring | Open | — | — |
-| B06 Version lookup | Open | — | — |
+| B06 Version lookup | Implemented | `app/update-check.mjs`, `GET /api/system/update-check`, overview「升级检查」 | Compares the installed version with a caller-supplied latest version; it never fetches one by itself |
 | B07 External API calls | Partly | Phase 176 `POST /api/web/fetch` | The policy is closed by default and every redirect hop is re-checked |
 | B08 Web operation planning | Open | — | — |
 | B09 Source citation | Open | — | — |
@@ -279,15 +279,15 @@ Missing capabilities are reported as unknown, never as a working feature.
 
 | Item | State | Where | Gap |
 | --- | --- | --- | --- |
-| K01 Operations knowledge base | Partly | Documents under `docs/`, document index, `app/runbook-store.mjs` | No runbook authoring in the UI yet |
+| K01 Operations knowledge base | Partly | Documents under `docs/`, document index, `app/runbook-store.mjs`, Phase 213 two-step write on the knowledge page | Read and write both in the UI now; no runbook authoring yet |
 | K02 Historical fault library | Partly | `app/runbook-store.mjs` search | Fault records are still written by hand |
 | K03 Device profile | Implemented | Phase 185 capability map, Phase 186 `device-capability.mjs`, `GET /api/system/capabilities` | Five dimensions only; instruction-set and free-space probing left out on purpose |
 | K04 Application profile | Partly | `app/ui/knowledge-panel.js` app inventory over the system snapshot | Profiles come from a fresh collection, not from a per-device record |
 | K05 User preferences | Open | — | — |
 | K06 Semantic retrieval | Partly | Term and bigram ranking | No embeddings |
 | K07 Source citation | Partly | Index results carry their file | — |
-| K08 Stale information management | Partly | `app/knowledge-base.mjs` `evaluateKnowledgeExpiry` | Expiry is evaluated on read; nothing re-collects a stale entry |
-| K09 Memory correction | Partly | `app/knowledge-base.mjs` `compareKnowledgeFacts`, `detectKnowledgeConflicts` | A conflict is shown, not adjudicated; there is no merge flow |
+| K08 Stale information management | Partly | `app/knowledge-base.mjs` `evaluateKnowledgeExpiry`, Phase 214 mark-stale action on the knowledge page | Expiry is evaluated on read; marking stale is manual, nothing re-collects the entry |
+| K09 Memory correction | Partly | `app/knowledge-base.mjs` `compareKnowledgeFacts`, `detectKnowledgeConflicts`, Phase 213 two-step write, Phase 214 verify / archive actions | A conflict is shown and can be corrected or archived one entry at a time; there is no merge flow |
 | K10 Knowledge update prompt | Partly | `app/knowledge-base.mjs` `reviewKnowledgeUpdates` | The prompt is rendered in the panel only; no push reminder |
 
 The index holds a snapshot. The live state always comes from a fresh
@@ -315,7 +315,7 @@ collection, never from the index.
 | SK01 Skill registration | Implemented | Phase 144 package parser, Phase 147 registry, Phase 187 import-time structure review | — |
 | SK02 Skill inventory | Implemented | Skill list API | — |
 | SK03 Skill discovery | Partly | Name and description matching | — |
-| SK04 Skill composition | Open | — | — |
+| SK04 Skill composition | Implemented | `app/skill-composition.mjs`, `POST /api/compositions/validate` and `/plan`, operations page「组合计划」 | Composition is validated and planned against the registered skills; execution stays with the workflow engine |
 | SK05 Skill versioning | Partly | Manifest version field | — |
 | SK06 Skill permission declaration | Partly | Manifest declaration plus per-tool risk | — |
 | SK07 Install and uninstall | Implemented | `app/skill-installer.mjs` | — |
@@ -359,7 +359,7 @@ risk of the action it performs and goes through the same execution policy.
 | O02 Request chain trace | Implemented | Phase 146 trace, Phase 155 observer | — |
 | O03 Metric collection | Partly | Latency counters | No exporter |
 | O04 Health check API | Implemented | `/api/health` | — |
-| O05 Runtime status page | Partly | MCP status and tool source views | — |
+| O05 Runtime status page | Implemented | Phase 211 诊断与运维 page (network, deploy, diagnosis, workflows, MCP, runbooks, containers, device profiles, health checks) | — |
 | O06 Error aggregation | Implemented | Phase 160 `repeatedErrors` | — |
 | O07 Debug mode | Partly | Diagnostic bundles in the trace | No separate switch |
 | O08 Configuration validation | Implemented | Release gates and startup checks | — |

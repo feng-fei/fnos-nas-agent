@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 211 documents (195 phase documents and 15 non-phase documents, plus this file).
+This index lists 216 documents (200 phase documents and 15 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -756,6 +756,13 @@ This index lists 211 documents (195 phase documents and 15 non-phase documents, 
 
 ### Phase 210
 - [Phase 210 — 把 203–209 接到 HTTP 上，并修好审计白名单](phase-210-wiring.md) — 给七个纯函数层补上 HTTP 与工具注册表出口，并把审计白名单从 44 个名字补到 97 个、加一条静态防回退用例。
+
+### Phase 211
+- [Phase 211：把「只在服务端存在」的能力真正摆到界面上](phase-211-ui-gap-coverage.md) — 审查出 19 条无界面入口的路由，接上 24 条入口（新增「诊断与运维」整页），保留 4 条有意 API-only，并用 7 例测试锁死。
+- [Phase 212：文件页的批量选择与批量操作](phase-212-file-batch.md) — 目录列表多选（上限 20，与服务端一致），批量重命名（前缀+序号）与批量移动，结果逐项展示；批量删除不开放。
+- [Phase 213：知识库的两步写入](phase-213-knowledge-write.md) — 独立模块 knowledge-write.js 做「预览 → 提交」，改表单即作废预览；顺手修掉来源筛选与服务端枚举不一致的真 bug，10 例测试。
+- [Phase 214：知识条目的核验、标记过期与归档](phase-214-knowledge-entry-actions.md) — 条目上三个维护动作沿用两步写入（确认条 → previewId → commit），新增 `POST /api/knowledge/cancel` 丢弃未提交的预览，9 例测试。
+- [Phase 215：只读步骤的失败重试](phase-215-retry-policy.md) — 只重试只读工具上的瞬时失败（超时/连接类/429/5xx），上限 3 次、指数退避；工作流路由接入并把重试记录放进响应，运维页可一键试运行内置工作流，14 例测试。
 
 ## This index
 

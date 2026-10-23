@@ -285,3 +285,35 @@
     align-items: flex-start;
   }
 }
+
+/* Phase 214：条目级动作（核验 / 标记过期 / 归档）与二次确认条 */
+.knowledge-panel__actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+  margin-top: var(--space-2, 8px);
+}
+
+.knowledge-panel__actions .btn {
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.knowledge-panel__confirm {
+  margin-top: var(--space-2, 8px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1px solid var(--line, #2a3140);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+}
+
+.knowledge-panel__confirm-text {
+  margin: 0 0 var(--space-2, 8px);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.knowledge-panel__confirm-actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+}

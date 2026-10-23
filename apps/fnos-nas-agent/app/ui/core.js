@@ -147,7 +147,7 @@ function showLoginCard(){
  * 页面路由：hash -> .page。旧的 buildWorkspaceLayout() 已删除，
  * 顶栏 / 导航 / 底部标签栏 / 各 section 均由静态外壳提供。
  * ------------------------------------------------------------------ */
-const workspacePages=[["status-card","运行概览"],["files-card","文件管理"],["agent-card","智能助手"],["tools-card","NAS 工具"],["models-card","模型服务"],["skills-card","Skill 管理"],["audit-card","操作审计"],["security-note","安全说明"]];
+const workspacePages=[["status-card","运行概览"],["files-card","文件管理"],["agent-card","智能助手"],["tools-card","NAS 工具"],["models-card","模型服务"],["skills-card","Skill 管理"],["audit-card","操作审计"],["knowledge-card","知识库"],["ops-card","诊断与运维"],["security-note","安全说明"]];
 function pageTitleFor(pageId,label){
   const el=document.getElementById(pageId);
   const title=el&&el.getAttribute("data-title");
