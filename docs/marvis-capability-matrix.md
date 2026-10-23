@@ -103,7 +103,7 @@ can only escalate to a human instead of proposing them.
 | F07 Duplicate file detection | Implemented | Phase 163 `detectDuplicates`, Phase 184 scan route, Phase 186 UI entry | Two-stage size plus hash, bounded; single-directory scope by design |
 | F08 Temporary file identification | Implemented | `files.inspect` | — |
 | F09 Automatic archiving | Partly | Phase 163 `planArchive` | Produces a plan, never moves files |
-| F10 Batch rename | Implemented | Phase 189 planner, Phase 191 plan/apply routes and UI | Single directory only, 50 items per apply, no swap rename |
+| F10 Batch rename | Implemented | Phase 189 planner, Phase 191 plan/apply routes and UI, Phase 212 multi-select batch rename/move on the file page | Single directory only, 50 items per apply, no swap rename |
 | F11 Organising preview | Implemented | Phase 163 dry-run plan | — |
 | F12 Image OCR | Open | — | — |
 | F13 AI gallery | Partly | trim-cli `photos.search` | — |
@@ -279,7 +279,7 @@ Missing capabilities are reported as unknown, never as a working feature.
 
 | Item | State | Where | Gap |
 | --- | --- | --- | --- |
-| K01 Operations knowledge base | Partly | Documents under `docs/`, document index, `app/runbook-store.mjs` | No runbook authoring in the UI yet |
+| K01 Operations knowledge base | Partly | Documents under `docs/`, document index, `app/runbook-store.mjs`, Phase 213 two-step write on the knowledge page | Read and write both in the UI now; no runbook authoring yet |
 | K02 Historical fault library | Partly | `app/runbook-store.mjs` search | Fault records are still written by hand |
 | K03 Device profile | Implemented | Phase 185 capability map, Phase 186 `device-capability.mjs`, `GET /api/system/capabilities` | Five dimensions only; instruction-set and free-space probing left out on purpose |
 | K04 Application profile | Partly | `app/ui/knowledge-panel.js` app inventory over the system snapshot | Profiles come from a fresh collection, not from a per-device record |
@@ -287,7 +287,7 @@ Missing capabilities are reported as unknown, never as a working feature.
 | K06 Semantic retrieval | Partly | Term and bigram ranking | No embeddings |
 | K07 Source citation | Partly | Index results carry their file | — |
 | K08 Stale information management | Partly | `app/knowledge-base.mjs` `evaluateKnowledgeExpiry` | Expiry is evaluated on read; nothing re-collects a stale entry |
-| K09 Memory correction | Partly | `app/knowledge-base.mjs` `compareKnowledgeFacts`, `detectKnowledgeConflicts` | A conflict is shown, not adjudicated; there is no merge flow |
+| K09 Memory correction | Partly | `app/knowledge-base.mjs` `compareKnowledgeFacts`, `detectKnowledgeConflicts`, Phase 213 hand-written correction through the two-step write | A conflict is shown and can be overwritten one entry at a time; there is no merge flow |
 | K10 Knowledge update prompt | Partly | `app/knowledge-base.mjs` `reviewKnowledgeUpdates` | The prompt is rendered in the panel only; no push reminder |
 
 The index holds a snapshot. The live state always comes from a fresh

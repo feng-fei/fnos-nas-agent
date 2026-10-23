@@ -979,6 +979,92 @@ document.querySelector("#agent-form").addEventListener("submit",async e=>{
  finally{send.disabled=false;send.textContent="发送";field.focus();chatSetStopVisible("");chatSetStatus("就绪");}
 });
 let currentFilePath="",currentFileOffset=0;
+// 文件页的批量选择：只在当前页内有效，最多 20 项（服务端 operateBatch 的上限）。
+// 选择里存 path -> {name,type}，刷新目录时按现有条目裁剪，避免拿着旧路径去重命名。
+const fileBatchSelection=new Map();
+const FILE_BATCH_LIMIT=20;
+function fileBatchSelectionSize(){return fileBatchSelection.size;}
+function renderFileBatchBar(){
+ const count=document.querySelector("#file-batch-count"),rename=document.querySelector("#file-batch-rename"),move=document.querySelector("#file-batch-move");
+ if(count){
+  if(!fileBatchSelection.size)count.textContent="未选择条目（最多 "+FILE_BATCH_LIMIT+" 项）。";
+  else{
+   const names=[...fileBatchSelection.values()].slice(0,4).map(entry=>entry.name).join("、");
+   count.textContent="已选 "+fileBatchSelection.size+" 项："+names+(fileBatchSelection.size>4?" 等":"")+"。";
+  }
+ }
+ for(const button of [rename,move])if(button)button.disabled=fileBatchSelection.size===0||fileBatchSelection.size>FILE_BATCH_LIMIT;
+}
+function clearFileBatchSelection(){
+ fileBatchSelection.clear();
+ for(const checkbox of document.querySelectorAll("#file-list input[data-file-batch]"))checkbox.checked=false;
+ renderFileBatchBar();
+}
+// 批量结果：只呈现每项 ok/失败原因，不重排服务端返回顺序。
+function renderFileBatchResult(payload){
+ const box=document.querySelector("#file-batch-result");
+ if(!box)return;
+ box.replaceChildren();
+ const head=document.createElement("p");
+ head.className="muted";
+ head.textContent="批量结果：成功 "+payload.succeeded+" 项，失败 "+payload.failed+" 项，共 "+payload.total+" 项。";
+ box.append(head);
+ const failures=(payload.results||[]).filter(item=>!item.ok).slice(0,10);
+ for(const failure of failures){
+  const line=document.createElement("p");
+  line.className="error";
+  const target=(payload.operations||[])[failure.index];
+  line.textContent="第 "+(failure.index+1)+" 项"+(target&&target.path?"（"+target.path+"）":"")+"："+(failure.error||"失败")+(failure.reason?"（"+failure.reason+"）":"");
+  box.append(line);
+ }
+}
+async function runFileBatch(operations){
+ const status=document.querySelector("#file-operation-status"),err=document.querySelector("#file-error"),resultBox=document.querySelector("#file-batch-result");
+ if(status)status.textContent="";if(err)err.textContent="";if(resultBox)resultBox.replaceChildren();
+ if(!operations.length){if(err)err.textContent="没有可执行的操作。";return;}
+ if(status)status.textContent="正在提交 "+operations.length+" 项操作…";
+ try{
+  const response=await api("/api/files/operations/batch",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({operations})});
+  const payload=await response.json();
+  if(!response.ok)throw Error(payload.error||"批量操作失败");
+  renderFileBatchResult({...payload,operations});
+  if(status)status.textContent="批量操作完成。";
+  clearFileBatchSelection();
+  await refreshFiles(currentFilePath,currentFileOffset);
+ }catch(error){
+  if(status)status.textContent="";
+  if(err)err.textContent=errorText(error,"批量操作失败");
+ }
+}
+// 批量重命名：统一前缀 + 三位序号，保留原扩展名；重名先在前端拦一道，
+// 但最终仍以服务端逐项的 409 判定为准（同批内的重名服务端也会拒绝）。
+function fileBatchRename(){
+ const prefix=(document.querySelector("#file-batch-prefix")?.value||"").trim();
+ if(!prefix){document.querySelector("#file-error").textContent="请先填写统一前缀。";return;}
+ const entries=[...fileBatchSelection.values()];
+ const operations=[],targets=new Set();
+ let index=0;
+ for(const entry of entries){
+  index+=1;
+  const dot=entry.type==="file"?entry.name.lastIndexOf("."):-1;
+  const base=dot>0?entry.name.slice(0,dot):entry.name;
+  const extension=dot>0?entry.name.slice(dot):"";
+  const name=prefix+String(index).padStart(3,"0")+(dot>0?extension:"");
+  if(targets.has(name.toLowerCase())){document.querySelector("#file-error").textContent="生成的新名称重复（"+name+"），请换一个前缀。";return;}
+  targets.add(name.toLowerCase());
+  if(name===entry.name)continue;
+  operations.push({action:"rename",path:entry.path,name});
+ }
+ if(!operations.length){document.querySelector("#file-error").textContent="按当前前缀生成的新名称与原名称相同，无需重命名。";return;}
+ runFileBatch(operations);
+}
+function fileBatchMove(){
+ const target=(document.querySelector("#file-batch-target")?.value||"").trim();
+ if(!target){document.querySelector("#file-error").textContent="请先填写目标目录的完整路径。";return;}
+ const operations=[...fileBatchSelection.values()].map(entry=>({action:"move",path:entry.path,destination:target}));
+ runFileBatch(operations);
+}
+
 async function refreshFiles(pathValue=currentFilePath,pageOffset=0){
  const host=document.querySelector("#file-list"),roots=document.querySelector("#file-roots"),err=document.querySelector("#file-error"),parent=document.querySelector("#file-parent"),field=document.querySelector("#file-path");
   const renderToken=beginRender(host);
@@ -1014,6 +1100,16 @@ async function refreshFiles(pathValue=currentFilePath,pageOffset=0){
   if(!visibleEntries.length){const p=document.createElement("p");p.className="muted";p.textContent=data.entries.length?"没有符合筛选条件的项目。":(data.roots?.length?"此目录为空。":"未发现存储卷。请检查 fnOS 卷路径，或通过 AGENT_FILE_ROOTS 配置允许的绝对路径。");host.append(p);}
   for(const item of visibleEntries){
    const row=document.createElement("div");row.className="card";
+   const pick=document.createElement("input");pick.type="checkbox";pick.dataset.fileBatch="1";pick.setAttribute("aria-label","选择 "+item.name);
+   pick.checked=fileBatchSelection.has(item.path);
+   pick.addEventListener("change",()=>{
+    if(pick.checked){
+     if(fileBatchSelection.size>=FILE_BATCH_LIMIT){pick.checked=false;err.textContent="一次最多选择 "+FILE_BATCH_LIMIT+" 项。";return;}
+     fileBatchSelection.set(item.path,{name:item.name,type:item.type});
+    }else fileBatchSelection.delete(item.path);
+    renderFileBatchBar();
+   });
+   row.append(pick);
    if(item.type==="directory"){const btn=document.createElement("button");btn.type="button";btn.textContent="📁 "+item.name;btn.addEventListener("click",()=>refreshFiles(item.path));row.append(btn);}
    else{const name=document.createElement("strong");name.textContent="📄 "+item.name;row.append(name);}
    const meta=document.createElement("p");meta.className="muted";meta.textContent=(item.type==="directory"?"文件夹":"文件")+" · "+(item.sizeBytes===null?"—":formatBytes(item.sizeBytes))+" · "+item.modifiedAt;row.append(meta);
@@ -1037,9 +1133,24 @@ async function refreshFiles(pathValue=currentFilePath,pageOffset=0){
    actionButton("删除",async()=>{if(await confirmAction("确定删除“"+item.name+"”？文件夹仅能删除空目录。删除还需要在「待确认的危险操作」中再次确认。"))try{await runFileOperation({action:"delete",path:item.path});}catch{}});
    row.append(actions);host.append(row);
   }
-
+  // 目录换了或条目被删掉时，把失效的选择清掉，避免拿着旧路径去批量改名。
+  const present=new Set((data.entries||[]).map(item=>item.path));
+  for(const selectedPath of [...fileBatchSelection.keys()])if(!present.has(selectedPath))fileBatchSelection.delete(selectedPath);
+  renderFileBatchBar();
  }catch(e){err.textContent=errorText(e,"目录读取失败");host.textContent="无法读取此目录。";}
 }
+document.querySelector("#file-batch-clear").addEventListener("click",()=>{clearFileBatchSelection();document.querySelector("#file-batch-result").replaceChildren();});
+document.querySelector("#file-batch-select-page").addEventListener("click",()=>{
+ const err=document.querySelector("#file-error");err.textContent="";
+ if(fileBatchSelection.size>=FILE_BATCH_LIMIT){err.textContent="一次最多选择 "+FILE_BATCH_LIMIT+" 项。";return;}
+ for(const checkbox of document.querySelectorAll("#file-list input[data-file-batch]")){
+  if(fileBatchSelection.size>=FILE_BATCH_LIMIT){err.textContent="已选满 "+FILE_BATCH_LIMIT+" 项，剩余条目未选中。";break;}
+  if(!checkbox.checked)checkbox.click();
+ }
+ renderFileBatchBar();
+});
+document.querySelector("#file-batch-rename").addEventListener("click",()=>{fileBatchRename();});
+document.querySelector("#file-batch-move").addEventListener("click",()=>{fileBatchMove();});
 document.querySelector("#file-form").addEventListener("submit",e=>{e.preventDefault();refreshFiles(document.querySelector("#file-path").value.trim());});
 let fileSearchTimer=null;
 document.querySelector("#file-search").addEventListener("input",()=>{clearTimeout(fileSearchTimer);fileSearchTimer=setTimeout(()=>refreshFiles(currentFilePath),180);});
@@ -2249,6 +2360,10 @@ window.addEventListener("knowledge-panel-ready",()=>{
 });
 window.addEventListener("notifications-ready",()=>{
  if(currentRouteId()==="knowledge-card")refreshNotifications();
+});
+// 知识库写入由 knowledge-write.js 负责（预览 → 提交）；写入成功后这里只刷新列表与统计。
+window.addEventListener("knowledge-saved",()=>{
+ if(currentRouteId()==="knowledge-card")refreshKnowledgePage();
 });
 
 /* ================================================================== *

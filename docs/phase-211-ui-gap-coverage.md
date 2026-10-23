@@ -13,9 +13,10 @@
 | 类别 | 路由 | 处理 |
 | --- | --- | --- |
 | 应当有入口 | `/api/network/diagnostics`、`/api/network/policy`、`/api/network/check`、`/api/deploy/precheck`、`/api/compositions/validate`、`/api/diagnostics/report`、`/api/diagnoses`、`/api/write-actions`、`/api/docker/stats`、`/api/network/interfaces`、`/api/diagnostics/log-evidence`、`/api/compositions`、`/api/workflows/triggers/evaluate`、`/api/mcp/status`、`/api/runbooks`、`/api/runbooks/stats`、`/api/workflows`、`/api/system/device-profiles`、`/api/health-checks`、`/api/agent/trace`、`/api/security/inspection`、`/api/web/fetch`、`/api/knowledge/stats`、`/api/knowledge/conflicts` | 本轮接上界面入口 |
-| 有意只给智能体 | `/api/tools/:id/run`、`/api/files/operations/batch`、`/api/knowledge/preview`、`/api/knowledge/commit` | 保持 API-only，并在测试里锁死 |
+| 有意只给智能体 | `/api/tools/:id/run` | 保持 API-only，并在测试里锁死 |
+| 本阶段先留、后续补齐 | `/api/files/operations/batch`（Phase 212 接上批量选择）、`/api/knowledge/preview` + `/api/knowledge/commit`（Phase 213 接上两步写入） | 见各自阶段文档 |
 
-理由：后四条要么是「模型调用工具」的出口，要么是危险写操作的两步中间态（预览 → 提交）与批量破坏性动作。界面上给它们开入口，等于绕过既有的单步审批与二次确认设计。
+理由：`/api/tools/:id/run` 是「模型调用工具」的出口，界面上放开手写参数会削弱「destructive 必须单独确认」的约束。另外三条本轮先留：批量文件操作缺多选模型、知识库两步写入缺产品口径——它们在后续阶段补上（Phase 212 / 213），且补的方式都必须保住「单步审批 + 二次确认」这条设计。
 
 ## 新增界面：诊断与运维
 
@@ -64,6 +65,6 @@
 
 ## 遗留
 
-- `/api/files/operations/batch` 仍未接界面：文件页没有多选模型，接它需要先做选择态，属于一次独立改动。
-- `/api/knowledge/preview` + `/api/knowledge/commit`：两步写入值得做，但需要先定「谁能写知识库」的产品口径。
 - `/api/tools/:id/run`：工具调用面板已有 Playbook 通道，单独开放手写参数入口会削弱「destructive 必须单独确认」的约束，暂不开放。
+- 批量文件操作已在 Phase 212 接上（文件页多选 + 批量重命名/移动，不含删除）。
+- 知识库两步写入已在 Phase 213 接上（独立模块 `knowledge-write.js`，预览 → 提交，改表单即作废预览）。

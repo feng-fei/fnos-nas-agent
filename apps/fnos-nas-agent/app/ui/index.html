@@ -354,8 +354,27 @@
         <div class="card card--flat">
           <div class="card__head">
             <h3 class="card__title">目录内容</h3>
+            <p class="card__sub">勾选条目后可批量重命名或批量移动；删除仍需逐项确认。</p>
           </div>
           <div class="card__body">
+            <div class="file-batch" id="file-batch-bar">
+              <p class="muted" id="file-batch-count">未选择条目（最多 20 项）。</p>
+              <div class="row row--wrap">
+                <button class="btn btn--ghost btn--sm" id="file-batch-clear" type="button">清空选择</button>
+                <button class="btn btn--ghost btn--sm" id="file-batch-select-page" type="button">全选本页</button>
+                <label class="field field--inline">
+                  <span class="field__label">统一前缀</span>
+                  <input class="input" id="file-batch-prefix" maxlength="80" placeholder="例如：2026-10-" autocomplete="off">
+                </label>
+                <button class="btn btn--secondary btn--sm" id="file-batch-rename" type="button">批量重命名</button>
+                <label class="field field--inline">
+                  <span class="field__label">目标目录</span>
+                  <input class="input" id="file-batch-target" maxlength="1024" placeholder="/vol1/1000/目标目录" autocomplete="off">
+                </label>
+                <button class="btn btn--secondary btn--sm" id="file-batch-move" type="button">批量移动</button>
+              </div>
+              <div id="file-batch-result"></div>
+            </div>
             <div class="list" id="file-list"><p class="muted">登录后加载目录。</p></div>
           </div>
         </div>
@@ -872,11 +891,9 @@
               <span class="field__label">来源</span>
               <select id="knowledge-source">
                 <option value="">全部来源</option>
-                <option value="official">官方文档</option>
-                <option value="vendor">厂商</option>
-                <option value="operations">运维记录</option>
-                <option value="community">社区</option>
-                <option value="memory">长期记忆</option>
+                <option value="official-doc">官方文档</option>
+                <option value="field-observation">实地观察</option>
+                <option value="manual-confirmation">人工确认</option>
               </select>
             </label>
             <button class="btn btn--ghost btn--sm" id="knowledge-search" type="button">检索</button>
@@ -886,6 +903,47 @@
           <div id="knowledge-stats"></div>
           <div id="knowledge-conflicts"></div>
           <div id="knowledge-panel"></div>
+        </div>
+
+        <div class="card card--flat" id="knowledge-write">
+          <div class="card__head">
+            <h3 class="card__title">记录一条知识</h3>
+            <p class="card__sub">两步写入：先预览服务端会存什么、哪些字段会被脱敏，确认后才落库。来源与核验状态必须如实标注。</p>
+          </div>
+          <div class="card__body">
+            <label class="field">
+              <span class="field__label">标题</span>
+              <input class="input" id="knowledge-new-title" maxlength="200" placeholder="例如：vol4 由两块 HGST 组 RAID0" autocomplete="off">
+            </label>
+            <label class="field">
+              <span class="field__label">摘要（不超过 300 字）</span>
+              <textarea class="input" id="knowledge-new-summary" maxlength="300" rows="2" placeholder="一句话结论，供检索与列表展示"></textarea>
+            </label>
+            <label class="field">
+              <span class="field__label">正文</span>
+              <textarea class="input" id="knowledge-new-body" rows="5" placeholder="可写多段。正文里出现的密钥、令牌、绝对路径会被服务端拒绝或脱敏。"></textarea>
+            </label>
+            <div class="row row--wrap">
+              <label class="field field--inline">
+                <span class="field__label">来源</span>
+                <select id="knowledge-new-source"></select>
+              </label>
+              <label class="field field--inline">
+                <span class="field__label">核验状态</span>
+                <select id="knowledge-new-verification"></select>
+              </label>
+              <label class="field field--inline">
+                <span class="field__label">标签（逗号分隔）</span>
+                <input class="input" id="knowledge-new-tags" maxlength="200" placeholder="vol4, mdadm, 只读" autocomplete="off">
+              </label>
+            </div>
+            <div class="row row--wrap">
+              <button class="btn btn--secondary" id="knowledge-preview" type="button">预览</button>
+              <button class="btn btn--primary" id="knowledge-commit" type="button" disabled>确认写入</button>
+            </div>
+            <p class="muted" id="knowledge-write-status" role="status"></p>
+            <div id="knowledge-write-result"></div>
+          </div>
         </div>
 
         <div class="card card--flat">
@@ -1160,6 +1218,7 @@
      dispatch `knowledge-panel-ready` / `notifications-ready` so the classic
      script above can pick them up without an import. -->
 <script type="module" src="/ui/knowledge-panel.js"></script>
+<script type="module" src="/ui/knowledge-write.js"></script>
 <script type="module" src="/ui/notifications.js"></script>
 </body>
 </html>

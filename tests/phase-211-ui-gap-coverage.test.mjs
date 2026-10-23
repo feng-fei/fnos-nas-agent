@@ -43,13 +43,13 @@ const WIRED_ROUTES = [
   "/api/security/inspection",
   "/api/web/fetch",
   "/api/knowledge/stats",
-  "/api/knowledge/conflicts"
+  "/api/knowledge/conflicts",
+  "/api/files/operations/batch"
 ];
 
 // 有意不提供界面入口的路由：只给智能体、或是一次性危险写操作的中间步骤。
 const INTENTIONALLY_API_ONLY = [
   "/api/tools/:id/run",
-  "/api/files/operations/batch",
   "/api/knowledge/preview",
   "/api/knowledge/commit"
 ];
