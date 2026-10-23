@@ -2093,6 +2093,7 @@ const knowledgePageState={
  view:null,
  query:"",
  source:"",
+ archived:false,
  loaded:false
 };
 const notificationPageState={
@@ -2121,6 +2122,7 @@ async function refreshKnowledgePanel(){
   const keyword=knowledgePageState.query.trim();
   if(keyword)params.set("q",keyword);
   if(knowledgePageState.source)params.set("source",knowledgePageState.source);
+  if(knowledgePageState.archived)params.set("archived","1");
   const suffix=params.toString();
   const response=await api("/api/knowledge"+(suffix?"?"+suffix:""));
   const payload=await response.json();
@@ -2130,7 +2132,8 @@ async function refreshKnowledgePanel(){
   knowledgePageState.view=lib.buildKnowledgeView(entries);
   lib.renderKnowledgePanel(container,knowledgePageState.view);
   const total=Number.isFinite(payload.total)?payload.total:entries.length;
-  setKnowledgeStatus(entries.length?"已加载 "+entries.length+" 条，共 "+total+" 条。":"没有匹配的知识条目。");
+  const scope=knowledgePageState.archived?"（含已归档）":"";
+  setKnowledgeStatus(entries.length?"已加载 "+entries.length+" 条"+scope+"，共 "+total+" 条。":"没有匹配的知识条目。");
   knowledgePageState.loaded=true;
   await refreshKnowledgeFacts();
  }catch(error){
@@ -2276,6 +2279,14 @@ function bindKnowledgeControls(){
  if(refreshButton&&!refreshButton.dataset.bound){
   refreshButton.dataset.bound="1";
   refreshButton.addEventListener("click",()=>{refreshKnowledgePanel();refreshAppInventory();refreshNotifications();});
+ const archivedToggle=document.querySelector("#knowledge-show-archived");
+ if(archivedToggle&&!archivedToggle.dataset.bound){
+  archivedToggle.dataset.bound="1";
+  archivedToggle.addEventListener("change",()=>{
+   knowledgePageState.archived=Boolean(archivedToggle.checked);
+   refreshKnowledgePanel();
+  });
+ }
  }
  if(query&&!query.dataset.bound){
   query.dataset.bound="1";
