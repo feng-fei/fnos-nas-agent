@@ -170,14 +170,18 @@ test("the device routes require a session, reject writes and report unknown when
   assert.ok(smart.notes.includes("collector-disabled"));
   assert.match(smart.note, /FNOS_AGENT_SMART_COLLECTOR=on/u);
 
-  const available = await (await request("/api/system/update-check?latest=0.2.2&channel=stable")).json();
+  const available = await (await request("/api/system/update-check?latest=0.3.0&channel=stable")).json();
   assert.equal(available.status, "update-available");
-  assert.equal(available.installedVersion, "0.2.1");
-  assert.equal(available.current, "0.2.1");
+  assert.equal(available.installedVersion, "0.2.2");
+  assert.equal(available.current, "0.2.2");
 
   const unknownLatest = await (await request("/api/system/update-check")).json();
   assert.equal(unknownLatest.status, "unknown");
   assert.ok(unknownLatest.notes.includes("latest-missing"));
+
+  const current = await (await request("/api/system/update-check?latest=0.2.2")).json();
+  assert.equal(current.status, "up-to-date");
+  assert.equal(current.installedVersion, "0.2.2");
 
   const downgrade = await (await request("/api/system/update-check?latest=0.1.9")).json();
   assert.equal(downgrade.status, "unknown");
