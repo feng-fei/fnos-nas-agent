@@ -1,5 +1,5 @@
 appname               = fnos-nas-agent
-version               = 0.2.1
+version               = 0.2.2
 display_name          = fnOS NAS Agent
 desc                  = 轻量自托管 NAS Agent：移动端文件管理、模型供应商配置、Skill 隔离审查与受限只读 fnOS 工具。
 platform              = x86
