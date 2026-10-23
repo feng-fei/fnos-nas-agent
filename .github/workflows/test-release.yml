@@ -129,10 +129,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release create "$GITHUB_REF_NAME" \
-            dist/fnos-nas-agent-0.2.2-x86.fpk \
-            dist/fnos-nas-agent-0.2.2-x86.fpk.sha256 \
-            dist/release-manifest.json \
-            --title "fnOS NAS Agent 0.2.2 — First Test Release" \
-            --prerelease \
-            --notes "First test release for staging validation. This is an unsigned test build, not a production-certified release. Verify the SHA-256 checksum and manifest before use. Install only on a test fnOS NAS; validate fresh install, upgrade, restart, rollback and uninstall before production use."
+          notes="First test release for staging validation. This is an unsigned test build, not a production-certified release. Verify the SHA-256 checksum and manifest before use. Install only on a test fnOS NAS; validate fresh install, upgrade, restart, rollback and uninstall before production use."
+          title="fnOS NAS Agent 0.2.2 — First Test Release"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --title "$title" --prerelease --notes "$notes"
+            gh release upload "$GITHUB_REF_NAME" \
+              dist/fnos-nas-agent-0.2.2-x86.fpk \
+              dist/fnos-nas-agent-0.2.2-x86.fpk.sha256 \
+              dist/release-manifest.json \
+              --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              dist/fnos-nas-agent-0.2.2-x86.fpk \
+              dist/fnos-nas-agent-0.2.2-x86.fpk.sha256 \
+              dist/release-manifest.json \
+              --title "$title" \
+              --prerelease \
+              --notes "$notes"
+          fi
