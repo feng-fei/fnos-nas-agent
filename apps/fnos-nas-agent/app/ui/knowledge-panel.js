@@ -778,6 +778,16 @@ function appendAll(parent, children) {
  * @param {{document?: object}} [options]
  * @returns {object} 渲染出的根节点
  */
+/**
+ * 条目级动作：按钮只声明意图，实际的两步写入由 knowledge-write.js 处理。
+ * `verification` 是服务端接受的枚举值，界面不发明新状态。
+ */
+const ENTRY_ACTIONS = Object.freeze([
+  Object.freeze({ id: "verify", label: "核验", verification: "verified" }),
+  Object.freeze({ id: "stale", label: "标记过期", verification: "stale" }),
+  Object.freeze({ id: "archive", label: "归档", verification: null })
+]);
+
 export function renderKnowledgePanel(container, view, options = {}) {
   const doc = resolveDocument(options);
   if (!doc || !container) return null;
@@ -829,6 +839,24 @@ export function renderKnowledgePanel(container, view, options = {}) {
       badges.append(createElement(doc, "span", `knowledge-panel__badge knowledge-panel__badge--${item2.tone || "muted"}`, item2.label));
     }
     entry.append(badges);
+    // Phase 214：条目级动作（核验 / 标记过期 / 归档）。这些按钮只声明「想做什么」，
+    // 真正的两步走（预览 → 提交）在 knowledge-write.js 里，读写边界不混在一起。
+    if (record.id) {
+      if (record.archived) {
+        entry.append(createElement(doc, "p", "knowledge-panel__item-note", "已归档，不再参与检索。"));
+      } else {
+        const actions = createElement(doc, "div", "knowledge-panel__actions");
+        for (const action of ENTRY_ACTIONS) {
+          const button = createElement(doc, "button", "btn btn--ghost btn--small", action.label);
+          button.type = "button";
+          button.dataset.knowledgeAction = action.id;
+          button.dataset.knowledgeId = String(record.id);
+          button.dataset.knowledgeTitle = String(record.title || "");
+          actions.append(button);
+        }
+        entry.append(actions);
+      }
+    }
     list.append(entry);
   }
   root.append(list);

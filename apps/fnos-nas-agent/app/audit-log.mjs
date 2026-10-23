@@ -38,6 +38,7 @@ const ROUTES = new Set([
   "health-checks.list",
   "health-checks.run",
   "health-checks.update",
+  "knowledge.cancel",
   "knowledge.commit",
   "knowledge.conflicts",
   "knowledge.list",

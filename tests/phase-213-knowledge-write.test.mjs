@@ -72,14 +72,14 @@ test("describePreview tolerates a preview with nothing collected", () => {
   assert.match(joined, /未采集/);
 });
 
-test("the write module is a module and only talks to preview/commit", async () => {
+test("the write module only talks to preview, commit and cancel", async () => {
   const source = await fs.readFile(path.join(appDir, "ui", "knowledge-write.js"), "utf8");
   assert.match(source, /export function buildKnowledgePayload/);
   assert.match(source, /export function normalizePreview/);
   assert.match(source, /export function describePreview/);
-  const posted = [...source.matchAll(/api\("(\/api\/[^"]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(posted.sort(), ["/api/knowledge/commit", "/api/knowledge/preview"]);
-  assert.equal(source.includes("/api/knowledge/preview") && source.includes("previewId"), true);
+  const posted = [...new Set([...source.matchAll(/(?:api|postJson)\("(\/api\/[^"]+)"/g)].map((match) => match[1]))].sort();
+  assert.deepEqual(posted, ["/api/knowledge/cancel", "/api/knowledge/commit", "/api/knowledge/preview"]);
+  assert.match(source, /postJson\("\/api\/knowledge\/commit", \{ previewId: preview\.previewId \}\)/, "提交只发 previewId");
 });
 
 test("the commit is refused when the form changed after the preview", async () => {

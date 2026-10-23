@@ -286,8 +286,8 @@ Missing capabilities are reported as unknown, never as a working feature.
 | K05 User preferences | Open | — | — |
 | K06 Semantic retrieval | Partly | Term and bigram ranking | No embeddings |
 | K07 Source citation | Partly | Index results carry their file | — |
-| K08 Stale information management | Partly | `app/knowledge-base.mjs` `evaluateKnowledgeExpiry` | Expiry is evaluated on read; nothing re-collects a stale entry |
-| K09 Memory correction | Partly | `app/knowledge-base.mjs` `compareKnowledgeFacts`, `detectKnowledgeConflicts`, Phase 213 hand-written correction through the two-step write | A conflict is shown and can be overwritten one entry at a time; there is no merge flow |
+| K08 Stale information management | Partly | `app/knowledge-base.mjs` `evaluateKnowledgeExpiry`, Phase 214 mark-stale action on the knowledge page | Expiry is evaluated on read; marking stale is manual, nothing re-collects the entry |
+| K09 Memory correction | Partly | `app/knowledge-base.mjs` `compareKnowledgeFacts`, `detectKnowledgeConflicts`, Phase 213 two-step write, Phase 214 verify / archive actions | A conflict is shown and can be corrected or archived one entry at a time; there is no merge flow |
 | K10 Knowledge update prompt | Partly | `app/knowledge-base.mjs` `reviewKnowledgeUpdates` | The prompt is rendered in the panel only; no push reminder |
 
 The index holds a snapshot. The live state always comes from a fresh

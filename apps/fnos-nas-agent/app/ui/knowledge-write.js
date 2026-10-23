@@ -80,6 +80,54 @@ export function describePreview(preview) {
   return lines;
 }
 
+const ENTRY_ACTIONS = Object.freeze({
+  verify: Object.freeze({ operation: "verify", verification: "verified", label: "标记为已核验", irreversible: false }),
+  stale: Object.freeze({ operation: "verify", verification: "stale", label: "标记为可能过期", irreversible: false }),
+  archive: Object.freeze({ operation: "archive", verification: null, label: "归档", irreversible: true })
+});
+
+export function buildEntryActionInput(action, id) {
+  const meta = ENTRY_ACTIONS[action];
+  const entryId = text(id);
+  if (!meta || !entryId) return null;
+  const input = { id: entryId };
+  if (meta.verification) input.verification = meta.verification;
+  return { operation: meta.operation, input, label: meta.label, irreversible: meta.irreversible };
+}
+
+export function describeEntryAction(action, title) {
+  const meta = ENTRY_ACTIONS[action];
+  if (!meta) return "";
+  const name = text(title) || "该条目";
+  if (meta.operation === "archive") {
+    return `将把「${name}」归档：归档后不再出现在检索结果里，也不能从界面上恢复。`;
+  }
+  return `将把「${name}」${meta.label}：核验状态会改为 ${meta.verification}，立即生效。`;
+}
+
+function entryActionStrip(action, title, onConfirm, onCancel) {
+  const strip = document.createElement("div");
+  strip.className = "knowledge-panel__confirm";
+  const line = document.createElement("p");
+  line.className = "knowledge-panel__confirm-text";
+  line.textContent = describeEntryAction(action, title);
+  const buttons = document.createElement("div");
+  buttons.className = "knowledge-panel__confirm-actions";
+  const confirm = document.createElement("button");
+  confirm.type = "button";
+  confirm.className = "btn btn--primary btn--small";
+  confirm.textContent = "确认执行";
+  confirm.addEventListener("click", () => onConfirm(strip));
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "btn btn--ghost btn--small";
+  cancel.textContent = "取消";
+  cancel.addEventListener("click", () => onCancel());
+  buttons.append(confirm, cancel);
+  strip.append(line, buttons);
+  return strip;
+}
+
 function mount(options = {}) {
   const root = options.root || document.querySelector("#knowledge-write");
   if (!root) return null;
@@ -222,6 +270,85 @@ function mount(options = {}) {
     } catch (error) {
       invalidatePreview("提交失败：" + (error?.message || "请求失败"));
     }
+  }
+
+  async function postJson(path, body) {
+    const response = await api(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    return { ok: response.ok, payload: await response.json() };
+  }
+
+  // 条目级动作：核验 / 标记过期 / 归档。同样是两步：先预览拿 previewId，再提交。
+  async function startEntryAction(button) {
+    const action = button.dataset.knowledgeAction || "";
+    const id = button.dataset.knowledgeId || "";
+    const title = button.dataset.knowledgeTitle || "";
+    const plan = buildEntryActionInput(action, id);
+    const host = button.parentElement;
+    if (!plan || !host || host.dataset.busy === "1") return;
+    host.dataset.busy = "1";
+    const previous = [...host.childNodes];
+    const line = document.createElement("p");
+    line.className = "muted";
+    line.textContent = "正在预览…";
+    host.replaceChildren(line);
+    const restore = () => {
+      host.replaceChildren(...previous);
+      delete host.dataset.busy;
+    };
+    const previewResult = await postJson("/api/knowledge/preview", { operation: plan.operation, input: plan.input });
+    const preview = previewResult.ok ? normalizePreview(previewResult.payload) : null;
+    if (!preview) {
+      line.className = "error";
+      line.textContent = "预览被拒绝：" + (previewResult.payload?.error || "服务端未给出原因");
+      const back = document.createElement("button");
+      back.type = "button";
+      back.className = "btn btn--ghost btn--small";
+      back.textContent = "返回";
+      back.addEventListener("click", restore);
+      host.append(back);
+      return;
+    }
+    const strip = entryActionStrip(
+      action,
+      title,
+      async (stripEl) => {
+        const textLine = stripEl.querySelector(".knowledge-panel__confirm-text");
+        if (textLine) textLine.textContent = "正在提交…";
+        const committed = await postJson("/api/knowledge/commit", { previewId: preview.previewId });
+        if (!committed.ok) {
+          if (textLine) {
+            textLine.className = "knowledge-panel__confirm-text error";
+            textLine.textContent = "提交被拒绝：" + (committed.payload?.error || "服务端未给出原因");
+          }
+          return;
+        }
+        const stored = committed.payload?.entry || {};
+        if (textLine) textLine.textContent = "已更新：" + (stored.title || title || "该条目") + "。";
+        onSaved(stored);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("knowledge-saved", { detail: { entry: stored, action } }));
+        }
+      },
+      async () => {
+        await postJson("/api/knowledge/cancel", { previewId: preview.previewId });
+        restore();
+      }
+    );
+    host.replaceChildren(strip);
+  }
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      const button = target && typeof target.closest === "function" ? target.closest("[data-knowledge-action]") : null;
+      if (!button) return;
+      event.preventDefault();
+      startEntryAction(button);
+    });
   }
 
   previewButton?.addEventListener("click", () => {

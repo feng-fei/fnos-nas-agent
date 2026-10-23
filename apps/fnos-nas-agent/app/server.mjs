@@ -964,6 +964,7 @@ function auditRoute(pathname, method) {
   if (pathname === "/api/knowledge/conflicts") return "knowledge.conflicts";
   if (pathname === "/api/knowledge/preview") return "knowledge.preview";
   if (pathname === "/api/knowledge/commit") return "knowledge.commit";
+  if (pathname === "/api/knowledge/cancel") return "knowledge.cancel";
   if (pathname.startsWith("/api/knowledge/")) return pathname.endsWith("/reference") ? "knowledge.reference" : "knowledge.read";
   if (pathname === "/api/docker/advice") return "docker.advice";
   if (pathname === "/api/tasks/clear-history") return "tasks.clear";
@@ -2611,6 +2612,21 @@ const server = createServer(async (req, res) => {
       const result = knowledgeBase.commit(previewId);
       if (result.ok === false) return reply(res, 400, { error: result.message || "Rejected", code: result.code || "rejected" });
       return reply(res, 201, result);
+    }
+    if (url.pathname === "/api/knowledge/cancel") {
+      const active = sessionFor(req);
+      if (!active) return reply(res, 401, { error: "Unauthorized" });
+      if (req.method !== "POST") return reply(res, 405, { error: "Method not allowed" }, "application/json; charset=utf-8", { allow: "POST" });
+      if (!sameOrigin(req)) return reply(res, 403, { error: "Forbidden origin" });
+      if (!(req.headers["content-type"] || "").toLowerCase().startsWith("application/json"))
+        return reply(res, 415, { error: "Expected application/json" });
+      const input = await jsonBody(req);
+      const previewId = typeof input?.previewId === "string" ? input.previewId : "";
+      if (!previewId) return reply(res, 400, { error: "A previewId is required" });
+      // 丢弃一个还没提交的预览：界面上点「取消」时调用，避免服务端留下悬空预览。
+      const result = knowledgeBase.cancel(previewId);
+      if (result.ok === false) return reply(res, 400, { error: result.message || "Rejected", code: result.code || "rejected" });
+      return reply(res, 200, result);
     }
     if (url.pathname === "/api/knowledge") {
       const active = sessionFor(req);
