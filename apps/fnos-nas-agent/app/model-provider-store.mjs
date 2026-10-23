@@ -46,6 +46,14 @@ function text(value, field, max, optional = false) {
     fail(400, field + " is required or invalid.", "MODEL_INVALID_FIELD");
   return result;
 }
+// 判断路径是不是「服务商 base」：空路径，或最后一段是 v1 / v1beta / v4 这类版本段。
+// 这条规则只用来决定「要不要补 /chat/completions」，不是安全边界——协议、主机、
+// 凭据、查询串的校验在 endpoint() 里已经做完了。
+function isOpenAiCompatibleBase(pathname) {
+  if (!pathname) return true;
+  const last = pathname.slice(pathname.lastIndexOf("/") + 1);
+  return /^(?:v\d+(?:[a-z0-9-]*)?|openai|compatible-mode|api|paas)$/i.test(last);
+}
 function endpoint(value) {
   const valueText = text(value, "API endpoint", 2048);
   let url;
@@ -53,9 +61,24 @@ function endpoint(value) {
   const loopbackHttp = url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname.toLowerCase());
   if ((url.protocol !== "https:" && !loopbackHttp) || !url.hostname || url.username || url.password || url.search || url.hash)
     fail(400, "API endpoint must use HTTPS; plain HTTP is allowed only for localhost, 127.0.0.1, or ::1.", "MODEL_INVALID_ENDPOINT");
-  url.pathname = url.pathname.replace(/\/+$/, "");
-  if (!url.pathname.endsWith("/chat/completions"))
-    fail(400, "Endpoint must end with /chat/completions (such as /v1/chat/completions).", "MODEL_INVALID_ENDPOINT");
+  // 允许只填到「服务商 base 地址」：OpenAI 协议的服务都在 base 下开对话接口，
+  // 手打一长串容易错，所以这里自动补全 /chat/completions。只有确实像 base
+  // 的路径才补（空路径、/v1、/v1beta、/v4、/openai/v1 这类），随便什么路径都补
+  // 会造出 /v1/responses/chat/completions 这种不存在的地址。
+  // 注意：不能先给 url.pathname 赋空串——URL 会把空路径归一成 "/"，判断就落空了。
+  const trimmedPath = url.pathname.replace(/\/+$/, "");
+  let normalizedPath;
+  if (trimmedPath.endsWith("/chat/completions")) {
+    // 已经是完整对话地址，原样保留。
+    normalizedPath = trimmedPath;
+  } else if (trimmedPath.endsWith("/chat")) {
+    normalizedPath = trimmedPath + "/completions";
+  } else if (isOpenAiCompatibleBase(trimmedPath)) {
+    normalizedPath = trimmedPath + "/chat/completions";
+  } else {
+    fail(400, "Endpoint must be an OpenAI-compatible base URL (such as https://api.deepseek.com/v1) or end with /chat/completions.", "MODEL_INVALID_ENDPOINT");
+  }
+  url.pathname = normalizedPath;
   return url.toString();
 }
 function idValue(value) {

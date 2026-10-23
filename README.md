@@ -221,6 +221,7 @@ Contributions should include focused tests, bounded inputs/outputs, sanitized er
 - [Phase 215 — Bounded Retry for Read-Only Steps](docs/phase-215-retry-policy.md)
 - [Phase 216 — Archived Knowledge View](docs/phase-216-knowledge-archived-view.md)
 - [Phase 217 — Backup Pre-check](docs/phase-217-backup-precheck.md)
+- [Phase 218 — Model Endpoint Base URL](docs/phase-218-model-endpoint-base.md): accept a provider base URL such as https://api.deepseek.com/v1 and fill in /chat/completions server-side; paths like /v1/responses stay rejected.
 
 - [Phase 94 — Model Catalog HTTP Integration](docs/phase-94-model-catalog-http.md)
 - [Phase 95 — Searchable Model Catalog Picker](docs/phase-95-model-catalog-search.md)

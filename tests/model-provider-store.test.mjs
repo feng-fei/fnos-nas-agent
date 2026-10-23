@@ -190,3 +190,37 @@ test("fallback flag is type-checked and backup candidates are bounded", async t 
   assert.equal(store.runtimeFallbackConfigs().length, 3);
   assert.equal(store.runtimeFallbackConfigs().some(item => item.providerId === main.id), false);
 });
+
+test("provider input accepts an OpenAI-compatible base URL and fills in /chat/completions", () => {
+  const normalize = value => validateModelProviderInput(input("base", { endpoint: value }), { creating: true }).endpoint;
+  // 只填服务商根地址
+  assert.equal(normalize("https://api.deepseek.com"), "https://api.deepseek.com/chat/completions");
+  // 常见的版本段结尾
+  assert.equal(normalize("https://api.deepseek.com/v1"), "https://api.deepseek.com/v1/chat/completions");
+  assert.equal(normalize("https://api.deepseek.com/v1/"), "https://api.deepseek.com/v1/chat/completions");
+  assert.equal(normalize("https://dashscope.aliyuncs.com/compatible-mode/v1"), "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions");
+  assert.equal(normalize("https://open.bigmodel.cn/api/paas/v4"), "https://open.bigmodel.cn/api/paas/v4/chat/completions");
+  assert.equal(normalize("https://api.openai.com/openai/v1"), "https://api.openai.com/openai/v1/chat/completions");
+  // 本机模型服务的 base 也认
+  assert.equal(normalize("http://127.0.0.1:11434/v1"), "http://127.0.0.1:11434/v1/chat/completions");
+  // 已经写到 /chat 的，补齐后半段而不是叠成 /chat/chat/completions
+  assert.equal(normalize("https://api.deepseek.com/v1/chat"), "https://api.deepseek.com/v1/chat/completions");
+  // 已经完整的地址保持不变
+  assert.equal(normalize("https://api.deepseek.com/v1/chat/completions"), "https://api.deepseek.com/v1/chat/completions");
+  assert.equal(normalize("https://api.deepseek.com/v1/chat/completions/"), "https://api.deepseek.com/v1/chat/completions");
+});
+
+test("provider input still rejects paths that are neither a base URL nor a chat endpoint", () => {
+  const rejected = value => assert.throws(
+    () => validateModelProviderInput(input("bad", { endpoint: value }), { creating: true }),
+    { statusCode: 400 }
+  );
+  // 非版本段结尾的路径不能被猜测成 base，否则会拼出不存在的地址
+  rejected("https://provider.example/v1/responses");
+  rejected("https://provider.example/download");
+  rejected("https://provider.example/v1/embeddings");
+  // scheme、凭据、查询串的边界不变
+  rejected("http://provider.example/v1");
+  rejected("https://user:pass@provider.example/v1");
+  rejected("https://provider.example/v1?key=secret");
+});
