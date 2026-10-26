@@ -605,6 +605,7 @@ const systemToolSource = {
     return definition ? definition.invoke(args) : { ok: false, reason: "unknown-tool" };
   }
 };
+const commandExecSource = createCommandExecSource({ dataDir });
 const toolRegistry = createToolRegistry({
   sources: [
     {
@@ -622,7 +623,6 @@ const toolRegistry = createToolRegistry({
   tracer: toolTracer,
   observer: toolObserver
 });
-const commandExecSource = createCommandExecSource({ dataDir });
 const actionApprovals = createActionApprovalService({ tools: toolRegistry });
 // system.command 的提案先过静态安全扫描：block 级命令在创建确认请求之前就拒绝，
 // 让对话里直接给出可读的拒绝原因，而不是等用户确认后才失败。
