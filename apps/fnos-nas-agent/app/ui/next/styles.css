@@ -165,6 +165,7 @@ p{margin:.4em 0}
 .banner{border-radius:var(--radius-md);padding:10px 14px;font-size:var(--fs-sm);line-height:1.6;margin-bottom:12px}
 .banner--info{background:var(--info-soft);color:var(--info)}
 .banner--warn{background:var(--warn-soft);color:var(--warn)}
+.banner--danger{background:var(--danger-soft);color:var(--danger);font-weight:600}
 .empty{text-align:center;padding:52px 20px;color:var(--text-mute)}
 .empty .big{font-size:42px;margin-bottom:8px}
 .skeleton{height:52px;border-radius:12px;border:1px solid var(--border);

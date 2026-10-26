@@ -33,7 +33,9 @@ function renderNav(){
   $id("nav-toggle").hidden = isDesktop;
   tabbar.hidden = isDesktop;
 }
-matchMedia("(min-width:1120px)").addEventListener("change", renderNav);
+const desktopMql = matchMedia("(min-width:1120px)");
+if(typeof desktopMql.addEventListener === "function") desktopMql.addEventListener("change", renderNav);
+else if(typeof desktopMql.addListener === "function") desktopMql.addListener(renderNav);
 $id("nav-toggle").addEventListener("click", () => {
   const rail = $id("nav-rail");
   rail.classList.toggle("nav-rail--open");
@@ -139,3 +141,5 @@ startRouter({
 
 renderNav();
 bootSession();
+/* 引导完成标记：诊断脚本据此区分"还在加载"与"模块没有执行"。 */
+document.documentElement.setAttribute("data-ui2-boot", "ok");
