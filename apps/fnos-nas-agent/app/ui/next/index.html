@@ -75,9 +75,9 @@
       <h2 class="auth-card__title">初始化设置</h2>
       <p class="field__hint">首次使用需设置管理密码；只保存加盐 scrypt 哈希，不保存明文。</p>
       <div class="field"><label class="field__label" for="setup-password">管理密码（10–128 位）</label>
-        <input class="input" id="setup-password" type="password" minlength="10" maxlength="128" required></div>
+        <input class="input" id="setup-password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></div>
       <div class="field"><label class="field__label" for="setup-password2">确认密码</label>
-        <input class="input" id="setup-password2" type="password" minlength="10" maxlength="128" required></div>
+        <input class="input" id="setup-password2" type="password" autocomplete="new-password" minlength="10" maxlength="128" required></div>
       <div class="field" id="setup-code-field" hidden><label class="field__label" for="setup-code">安装码</label>
         <input class="input" id="setup-code" maxlength="64" autocomplete="one-time-code">
         <p class="field__hint">服务端启用了安装码校验时必填，见 NAS 日志中的 first-run setup code。</p></div>
@@ -88,7 +88,7 @@
     <form id="form-login" hidden autocomplete="off">
       <h2 class="auth-card__title">登录</h2>
       <div class="field"><label class="field__label" for="login-password">管理密码</label>
-        <input class="input" id="login-password" type="password" maxlength="128" required></div>
+        <input class="input" id="login-password" type="password" autocomplete="current-password" maxlength="128" required></div>
       <label class="checkbox"><input type="checkbox" id="login-remember"><span>30 天内保持登录</span></label>
       <p class="error" id="login-error" role="alert"></p>
       <button class="btn btn--primary btn--block" type="submit">登录</button>
