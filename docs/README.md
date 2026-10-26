@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 226 documents (210 phase documents and 15 non-phase documents, plus this file).
+This index lists 227 documents (211 phase documents and 15 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -773,6 +773,7 @@ This index lists 226 documents (210 phase documents and 15 non-phase documents, 
 - [Phase 223：UI2 设置区（UI-5）](phase-223-ui2-settings.md) — 模型服务 CRUD/测试/默认/用量/预设、Skill 状态机+ZIP/远程导入、知识库统计冲突与两步写入、执行模式切换（停机可恢复）与安检、能力位图。
 - [Phase 224：UI2 成为默认控制台（UI-6 第一刀）](phase-224-ui2-default-entry.md) — `GET /` 返回新壳（`<base>` 保证相对资源仍走 /next/*），旧 UI 冻结在 `/legacy`；说明旧测试依赖为何要求删除与测试退役同批进行。
 - [Phase 225：UI2 覆盖审计、不变量测试与退役清单](phase-225-ui2-invariants-and-audit.md) — 双向对账修复 20 条未接漏项（CLI 引导/查重/批量端点/官方 CLI 安装/组合计划等），建立 9 例 UI2 不变量测试，量化旧 UI 退役清单（gates 41 条断言 + 14 个测试文件）。
+- [Phase 226：确认式命令执行](phase-226-command-exec.md) — `system.command`（destructive）+ `system.command-check`（只读预检）：Phase 145 扫描器 block 拒绝 + 一次性人工确认 + bash -c 参数数组执行；规则直连意图「运行命令：…」；模型提示词与边界声明同步。
 
 ## This index
 

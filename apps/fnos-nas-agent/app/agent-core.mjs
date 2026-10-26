@@ -57,7 +57,8 @@ const DIRECT_INTENTS = [
   { pattern: /^创建文本文件\s+(.{1,255}?)\s+于\s+(.{1,2048}?)\s+内容[：:]\s*([\s\S]{1,10000})$/i, tool: "files.create-text", args: match => ({ name: match[1].trim(), path: match[2].trim(), content: match[3] }), message: "正在创建文本文件。" },
   { pattern: /^重命名\s+(.{1,2048}?)\s+为\s+(.{1,255})$/i, tool: "files.rename", args: match => ({ path: match[1].trim(), name: match[2].trim() }), message: "正在重命名文件或文件夹。" },
   { pattern: /^移动\s+(.{1,2048}?)\s+到\s+(.{1,2048})$/i, tool: "files.move", args: match => ({ path: match[1].trim(), destination: match[2].trim() }), message: "正在移动文件或文件夹。" },
-  { pattern: /^删除\s+(.{1,2048})$/i, tool: "files.delete", args: match => ({ path: match[1].trim() }), message: "删除操作需要二次确认。" }
+  { pattern: /^删除\s+(.{1,2048})$/i, tool: "files.delete", args: match => ({ path: match[1].trim() }), message: "删除操作需要二次确认。" },
+  { pattern: /^运行(?:命令)?[：:]\s*([\s\S]{1,1500})$/i, tool: "system.command", args: match => ({ command: match[1].trim() }), message: "命令执行需要确认。" }
 ];
 
 function argsMatchSchema(args, schema) {
@@ -173,7 +174,16 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
       if (direct) {
         reportProgress(15, "已识别请求");
         if (cancelled()) throw Object.assign(new Error("Task cancellation requested"), { code: "TASK_CANCELLED" });
-        const results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] }, taskId, reportProgress, shouldCancel, sessionId, reportTool);
+        let results;
+        try {
+          results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] }, taskId, reportProgress, shouldCancel, sessionId, reportTool);
+        } catch (error) {
+          return { taskId, createdAt, completedAt: now(), status: "failed", mode: "rules",
+            message: error?.code === "COMMAND_BLOCKED" ? error.message
+              : error?.statusCode === 404 ? "请求了不在白名单中的工具，已拒绝。"
+              : "工具请求未通过校验或执行失败；未执行任意系统命令。",
+            results: [] };
+        }
         if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "rules", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "rules", message: direct.item.message, results };
       }
@@ -210,7 +220,9 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
         if (error?.code === "TASK_CANCELLED") throw error;
         return {
           taskId, createdAt, completedAt: now(), status: "failed", mode: "model",
-          message: error?.statusCode === 404 ? "模型请求了不在白名单中的工具，已拒绝该请求。" : "工具请求未通过校验或执行失败；未执行任意系统命令。",
+          message: error?.statusCode === 404 ? "模型请求了不在白名单中的工具，已拒绝该请求。"
+            : error?.code === "COMMAND_BLOCKED" ? error.message
+            : "工具请求未通过校验或执行失败；未执行任意系统命令。",
           results: []
         };
       }

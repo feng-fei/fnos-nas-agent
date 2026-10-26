@@ -317,7 +317,8 @@ export function render(root){
 
   thread.append(h("div", { style:"display:flex;justify-content:flex-start" },
     h("div", { style:"max-width:88%;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:10px 14px;font-size:14px" },
-      "你好！我可以查看状态、浏览文件、执行经确认的整理任务。破坏性操作会先展示具体目标，确认后才会执行。")));
+      "你好！我可以查看状态、浏览文件、整理文件，也可以在你确认后执行 shell 命令（试试：运行命令：df -h）。高危命令会被安全扫描直接拒绝。",
+      h("p", { class:"muted", style:"font-size:12px;margin:6px 0 0" }, "破坏性操作先展示完整命令/目标，经一次性确认后才执行。"))));
 
   const statusCard = h("div", { class:"card" },
     h("div", { class:"card__head" }, h("h2", { class:"card__title" }, "助手状态"),
@@ -334,7 +335,7 @@ export function render(root){
     if(!el) return;
     const cli = s.trimCli || {};
     el.textContent = "模型：" + (s.model?.enabled ? (s.model.providerName || s.model.model) : "未配置") +
-      " · 可用工具 " + s.availableTools + " · 任意命令执行：关闭" +
+      " · 可用工具 " + s.availableTools + " · 命令执行：扫描 + 确认后" +
       (cli.connectionStatus ? " · CLI：" + cli.connectionStatus : "");
   }).catch(() => {});
   callJson("chatStatus").then(s => {

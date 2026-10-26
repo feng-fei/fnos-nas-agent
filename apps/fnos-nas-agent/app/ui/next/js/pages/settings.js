@@ -425,7 +425,7 @@ export function render(root, ctx){
       h("div", { class:"card__head" }, h("h2", { class:"card__title" }, "边界声明")),
       h("div", { class:"card__body" },
         h("ul", { style:"font-size:13px;padding-left:18px;margin:0", class:"stack" },
-          h("li", null, "任意命令执行、导入 Skill 的代码执行：永久关闭"),
+          h("li", null, "命令执行：经安全扫描（高危命令直接拒绝）+ 一次性人工确认后才执行；导入 Skill 的代码执行：永久关闭"),
           h("li", null, "删除等破坏性操作：服务端一次性确认，60 秒内单次有效"),
           h("li", null, "API Key 加密存储，UI 永远读不回明文"),
           h("li", null, "审计只记路由与结果状态，不记参数与密钥"))));
