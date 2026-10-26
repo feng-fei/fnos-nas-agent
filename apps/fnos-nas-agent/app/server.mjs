@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import os from "node:os";
 import { statfs } from "node:fs/promises";
 import { readFile, writeFile, mkdir, rename, chmod, readdir, rm } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, timingSafeEqual, createHash, scrypt } from "node:crypto";
 import { createSkillStore, skillStates } from "./skills.mjs";
@@ -875,6 +875,36 @@ async function serveUiAsset(res, url) {
   return true;
 }
 
+// UI2 (/next/*): the rebuilt shell lives in ui/next with nested ES modules.
+// Serves only a fixed extension allowlist, resolved strictly inside ui/next.
+const NEXT_ROOT = join(root, "ui", "next");
+async function serveNextAsset(res, url) {
+  if (!url.pathname.startsWith("/next/")) return false;
+  let rel = "";
+  try {
+    rel = decodeURIComponent(url.pathname.slice("/next/".length));
+  } catch {
+    return false;
+  }
+  if (!rel || rel.includes("..") || rel.includes("\\") || rel.startsWith("/")) return false;
+  const dot = rel.lastIndexOf(".");
+  if (dot <= 0) return false;
+  const type = UI_ASSET_TYPES.get(rel.slice(dot).toLowerCase());
+  if (!type) return false;
+  const target = join(NEXT_ROOT, rel);
+  const bounded = relative(NEXT_ROOT, target);
+  if (bounded.startsWith("..") || isAbsolute(bounded)) return false;
+  let body;
+  try {
+    body = await readFile(target);
+  } catch (error) {
+    if (error.code === "ENOENT" || error.code === "EISDIR") return false;
+    throw error;
+  }
+  reply(res, 200, body, type, { "cache-control": "no-cache" });
+  return true;
+}
+
 // A model request can hang for minutes; the task manager aborts it after this
 // budget. 0 disables the timeout, the upper bound is one hour.
 function taskTimeoutMsFromEnv() {
@@ -1023,6 +1053,12 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/")
       return reply(res, 200, await readFile(join(root, "ui", "index.html"), "utf8"), "text/html; charset=utf-8");
+    if (req.method === "GET" && url.pathname === "/next")
+      return reply(res, 200, await readFile(join(root, "ui", "next", "index.html"), "utf8"), "text/html; charset=utf-8");
+    if (req.method === "GET" && url.pathname.startsWith("/next/")) {
+      if (await serveNextAsset(res, url)) return;
+      return reply(res, 404, { error: "Not found" });
+    }
     if (req.method === "GET" && url.pathname.startsWith("/ui/")) {
       if (await serveUiAsset(res, url)) return;
       return reply(res, 404, { error: "Not found" });

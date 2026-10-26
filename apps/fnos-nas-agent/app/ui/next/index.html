@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="928A8E0cPRzKd8l7CLxV4T">
+<head data-page-node-id="dB84IpY0bjBw1whdzZoavH">
+<meta charset="UTF-8" data-page-node-id="K76h1ANkHAmj7O78Ora0Sl">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" data-page-node-id="uUOIPHJnLQphm0mNvdtdlq">
+<meta name="color-scheme" content="light dark" data-page-node-id="kl6vOepwBlih0Cm9liq86I">
+<title>fnos-nas-agent</title>
+<link rel="stylesheet" href="./styles.css" data-page-node-id="DJe1AdycJO9u3tuK0C7lD1">
+<link rel="icon" href="../favicon.svg" data-page-node-id="gdrP5wquI9BT0SLLDcyMev">
+</head>
+<body class="app" data-page-node-id="Ssmg6WC2ijDvyEOR2lBZil">
+<a class="skip-link" href="#main" data-page-node-id="pUsbvcqC8H7Bu1IIscRm6t">跳到主要内容</a>
+<div class="toast-host" id="toast-host" data-page-node-id="r0UBpC6ElWoLSe2LYgjNVT"></div>
+<div class="modal-host" id="modal-host" data-page-node-id="ZQSlipHMu1A2mvQA0K2OSw"></div>
+
+<header class="app-header" data-page-node-id="Wgc3JGyoeBbxVY6AQk9Fmp">
+  <button class="btn btn--ghost btn--sm btn--icon-only" id="nav-toggle" aria-label="切换导航" hidden data-page-node-id="o5LhiT02Bu9HFQFPpa4Czg">☰</button>
+  <div class="brand" data-page-node-id="JTBmXKHrGdT7T4vbB4gzLy"><span class="brand-mark" data-page-node-id="wuF3HSEtqaJYbvs3jGMkAK">🛰️</span><b data-page-node-id="YsFaUJBmmQBnT2orttoemn">fnos-nas-agent</b><span class="badge badge--env" id="env-badge" hidden data-page-node-id="BeP8HLz2PL6THkiNc2yWy4"></span></div>
+  <div class="app-header__spacer" data-page-node-id="f03pLldiVGjcnIjfD2PuPT"></div>
+  <button class="btn btn--ghost btn--sm btn--icon-only" id="btn-refresh" title="刷新当前页（R）" data-page-node-id="ttiV9BEPX3skzGOqgA9n1M">⟳</button>
+  <button class="btn btn--ghost btn--sm btn--icon-only" id="btn-theme" title="切换主题" data-page-node-id="W9QghYbo8i21mY1R9FBRf8">🌗</button>
+  <button class="btn btn--ghost btn--sm" id="btn-logout" hidden data-page-node-id="1SCqnbZ5wNGdRUnkll9bcX">退出登录</button>
+</header>
+
+<div class="app-body" data-page-node-id="Pvk7pOjgwYx7OAkCVjSbzL">
+  <nav class="nav-rail" id="nav-rail" aria-label="主导航" data-page-node-id="oi6NHCpLJ0VSFVNMzwzPBo"></nav>
+  <main class="app-main" id="main" tabindex="-1" data-page-node-id="CCYStixwF3VfvGsSC3AyVM">
+    <div class="page-head" data-page-node-id="6I2o779qbhsvofHIW7IMbZ">
+      <h1 class="page-head__title" id="page-title" data-page-node-id="utnwW6sHTfMyAZEZGHURDK">加载中…</h1>
+      <p class="page-head__sub muted" id="page-sub" data-page-node-id="aAfYQuHxO1z8n7RGAkKhbB"></p>
+    </div>
+    <div id="page-root" aria-live="polite" data-page-node-id="7ZD2SWw8Dqzd92F1BJOm3w"></div>
+  </main>
+</div>
+
+<nav class="tabbar" id="tabbar" aria-label="快捷导航" hidden data-page-node-id="5IabEMYe9PZzmsu5hDTXLP"></nav>
+
+<section class="auth-layer" id="auth-layer" hidden data-page-node-id="XCJpRdFBm2P3jl3KRmHXgK">
+  <div class="card auth-card" data-page-node-id="fDi21GJswQQIzBKgTF1bHy">
+    <div class="auth-card__brand" data-page-node-id="VbqFvJlnzPjNwH5i8aQhEq"><span class="brand-mark" data-page-node-id="sSyO2hszfvnpjnvoIRbrdp">🛰️</span><b data-page-node-id="AeYowec1SLRB0ZUrrlENgx">fnos-nas-agent</b></div>
+    <p class="muted auth-card__hint" data-page-node-id="7qrGO7rlKtff0MCExoTcQS">轻量、安全优先的飞牛 fnOS NAS 智能助手。</p>
+
+    <form id="form-setup" hidden autocomplete="off" data-page-node-id="DHcOW6THeYMOUATtSRnECn">
+      <h2 class="auth-card__title" data-page-node-id="wbgpJ3y5kjWaKUI56f17rc">初始化设置</h2>
+      <p class="field__hint" data-page-node-id="TFTdJqy6HYH8MPwxcf8PFA">首次使用需设置管理密码；只保存加盐 scrypt 哈希，不保存明文。</p>
+      <div class="field" data-page-node-id="LiO4WD7MDkQaQp2qn2IrTw"><label class="field__label" for="setup-password" data-page-node-id="ZbFnwunIDGCcLd8uOUrMWD">管理密码（10–128 位）</label>
+        <input class="input" id="setup-password" type="password" minlength="10" maxlength="128" required data-page-node-id="PIoXd1mlqGoJJrHTKKYEzG"></div>
+      <div class="field" data-page-node-id="3PxA1deSJFb88fGtI73wtV"><label class="field__label" for="setup-password2" data-page-node-id="tbtDWLAPvo0H0R2RQNGpm2">确认密码</label>
+        <input class="input" id="setup-password2" type="password" minlength="10" maxlength="128" required data-page-node-id="UzR7pR2XgTI128p0OBgvvN"></div>
+      <div class="field" id="setup-code-field" hidden data-page-node-id="Qj8X6WWEOvFCLDbImNWEUJ"><label class="field__label" for="setup-code" data-page-node-id="Ld6JE0iCFmoPNsnVmWtjwK">安装码</label>
+        <input class="input" id="setup-code" maxlength="64" autocomplete="one-time-code" data-page-node-id="WqVBDT6ChC1cJvEZ471ACw">
+        <p class="field__hint" data-page-node-id="xk3TcmVA0Wl6NIbJ7q8XpQ">服务端启用了安装码校验时必填，见 NAS 日志中的 first-run setup code。</p></div>
+      <p class="error" id="setup-error" role="alert" data-page-node-id="rINYPe2IaIz5M8nZC6TIez"></p>
+      <button class="btn btn--primary btn--block" type="submit" data-page-node-id="iK4IC6slfs3MoIrXhLoSlS">完成设置并继续</button>
+    </form>
+
+    <form id="form-login" hidden autocomplete="off" data-page-node-id="7c3XHvAof9L5QkPif8hD0g">
+      <h2 class="auth-card__title" data-page-node-id="yrm3v18lyecjRukoZ7T5sH">登录</h2>
+      <div class="field" data-page-node-id="JGiG1qtNDqEr3QyLJy2zj2"><label class="field__label" for="login-password" data-page-node-id="o9eiN3yBEKDtIF94nGTKYd">管理密码</label>
+        <input class="input" id="login-password" type="password" maxlength="128" required data-page-node-id="G59XeyFaKe2dQn30pCtiUc"></div>
+      <label class="checkbox" data-page-node-id="sR3kOJYLxBNifOpZaAIT23"><input type="checkbox" id="login-remember" data-page-node-id="cDIOFtM1zO2nkZR3DciMoM"><span data-page-node-id="eEfvNCavPX1sAM5kBzFkdF">30 天内保持登录</span></label>
+      <p class="error" id="login-error" role="alert" data-page-node-id="D81uCVFjzdkh8Cg6SUKdZO"></p>
+      <button class="btn btn--primary btn--block" type="submit" data-page-node-id="gyCC57NBD4odfhYCoXlSsI">登录</button>
+    </form>
+
+    <div id="auth-loading" class="auth-card__loading" data-page-node-id="CIynLshkZwKNPPVJKZKhxf">
+      <div class="skeleton" data-page-node-id="mAQ69VgUggE8jMbFLH5Fh6"></div><div class="skeleton" style="width:70%" data-page-node-id="qHezMBJGgCH0U1rG25ejR3"></div>
+    </div>
+  </div>
+</section>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
