@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 219 documents (203 phase documents and 15 non-phase documents, plus this file).
+This index lists 222 documents (206 phase documents and 15 non-phase documents, plus this file).
 
 ## Non-phase documents
 
