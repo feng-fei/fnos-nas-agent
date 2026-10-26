@@ -1051,10 +1051,14 @@ const server = createServer(async (req, res) => {
         return reply(res, 500, { error: "Unable to build the overview snapshot" });
       }
     }
+    // UI2 is the default console now (Phase 224). The frozen legacy UI stays
+    // reachable at /legacy (its assets remain under /ui/*) until UI cleanup.
     if (req.method === "GET" && url.pathname === "/")
-      return reply(res, 200, await readFile(join(root, "ui", "index.html"), "utf8"), "text/html; charset=utf-8");
+      return reply(res, 200, await readFile(join(root, "ui", "next", "index.html"), "utf8"), "text/html; charset=utf-8");
     if (req.method === "GET" && url.pathname === "/next")
       return reply(res, 200, await readFile(join(root, "ui", "next", "index.html"), "utf8"), "text/html; charset=utf-8");
+    if (req.method === "GET" && url.pathname === "/legacy")
+      return reply(res, 200, await readFile(join(root, "ui", "index.html"), "utf8"), "text/html; charset=utf-8");
     if (req.method === "GET" && url.pathname.startsWith("/next/")) {
       if (await serveNextAsset(res, url)) return;
       return reply(res, 404, { error: "Not found" });
