@@ -15,6 +15,7 @@ const ROUTES = {
   login:             ["POST", "/api/session"],
   logout:            ["POST", "/api/logout"],
   executionMode:     ["POST", "/api/execution-mode"],
+  executionModeGet:  ["GET",  "/api/execution-mode"],
   /* 概览与诊断 */
   overview:          ["GET",  "/api/overview"],
   diagnostics:       ["GET",  "/api/diagnostics"],
@@ -104,7 +105,7 @@ const ROUTES = {
   compositionsValidate:["POST","/api/compositions/validate"],
   securityInspection:["POST", "/api/security/inspection"],
   writeActions:      ["GET",  "/api/write-actions"],
-  backupPrecheck:    ["POST", "/api/backup/precheck"],
+  backupPrecheck:    ["GET",  "/api/backup/precheck"],
   /* 工作流 / 运行手册 / MCP / 通知 */
   workflowsList:     ["GET",  "/api/workflows"],
   workflowGet:       ["GET",  "/api/workflows/:id"],
@@ -238,6 +239,48 @@ function mockFor(name, { params, query, body } = {}){
         enabled:false, hasApiKey:false, isDefault:false, createdAt:"", updatedAt:"", lastTest:null }] };
     case "auditList": return { events:[0,1,2,3,4].map(i => ({ at:new Date(NOW - i * 9e5).toISOString(),
       route:["login","files.list","models.list","agent.message","tasks.list"][i], statusCode:[200,200,200,202,200][i] })) };
+    case "agentTrace": return { entries:[0,1,2].map(i => ({ at:new Date(NOW - i * 12e5).toISOString(),
+      tool:["system.status","files.list","fnos.photos.search"][i], durationMs:[120,340,890][i], outcome:"ok" })) };
+    case "modelsUsage": return { windowDays:7, requests:128, promptTokens:45210, completionTokens:9877, errors:2, byProvider:[
+      { provider:"DeepSeek", requests:96, errors:0 }, { provider:"本地 Qwen", requests:32, errors:2 }] };
+    case "modelsPresets": return { presets:[
+      { name:"DeepSeek", endpoint:"https://api.deepseek.com", model:"deepseek-chat" },
+      { name:"通义千问", endpoint:"https://dashscope.aliyuncs.com/compatible-mode/v1", model:"qwen-plus" },
+      { name:"OpenAI", endpoint:"https://api.openai.com/v1", model:"gpt-4o-mini" }] };
+    case "skillsList": return { skills:[
+      { id:"a1b2c3d4e5f6a1b2c3d4e5f6", name:"fnos", state:"enabled", version:"1.0.0",
+        manifestReview:{ status:"manifest_parsed", name:"fnos" }, archiveSha256:"" + "f".repeat(64), createdAt:new Date(NOW - 30 * 864e5).toISOString(), note:"官方 Skill" },
+      { id:"b2c3d4e5f6a1b2c3d4e5f6a1", name:"media-tools", state:"pending_review", version:"0.3.1",
+        manifestReview:{ status:"needs_review" }, archiveSha256:"" + "a".repeat(64), createdAt:new Date(NOW - 864e5).toISOString() }] };
+    case "knowledgeStats": return { total:12, archived:3, bySource:{ "official-doc":5, "field-observation":4, "manual-confirmation":3 },
+      byVerification:{ verified:7, unverified:3, stale:2 }, capacityUsedBytes:48211, capacityMaxBytes:1048576 };
+    case "knowledgeConflicts": return { conflicts:[
+      { topic:"Jellyfin 硬解方案", entries:[
+        { title:"NVIDIA NVENC 可用", source:"official-doc", confidence:"high" },
+        { title:"N100 核显更省电", source:"field-observation", confidence:"medium" } ] }] };
+    case "knowledgeList": return { entries:[
+      { title:"fnOS 目录结构约定", topic:"fnos", source:"official-doc", confidence:"high", createdAt:new Date(NOW - 20 * 864e5).toISOString() },
+      { title:"UPS 断电关机时序", topic:"power", source:"field-observation", confidence:"medium", createdAt:new Date(NOW - 5 * 864e5).toISOString() }] };
+    case "executionModeGet": return { mode:"normal", source:"default", modes:["normal","read-only","halted"] };
+    case "systemCapabilities": return { profile:"agent-host", capabilities:{ files:{ read:true, write:true }, docker:{ read:true, write:false }, smart:{ read:true } } };
+    case "deviceProfiles": return { profiles:[{ id:"dp1", name:"agent-host", note:"Agent 宿主机视角" }] };
+    case "healthChecks": return { checks:[{ id:"disk-usage", name:"磁盘用量", schedule:"每小时", lastOutcome:"ok" }] };
+    case "workflowsList": return { workflows:[{ id:"wf-nightly-snapshot", name:"夜间快照", enabled:true, steps:3 }] };
+    case "mcpStatus": return { servers:[{ name:"filesystem", tools:11, ok:true }, { name:"fetch", tools:1, ok:false, reason:"未启用" }] };
+    case "runbooksList": return { runbooks:[{ id:"rb-1", title:"硬盘异响处置", updatedAt:new Date(NOW - 7 * 864e5).toISOString() }] };
+    case "runbooksStats": return { count:2, tagged:1, persisted:true };
+    case "writeActions": return { actions:[] };
+    case "diagnosesList": return { diagnoses:[{ id:"d-1026", createdAt:new Date(NOW - 864e5).toISOString(), outcome:"degraded", sections:6 }] };
+    case "diagnosesStats": return { total:9, last7Days:2, degraded:1 };
+    case "networkDiagnostics": return { gateway:{ ok:true, address:"192.168.1.1" }, dns:{ ok:true, servers:["223.5.5.5"] }, proxy:{ enabled:false } };
+    case "networkPolicy": return { egress:"allowlist", webFetch:false, allowlist:["api.deepseek.com"] };
+    case "networkInterfaces": return { interfaces:[{ name:"eth0", addresses:["192.168.1.20/24"] }] };
+    case "systemServices": return { services:[{ unit:"smbd", active:"active" }, { unit:"docker", active:"active" }] };
+    case "systemSmart": return { disks:[{ device:"/dev/sda", model:"WD80EFZZ", healthy:true }, { device:"/dev/sdb", model:"ST8000VN", healthy:true }] };
+    case "systemThermal": return { readings:[{ sensor:"cpu", celsius:52 }, { sensor:"nvme0", celsius:41 }], summary:"正常" };
+    case "systemEvents": return { events:[{ at:new Date(NOW - 36e5).toISOString(), level:"info", message:"snapshot completed" }] };
+    case "capacityForecast": return { volumes:[{ mount:"/vol1", horizonDays:90, projectedFullDate:null, trendPercentPerDay:0.02 }] };
+    case "dockerStats": return { containers:[{ name:"jellyfin", cpuPercent:3.2, memUsageBytes:812000000, status:"running" }] };
     case "filesList": {
       const path = query?.path || "/vol1";
       const node = fsNode(path);
@@ -321,6 +364,11 @@ function mockFor(name, { params, query, body } = {}){
       }
       return { ok:true, summary:{ planned:plan.length } };
     }
-    default: return undefined;
+    default: {
+      /* 通用兜底：预览环境没有服务端；GET 给演示对象，写操作给「已受理」 */
+      const method = ROUTES[name] && ROUTES[name][0];
+      if(method === "GET") return { _demo:true, route:name, note:"预览演示数据（真实部署返回业务数据）" };
+      return { ok:true, _demo:true, note:"预览演示：请求已受理（模拟）" };
+    }
   }
 }

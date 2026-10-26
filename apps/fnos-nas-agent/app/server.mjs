@@ -28,6 +28,7 @@ import { createSkillInstaller } from "./skill-installer.mjs";
 import { fetchGitHubSkillArchive } from "./skill-remote-import.mjs";
 import { importGitHubSkillBatch } from "./skill-remote-import-batch.mjs";
 import { createActionApprovalService } from "./action-approval-service.mjs";
+import { createCommandExecSource } from "./command-exec.mjs";
 import { createSerialWriteQueue } from "./serial-write-queue.mjs";
 import { createExecutionPolicy, EXECUTION_MODES } from "./execution-policy.mjs";
 import { APP_VERSION } from "./version.mjs";
@@ -604,6 +605,7 @@ const systemToolSource = {
     return definition ? definition.invoke(args) : { ok: false, reason: "unknown-tool" };
   }
 };
+const commandExecSource = createCommandExecSource({ dataDir });
 const toolRegistry = createToolRegistry({
   sources: [
     {
@@ -614,6 +616,7 @@ const toolRegistry = createToolRegistry({
       invoke: (toolId, args, options) => readOnlyTools.invoke(toolId, args, options)
     },
     systemToolSource,
+    commandExecSource,
     mcpToolSource
   ],
   executionPolicy,
@@ -621,6 +624,16 @@ const toolRegistry = createToolRegistry({
   observer: toolObserver
 });
 const actionApprovals = createActionApprovalService({ tools: toolRegistry });
+// system.command 的提案先过静态安全扫描：block 级命令在创建确认请求之前就拒绝，
+// 让对话里直接给出可读的拒绝原因，而不是等用户确认后才失败。
+const requestApprovalWithCommandScan = action => {
+  if (action && action.toolId === "system.command") {
+    const check = commandExecSource.check(typeof action.args?.command === "string" ? action.args.command : "");
+    if (check.verdict === "block")
+      throw Object.assign(new Error("命令被安全扫描拦截，未创建确认请求：" + check.summary), { statusCode: 403, code: "COMMAND_BLOCKED" });
+  }
+  return actionApprovals.request(action);
+};
 // The workflow engine runs a prepared plan of read-only tools. It never
 // approves anything itself: the approval and the tool execution are injected
 // from the outside, and the built-in plans only use read-only tools.
@@ -795,7 +808,7 @@ async function readDockerInventory() {
   };
 }
 
-const agentCore = createAgentCore({ tools: toolRegistry, model: modelAdapter, requestApproval: action => actionApprovals.request(action) });const taskManager = createTaskManager({ execute: (input, context) => agentCore.run(input, context), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "", taskTimeoutMs: taskTimeoutMsFromEnv() });
+const agentCore = createAgentCore({ tools: toolRegistry, model: modelAdapter, requestApproval: requestApprovalWithCommandScan });const taskManager = createTaskManager({ execute: (input, context) => agentCore.run(input, context), concurrency: 2, historyLimit: 50, queueLimit: 20, storageFile: dataDir ? join(dataDir, "tasks.json") : "", taskTimeoutMs: taskTimeoutMsFromEnv() });
 
 // A state file that could not be restored leaves the service running in a degraded
 // state. The operator can see which part is degraded instead of guessing.
@@ -1051,10 +1064,14 @@ const server = createServer(async (req, res) => {
         return reply(res, 500, { error: "Unable to build the overview snapshot" });
       }
     }
+    // UI2 is the default console now (Phase 224). The frozen legacy UI stays
+    // reachable at /legacy (its assets remain under /ui/*) until UI cleanup.
     if (req.method === "GET" && url.pathname === "/")
-      return reply(res, 200, await readFile(join(root, "ui", "index.html"), "utf8"), "text/html; charset=utf-8");
+      return reply(res, 200, await readFile(join(root, "ui", "next", "index.html"), "utf8"), "text/html; charset=utf-8");
     if (req.method === "GET" && url.pathname === "/next")
       return reply(res, 200, await readFile(join(root, "ui", "next", "index.html"), "utf8"), "text/html; charset=utf-8");
+    if (req.method === "GET" && url.pathname === "/legacy")
+      return reply(res, 200, await readFile(join(root, "ui", "index.html"), "utf8"), "text/html; charset=utf-8");
     if (req.method === "GET" && url.pathname.startsWith("/next/")) {
       if (await serveNextAsset(res, url)) return;
       return reply(res, 404, { error: "Not found" });

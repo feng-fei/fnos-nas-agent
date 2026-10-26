@@ -317,7 +317,8 @@ export function render(root){
 
   thread.append(h("div", { style:"display:flex;justify-content:flex-start" },
     h("div", { style:"max-width:88%;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:10px 14px;font-size:14px" },
-      "你好！我可以查看状态、浏览文件、执行经确认的整理任务。破坏性操作会先展示具体目标，确认后才会执行。")));
+      "你好！我可以查看状态、浏览文件、整理文件，也可以在你确认后执行 shell 命令（试试：运行命令：df -h）。高危命令会被安全扫描直接拒绝。",
+      h("p", { class:"muted", style:"font-size:12px;margin:6px 0 0" }, "破坏性操作先展示完整命令/目标，经一次性确认后才执行。"))));
 
   const statusCard = h("div", { class:"card" },
     h("div", { class:"card__head" }, h("h2", { class:"card__title" }, "助手状态"),
@@ -334,8 +335,12 @@ export function render(root){
     if(!el) return;
     const cli = s.trimCli || {};
     el.textContent = "模型：" + (s.model?.enabled ? (s.model.providerName || s.model.model) : "未配置") +
-      " · 可用工具 " + s.availableTools + " · 任意命令执行：关闭" +
+      " · 可用工具 " + s.availableTools + " · 命令执行：扫描 + 确认后" +
       (cli.connectionStatus ? " · CLI：" + cli.connectionStatus : "");
+  }).catch(() => {});
+  callJson("chatStatus").then(s => {
+    const el = document.getElementById("chat-direct-status");
+    if(el) el.textContent = s.enabled ? "直连通道：可用（" + (s.model || "已配置") + "）" : "直连通道：模型未配置";
   }).catch(() => {});
 
   function testCli(){
@@ -345,11 +350,49 @@ export function render(root){
     }).catch(error => toast(error.message, "err"));
   }
 
+  const directStatusEl = h("span", { id:"chat-direct-status", class:"muted", style:"font-size:12px" }, "直连通道：检测中…");
+  const cliHost = h("input", { class:"input", maxlength:253, placeholder:"例如 192.168.1.20 或 nas.example.com" });
+  const cliPort = h("input", { class:"input", type:"number", min:1, max:65535, value:5667 });
+  const cliScheme = h("select", { class:"select" },
+    h("option", { value:"https" }, "HTTPS（推荐）"), h("option", { value:"http" }, "HTTP（仅可信局域网）"));
+  const cliFlow = h("select", { class:"select" },
+    h("option", { value:"login" }, "首次登录 / 交互授权"), h("option", { value:"refresh" }, "重新授权（login --refresh）"));
+  const cliSelfSigned = h("input", { type:"checkbox" });
+  const cliOut = h("pre", { class:"code", style:"display:none" });
+  const cliCopy = h("button", { class:"btn btn--sm", disabled:true, onclick:() => {
+    navigator.clipboard?.writeText(cliOut.textContent || "").then(() => toast("已复制", "ok"));
+  } }, "复制命令");
+  const cliGuide = h("details", { class:"card", style:"margin:0" },
+    h("summary", { style:"padding:10px 14px;cursor:pointer;font-size:14px" },
+      "首次授权 / CLI 连接配置（只生成命令，不接收验证码）"),
+    h("div", { class:"card__body" },
+      h("div", { class:"row row--wrap", style:"gap:8px" },
+        h("div", { class:"field", style:"flex:2;min-width:180px" }, h("label", { class:"field__label" }, "NAS 地址"), cliHost),
+        h("div", { class:"field", style:"flex:1;min-width:90px" }, h("label", { class:"field__label" }, "端口"), cliPort),
+        h("div", { class:"field", style:"flex:1;min-width:130px" }, h("label", { class:"field__label" }, "协议"), cliScheme)),
+      h("div", { class:"row row--wrap", style:"gap:8px;align-items:center" },
+        h("div", { class:"field", style:"flex:1;min-width:180px" }, h("label", { class:"field__label" }, "授权方式"), cliFlow),
+        h("label", { class:"checkbox" }, cliSelfSigned, h("span", "HTTPS 自签名证书")),
+        h("button", { class:"btn btn--primary btn--sm", onclick:async () => {
+          try{
+            const r = await callJson("trimCliLoginCommand", { body:{ host:cliHost.value.trim(), port:Number(cliPort.value),
+              scheme:cliScheme.value, flow:cliFlow.value, allowSelfSigned:cliSelfSigned.checked } });
+            cliOut.style.display = "block";
+            cliOut.textContent = r.command || JSON.stringify(formatDisplayValue(r), null, 2);
+            cliCopy.disabled = false;
+          }catch(error){ toast(error.message, "err"); }
+        } }, "生成登录命令")),
+      cliOut,
+      h("div", { class:"row", style:"gap:8px;margin-top:8px" }, cliCopy),
+      h("p", { class:"field__hint" }, "先在 Skill 管理中审核并安装官方 CLI；命令需在 NAS 终端以 Agent 运行账户执行，" +
+        "OAuth 一次性验证码只粘贴在 CLI 交互提示符里，本页面永不收集。")));
+
   root.append(
     h("div", { class:"card", style:"display:flex;flex-direction:column;min-height:56vh" },
       h("div", { class:"card__head", style:"align-items:center" }, modeSeg, h("span", { style:"flex:1" }), statusEl, stopBtn),
       h("div", { class:"card__body", style:"flex:1;display:flex;flex-direction:column;padding-top:0" },
-        modeHint, thread, form)),
+        modeHint, directStatusEl, thread, form)),
+    cliGuide,
     h("div", { class:"card" },
       h("div", { class:"card__head" }, h("h2", { class:"card__title" }, "待确认的危险操作"),
         h("p", { class:"card__sub" }, "与对话目标一一对应，60 秒内有效且只能执行一次")),
@@ -357,7 +400,13 @@ export function render(root){
     h("div", { class:"card" },
       h("div", { class:"card__head" }, h("h2", { class:"card__title" }, "任务队列"),
         h("p", { class:"card__sub" }, ""), h("span", { style:"flex:1" }), queueMeta),
-      h("div", { class:"card__body" }, queueList, queueNav)),
+      h("div", { class:"card__body" }, queueList, queueNav,
+        h("button", { class:"btn btn--ghost btn--sm", style:"margin-top:8px", onclick:async () => {
+          confirmModal("清理任务历史", "清理已完成、失败和已取消的任务记录？排队中和运行中的任务会保留。", "清理", async () => {
+            try{ const r = await callJson("tasksClearHistory"); toast("已清理 " + (r.removed ?? "—") + " 条", "ok"); loadQueue(); }
+            catch(error){ toast(error.message, "err"); }
+          });
+        } }, "清理已结束任务"))),
     statusCard);
 
   loadPending(); loadQueue();

@@ -206,6 +206,24 @@ export function render(root, ctx){
     }
     return grid;
   }
+  function duplicatesModal(){
+    const out = h("div", null, h("p", { class:"muted", style:"margin:0" }, "扫描中…（只读扫描，受速率限制 3 次/分钟）"));
+    openModal("重复文件 · " + (state.path || "存储卷"), out, [{ label:"关闭", onClick:c => c() }]);
+    callJson("fileDuplicates", { query:{ path:state.path, limit:100 } }).then(r => {
+      const groups = r.groups || [];
+      if(!groups.length){ out.replaceChildren(h("p", { class:"muted", style:"margin:0" },
+        "扫描 " + (r.scanned ?? "—") + " 个文件，未发现重复内容。")); return; }
+      out.replaceChildren(
+        h("p", { class:"muted", style:"font-size:12px;margin:0 0 8px" },
+          "扫描 " + r.scanned + " · 候选 " + r.candidates + " · 重复组 " + groups.length +
+          (r.truncated ? " · 结果已截断" : "") + "（只读展示；清理请勾选后手动删除）"),
+        h("div", { class:"stack" }, groups.map(g => h("details", { class:"card", style:"margin:0" },
+          h("summary", { style:"padding:7px 11px;cursor:pointer;font-size:13px" },
+            formatBytes(g.size) + " × " + (g.files || []).length + " 份"),
+          h("pre", { class:"code", style:"margin:0;border:0;border-top:1px solid var(--border);border-radius:0;max-height:220px" },
+            (g.files || []).join("\n"))))));
+    }).catch(error => out.replaceChildren(h("div", { class:"banner banner--warn", style:"margin:0" }, error.message)));
+  }
   function setView(v){
     state.view = v;
     try{ localStorage.setItem("ui2.files.view", v); }catch{}
@@ -371,12 +389,18 @@ export function render(root, ctx){
        { label:"移动到此处", cls:"btn--primary", onClick:async c => {
           const why = canDrop(cur);
           if(why){ toast(why, "err"); return; }
-          let ok = 0;
-          for(const e of sel){
-            try{ await callJson("fileOperation", { body:{ action:"move", path:e.path, destination:cur } }); ok++; }
-            catch(error){ toast(error.message, "err"); break; }
+          try{
+            await callJson("fileBatch", { body:{ operations:sel.map(e => ({ action:"move", path:e.path, destination:cur })) } });
+            toast("已移动 " + sel.length + " 项", "ok");
+          }catch(error){
+            toast(error.message + "（已回退为逐项移动）", "err");
+            let ok = 0;
+            for(const e of sel){
+              try{ await callJson("fileOperation", { body:{ action:"move", path:e.path, destination:cur } }); ok++; }
+              catch(err){ break; }
+            }
+            if(ok) toast("已移动 " + ok + " 项", "ok");
           }
-          if(ok){ toast("已移动 " + ok + " 项", "ok"); }
           if(state.clipboard?.mode === "cut") state.clipboard = null;
           c(); state.selection.clear(); syncClip(); load(state.offset);
        } }]);
@@ -550,6 +574,7 @@ export function render(root, ctx){
     h("div", { class:"toolbar", style:"display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px" },
       crumbs,
       searchInput, typeSel, sortSel, viewSeg,
+      h("button", { class:"btn btn--sm", onclick:duplicatesModal }, "🔍 查重"),
       h("button", { class:"btn btn--sm", onclick:mkdirModal }, "＋ 文件夹"),
       h("button", { class:"btn btn--primary btn--sm", onclick:() => uploadInput.click() }, "⬆ 上传"),
       pasteBtn),

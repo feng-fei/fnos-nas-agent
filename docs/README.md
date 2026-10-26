@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 222 documents (206 phase documents and 15 non-phase documents, plus this file).
+This index lists 227 documents (211 phase documents and 15 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -769,6 +769,11 @@ This index lists 222 documents (206 phase documents and 15 non-phase documents, 
 - [Phase 219：UI2 外壳骨架（UI-1）](phase-219-ui2-shell.md) — 决策放弃旧 UI 后从零重建：`ui/next/` 静态外壳 + 设计令牌、ES Module 架构（h/signal store/api 命名路由/router）、五区信息架构（总览/对话/文件/系统/设置）、会话状态机；server 新增 `/next` 与 `/next/*` 静态服务（扩展名白名单 + 越界防护）。
 - [Phase 220：UI2 对话页（UI-2）](phase-220-ui2-chat.md) — 任务模式走 agent/message 202 + EventSource 任务事件流（progress/tool/approval/done）并保留轮询兜底；直连模式 chat/message SSE 可中止；审批卡按 taskId 内联回合、确认前本地二次确认；上下文仅页面内存。
 - [Phase 221：UI2 文件页（UI-3）](phase-221-ui2-files.md) — 按真实 `/api/files` 契约落地交互定稿：服务端排序搜索过滤、多选批量（改名走 plan/apply、移动防自身子目录、删除走 202 一次性审批）、octet-stream 上传进度、预览抽屉与校验和、剪切粘贴；复制语义因服务端缺失暂禁用并登记待办。
+- [Phase 222：UI2 系统区（UI-4）](phase-222-ui2-system.md) — 旧「诊断与运维」13 组能力按域重组为七个子页签；只读分区自动渲染，写侧动作 JSON 输入显式执行，结论如实呈现不重试不降级。
+- [Phase 223：UI2 设置区（UI-5）](phase-223-ui2-settings.md) — 模型服务 CRUD/测试/默认/用量/预设、Skill 状态机+ZIP/远程导入、知识库统计冲突与两步写入、执行模式切换（停机可恢复）与安检、能力位图。
+- [Phase 224：UI2 成为默认控制台（UI-6 第一刀）](phase-224-ui2-default-entry.md) — `GET /` 返回新壳（`<base>` 保证相对资源仍走 /next/*），旧 UI 冻结在 `/legacy`；说明旧测试依赖为何要求删除与测试退役同批进行。
+- [Phase 225：UI2 覆盖审计、不变量测试与退役清单](phase-225-ui2-invariants-and-audit.md) — 双向对账修复 20 条未接漏项（CLI 引导/查重/批量端点/官方 CLI 安装/组合计划等），建立 9 例 UI2 不变量测试，量化旧 UI 退役清单（gates 41 条断言 + 14 个测试文件）。
+- [Phase 226：确认式命令执行](phase-226-command-exec.md) — `system.command`（destructive）+ `system.command-check`（只读预检）：Phase 145 扫描器 block 拒绝 + 一次性人工确认 + bash -c 参数数组执行；规则直连意图「运行命令：…」；模型提示词与边界声明同步。
 
 ## This index
 
