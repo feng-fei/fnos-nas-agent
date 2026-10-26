@@ -171,6 +171,15 @@ export function render(root, ctx){
       for(const s of skills){
         const targets = SKILL_TRANSITIONS[s.state] || [];
         const actions = h("div", { class:"row row--wrap", style:"gap:6px;margin-top:8px" });
+        if(s.name.toLowerCase() === "fnos" && ["approved", "enabled"].includes(s.state)){
+          actions.append(h("button", { class:"btn btn--sm", onclick:() => confirmModal("安装官方 CLI",
+            "将从该 Skill 的隔离归档中安装官方 fnOS CLI（仅 Linux x64/ARM64），并放置到 Agent 私有目录。", "安装", async () => {
+              try{ const r = await callJson("skillInstallCli", { params:{ id:s.id }, body:{} });
+                openModal("官方 CLI 安装结果", h("pre", { class:"code" },
+                  JSON.stringify(formatDisplayValue(r), null, 2).slice(0, 3000)), [{ label:"关闭", onClick:c => c() }]);
+              }catch(error){ toast(error.message, "err"); }
+            }) }, "安装官方 CLI"));
+        }
         for(const target of targets){
           actions.append(h("button", { class:"btn btn--sm" + (target === "rejected" ? " btn--danger" : ""),
             onclick:() => skillTransition(s, target) }, "→ " + SKILL_STATE_LABEL[target]));
@@ -273,8 +282,18 @@ export function render(root, ctx){
         h("p", { class:"field__hint" }, "由服务端下载并进入同一套隔离审核流程；抓取地址与大小受策略限制。")),
       [{ label:"取消", onClick:c => c() },
        { label:"导入", cls:"btn--primary", onClick:async c => {
-          try{ await callJson("skillImportRemote", { body:{ name:name.value.trim(), version:version.value.trim(), url:url.value.trim() } });
-            toast("已提交远程导入", "ok"); c(); drawSkills();
+          const urlText = url.value.trim();
+          try{
+            const lines = urlText.split(/\s+/).filter(Boolean);
+            if(lines.length > 1){
+              await callJson("skillImportRemoteBatch", { body:{ items:lines.map(u => ({ url:u,
+                name:name.value.trim(), version:version.value.trim() })) } });
+              toast("已提交批量远程导入：" + lines.length + " 个", "ok");
+            }else{
+              await callJson("skillImportRemote", { body:{ name:name.value.trim(), version:version.value.trim(), url:urlText } });
+              toast("已提交远程导入", "ok");
+            }
+            c(); drawSkills();
           }catch(error){ toast(error.message, "err"); }
        } }]);
   }
@@ -335,6 +354,12 @@ export function render(root, ctx){
     const previewOut = h("div");
     let previewId = null;
     const commitBtn = h("button", { class:"btn btn--sm", disabled:true, onclick:doCommit }, "② 提交（previewId）");
+    function invalidatePreview(){
+      if(!previewId) return;
+      callJson("knowledgeCancel", { body:{ previewId } }).catch(() => {});
+      previewId = null; commitBtn.disabled = true;
+    }
+    for(const el of [title, topic, source, claims]) el.addEventListener("input", invalidatePreview);
     async function payload(){
       let parsedClaims = [];
       try{ parsedClaims = claims.value.trim() ? JSON.parse(claims.value) : []; }

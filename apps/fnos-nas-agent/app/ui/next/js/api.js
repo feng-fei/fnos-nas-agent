@@ -105,7 +105,7 @@ const ROUTES = {
   compositionsValidate:["POST","/api/compositions/validate"],
   securityInspection:["POST", "/api/security/inspection"],
   writeActions:      ["GET",  "/api/write-actions"],
-  backupPrecheck:    ["POST", "/api/backup/precheck"],
+  backupPrecheck:    ["GET",  "/api/backup/precheck"],
   /* 工作流 / 运行手册 / MCP / 通知 */
   workflowsList:     ["GET",  "/api/workflows"],
   workflowGet:       ["GET",  "/api/workflows/:id"],

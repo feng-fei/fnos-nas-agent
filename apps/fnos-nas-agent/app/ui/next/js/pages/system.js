@@ -4,11 +4,11 @@
 
 import { h, clear } from "../h.js";
 import { callJson } from "../api.js";
-import { toast, confirmModal } from "../ui.js";
+import { toast, confirmModal, openModal } from "../ui.js";
 import { formatDisplayValue } from "../format.js";
 
 /* value 渲染：对象 → kv；数组 → 可折叠列表；其他 → 标量。只做展示，不做业务判断。 */
-function renderValue(value){
+function renderValue(value, onOpenDetail){
   if(value === null || value === undefined || value === "") return h("span", { class:"muted" }, "—");
   if(typeof value === "boolean") return h("span", { class:"badge " + (value ? "badge--ok" : "badge--warn") }, value ? "是" : "否");
   if(!Array.isArray(value) && typeof value === "object"){
@@ -26,10 +26,11 @@ function renderValue(value){
     for(const item of value.slice(0, 12)){
       if(item && typeof item === "object"){
         const title = item.title || item.name || item.route || item.id || item.workflowId || item.mount || item.disk || "条目";
-        wrap.append(h("details", { class:"card", style:"margin:0" },
-          h("summary", { style:"padding:7px 11px;cursor:pointer;font-size:13px" }, String(title)),
+        const summary = h("summary", { style:"padding:7px 11px;cursor:pointer;font-size:13px" }, String(title));
+        wrap.append(h("details", { class:"card", style:"margin:0" }, summary,
           h("pre", { class:"code", style:"margin:0;border:0;border-top:1px solid var(--border);border-radius:0;max-height:200px" },
             JSON.stringify(formatDisplayValue(item), null, 2).slice(0, 2500))));
+        if(onOpenDetail && item.id) summary.addEventListener("click", () => onOpenDetail(item));
       }else wrap.append(h("div", { style:"font-size:13px" }, String(item)));
     }
     if(value.length > 12) wrap.append(h("p", { class:"muted", style:"font-size:11px;margin:0" }, "… 共 " + value.length + " 项，仅显示前 12 条"));
@@ -42,8 +43,10 @@ const SUBTABS = [
   { id:"overview", title:"概览", note:"设备档案、健康检查计划与更新检查；系统快照在 UI-1 已接通。",
     sections:[
       { title:"系统快照", route:"systemSnapshot" },
-      { title:"设备档案", route:"deviceProfiles" },
+      { title:"设备档案", route:"deviceProfiles", detail:{ route:"deviceProfileGet" } },
       { title:"健康检查计划", route:"healthChecks" },
+      { title:"备份前检查", route:"backupPrecheck" },
+      { title:"工具清单", route:"toolsList" },
       { title:"更新检查", action:{ route:"systemUpdateCheck", body:{}, label:"立即检查更新" } },
     ] },
   { id:"network", title:"网络与证书", note:"网络体检、策略、接口与连通性巡检。",
@@ -69,9 +72,9 @@ const SUBTABS = [
     ] },
   { id:"automation", title:"自动化", note:"工作流、触发规则评估、运行手册与 MCP。",
     sections:[
-      { title:"工作流", route:"workflowsList" },
+      { title:"工作流", route:"workflowsList", detail:{ route:"workflowGet" } },
       { title:"MCP 服务器", route:"mcpStatus" },
-      { title:"运行手册", route:"runbooksList" },
+      { title:"运行手册", route:"runbooksList", detail:{ route:"runbookGet" } },
       { title:"运行手册统计", route:"runbooksStats" },
       { title:"触发规则评估（只评估，不执行）", action:{ route:"workflowTriggersEvaluate", body:{}, label:"评估触发条件", json:true } },
       { title:"新建运行手册（只存文字，不执行）", action:{ route:"runbookCreate", body:{ title:"", content:"" }, label:"保存", json:true } },
@@ -84,13 +87,15 @@ const SUBTABS = [
     ] },
   { id:"reports", title:"诊断报告", note:"一键诊断、证据抽取、部署与组合校验、历史。",
     sections:[
-      { title:"诊断历史", route:"diagnosesList" },
+      { title:"诊断历史", route:"diagnosesList", detail:{ route:"diagnosisGet" } },
       { title:"诊断统计", route:"diagnosesStats" },
       { title:"生成诊断报告", action:{ route:"diagnosticsReport", body:{}, label:"生成" } },
       { title:"诊断证据抽取", action:{ route:"diagnosticsEvidence", body:{}, label:"抽取证据", json:true } },
       { title:"日志证据", action:{ route:"diagnosticsLogEvidence", body:{ lines:200, filter:"" }, label:"抽取日志证据", json:true } },
       { title:"部署前校验", action:{ route:"deployPrecheck", body:{}, label:"校验", json:true } },
       { title:"技能组合校验", action:{ route:"compositionsValidate", body:{}, label:"校验组合", json:true } },
+      { title:"技能组合计划", action:{ route:"compositionsPlan", body:{}, label:"生成计划", json:true } },
+      { title:"网页取证（服务端策略默认关闭，照实呈现结果）", action:{ route:"webFetch", body:{ url:"https://example.com" }, label:"抓取", json:true } },
     ] },
 ];
 
@@ -105,12 +110,27 @@ export function render(root, ctx){
       body);
     if(section.action) buildAction(section, body);
     else callJson(section.route, { query:section.query }).then(data => {
-      clear(body).append(renderValue(data));
+      clear(body).append(renderValue(data, section.detail ? item => openDetailModal(section.detail, item) : null));
     }).catch(error => {
       clear(body).append(h("div", { class:"banner banner--warn", style:"margin:0" },
         error.status === 501 ? "该能力在此部署未启用。" : error.message));
     });
     return card;
+  }
+
+  function openDetailModal(detail, item){
+    openModal((item.title || item.name || "详情") + " · 详情", h("div", null,
+      h("p", { class:"muted", style:"font-size:12px;margin:0 0 8px" }, "正在读取详情…")),
+      [{ label:"关闭", onClick:c => c() }]);
+    callJson(detail.route, { params:{ id:item.id } }).then(r => {
+      const host = document.getElementById("modal-host");
+      const pre = host && host.querySelector(".modal__body");
+      if(pre) pre.replaceChildren(h("pre", { class:"code", style:"max-height:420px" },
+        JSON.stringify(formatDisplayValue(r), null, 2).slice(0, 12000)));
+    }).catch(error => {
+      const pre = document.getElementById("modal-host")?.querySelector(".modal__body");
+      if(pre) pre.replaceChildren(h("div", { class:"banner banner--warn", style:"margin:0" }, error.message));
+    });
   }
 
   function buildAction(section, body){
