@@ -178,11 +178,11 @@ export function createAgentCore({ tools, model, requestApproval = null, now = ()
         try {
           results = await executePlan({ toolCalls: [{ id: direct.item.tool, args: direct.item.args ? direct.item.args(direct.match) : {} }] }, taskId, reportProgress, shouldCancel, sessionId, reportTool);
         } catch (error) {
+          // Only the command scanner refusal becomes a readable outcome; every
+          // other rules-path failure keeps its original rejecting contract.
+          if (error?.code !== "COMMAND_BLOCKED") throw error;
           return { taskId, createdAt, completedAt: now(), status: "failed", mode: "rules",
-            message: error?.code === "COMMAND_BLOCKED" ? error.message
-              : error?.statusCode === 404 ? "请求了不在白名单中的工具，已拒绝。"
-              : "工具请求未通过校验或执行失败；未执行任意系统命令。",
-            results: [] };
+            message: error.message, results: [] };
         }
         if (!Array.isArray(results)) return { taskId, createdAt, completedAt: now(), status: "awaiting-approval", mode: "rules", message: "该操作有破坏性影响，请先确认具体目标；确认前不会执行。", pendingApproval: results.pendingApproval, results: [] };
         return { taskId, createdAt, completedAt: now(), status: "completed", mode: "rules", message: direct.item.message, results };
