@@ -5,7 +5,7 @@ historical iteration identifiers: they are **not guaranteed to be continuous or
 unique** — a few numbers were reused for parallel work, and some early
 iterations were never given a number. The filenames are the stable reference.
 
-This index lists 219 documents (203 phase documents and 15 non-phase documents, plus this file).
+This index lists 222 documents (206 phase documents and 15 non-phase documents, plus this file).
 
 ## Non-phase documents
 
@@ -766,6 +766,9 @@ This index lists 219 documents (203 phase documents and 15 non-phase documents, 
 - [Phase 216：知识库的「显示已归档」开关](phase-216-knowledge-archived-view.md) — 列表页补上 `archived=1` 开关与「（含已归档）」状态；顺带修掉视图模型丢 `archived` 标记、归档条目被画出维护按钮的缺陷，4 例测试。
 - [Phase 217：备份前检查](phase-217-backup-precheck.md) — 七项只读体检（空间、只读挂载、容量趋势、服务、SMART、诊断）拼成一句「现在能不能安心备份」；`GET /api/backup/precheck` + 运维页卡片，14 例纯函数用例与 1 例 401 边界。
 - [Phase 218：模型 Endpoint 支持只填 base 地址](phase-218-model-endpoint-base.md) — `/v1`、根地址这类 base 直接可保存，服务端按规则补全 `/chat/completions`；`/v1/responses` 之类仍拒绝，新增两组用例覆盖补全与拒绝两侧。
+- [Phase 219：UI2 外壳骨架（UI-1）](phase-219-ui2-shell.md) — 决策放弃旧 UI 后从零重建：`ui/next/` 静态外壳 + 设计令牌、ES Module 架构（h/signal store/api 命名路由/router）、五区信息架构（总览/对话/文件/系统/设置）、会话状态机；server 新增 `/next` 与 `/next/*` 静态服务（扩展名白名单 + 越界防护）。
+- [Phase 220：UI2 对话页（UI-2）](phase-220-ui2-chat.md) — 任务模式走 agent/message 202 + EventSource 任务事件流（progress/tool/approval/done）并保留轮询兜底；直连模式 chat/message SSE 可中止；审批卡按 taskId 内联回合、确认前本地二次确认；上下文仅页面内存。
+- [Phase 221：UI2 文件页（UI-3）](phase-221-ui2-files.md) — 按真实 `/api/files` 契约落地交互定稿：服务端排序搜索过滤、多选批量（改名走 plan/apply、移动防自身子目录、删除走 202 一次性审批）、octet-stream 上传进度、预览抽屉与校验和、剪切粘贴；复制语义因服务端缺失暂禁用并登记待办。
 
 ## This index
 
