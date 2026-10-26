@@ -121,8 +121,9 @@ test("the console serves its assets and the overview snapshot over HTTP", async 
   assert.match(shell.headers.get("content-type") || "", /text\/html/);
   const shellBody = await shell.text();
   // Since Phase 224 the default console is UI2; the frozen legacy UI stays at /legacy.
-  assert.match(shellBody, /<base href="\/next\/">/);
-  assert.match(shellBody, /<script type="module" src="\.\/js\/main\.js"><\/script>/);
+  assert.doesNotMatch(shellBody, /<base\s/);
+  assert.match(shellBody, /<link rel="stylesheet" href="\/next\/styles\.css">/);
+  assert.match(shellBody, /<script type="module" src="\/next\/js\/main\.js"><\/script>/);
 
   const legacy = await fetch(baseUrl + "/legacy");
   assert.equal(legacy.status, 200);
